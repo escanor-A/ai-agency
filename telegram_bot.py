@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "Gemini 3 Flash Live"
+MODEL = "gemini-3.5-flash"
  # غيّره لو الاسم اتغير في Google AI Studio
 
 # البوت ده بتاع تاجر واحد (بوت لكل تاجر). للتجربة: التاجر التجريبي.

@@ -1,0 +1,5 @@
+supabase
+python-dotenv
+google-genai
+python-telegram-bot
+httpx
