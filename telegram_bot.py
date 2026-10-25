@@ -58,11 +58,10 @@ NOT_OWNER_MESSAGE = "البوت ده خاص بصاحب المحل. لو إنت �
 
 
 def get_owner_tenant(chat_id):
-    """بيرجّع التاجر لو الشات ده هو شات المالك المربوط بالبوت، غير كده None"""
+    """بيرجّع التاجر لو الشات ده مربوط بأي تاجر في السيستم، غير كده None"""
     rows = (
         supabase.table("tenants")
         .select("id,name")
-        .eq("id", BOT_TENANT_ID)
         .eq("telegram_chat_id", chat_id)
         .execute()
         .data
@@ -71,36 +70,40 @@ def get_owner_tenant(chat_id):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     chat_id = update.effective_chat.id
-    code = context.args[0].strip() if context.args else None
+    code = context.args[0].strip().upper() if context.args else None
 
     if code:
+        # البحث عن الكود في كل التجار
         rows = (
             supabase.table("tenants")
             .select("id,name")
-            .eq("id", BOT_TENANT_ID)
             .eq("telegram_link_code", code)
             .execute()
             .data
         )
         if not rows:
-            await update.message.reply_text("الكود غلط أو اتستخدم قبل كده.")
+            await msg.reply_text("الكود غلط أو اتستخدم قبل كده.")
             return
+        
+        target_tenant = rows[0]
         supabase.table("tenants").update(
             {"telegram_chat_id": chat_id, "telegram_link_code": None}
-        ).eq("id", BOT_TENANT_ID).execute()
-        await update.message.reply_text(
-            f"تم ربط البوت بـ «{rows[0]['name']}» ✅\n"
-            "هيوصلك هنا إشعار بكل أوردر جديد.\n"
+        ).eq("id", target_tenant["id"]).execute()
+
+        await msg.reply_text(
+            f"تم ربط البوت بـ «{target_tenant['name']}» ✅\n"
+            "هيوصلك هنا إشعار بكل أوردر جديد، وتقدر تدير مخزنك ومبيعاتك من هنا مباشرة.\n"
             "اكتب /help عشان تشوف تقدر تعمل إيه."
         )
         return
 
     tenant = get_owner_tenant(chat_id)
     if tenant:
-        await update.message.reply_text(f"أهلاً بيك في بوت «{tenant['name']}» 👋\nاكتب /help.")
+        await msg.reply_text(f"أهلاً بيك في بوت «{tenant['name']}» 👋\nاكتب /help.")
     else:
-        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        await msg.reply_text(NOT_OWNER_MESSAGE)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -266,10 +269,12 @@ def run_llm(text, tools):
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    if not get_owner_tenant(chat_id):
+    tenant = get_owner_tenant(chat_id)
+    if not tenant:
         await update.message.reply_text(NOT_OWNER_MESSAGE)
         return
 
+    tenant_id = tenant["id"]
     proposals = []  # العمليات اللي الموديل جهّزها وتستنى التأكيد
 
     def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
@@ -281,7 +286,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             color: اللون بالعربي (فاضي لو ماتحددش)
         """
         return db_check_stock(
-            BOT_TENANT_ID, product_name, size=size or None, color=color or None
+            tenant_id, product_name, size=size or None, color=color or None
         )
 
     def propose_stock_change(sku: str, qty: int, kind: str) -> dict:
@@ -299,7 +304,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rows = (
             supabase.table("variants")
             .select("id,sku,size,color,available,products!inner(name)")
-            .eq("tenant_id", BOT_TENANT_ID)
+            .eq("tenant_id", tenant_id)
             .eq("sku", sku)
             .execute()
             .data
@@ -352,6 +357,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pid = uuid.uuid4().hex[:12]
     context.application.bot_data.setdefault("pending", {})[pid] = {
         "chat_id": chat_id,
+        "tenant_id": tenant_id,
         "items": proposals,
     }
     kinds = {"sale": "خصم (بيع من المحل)", "restock": "إضافة بضاعة", "return": "مرتجع"}
@@ -389,6 +395,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("العملية دي انتهت أو اتنفذت قبل كده.")
         return
 
+    tenant_id = pending.get("tenant_id", BOT_TENANT_ID)
+
     if action == "no":
         await query.edit_message_text("اتلغت ❌")
         return
@@ -402,7 +410,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 prod_rows = (
                     supabase.table("products")
                     .select("id")
-                    .eq("tenant_id", BOT_TENANT_ID)
+                    .eq("tenant_id", tenant_id)
                     .ilike("name", item["name"])
                     .execute()
                     .data
@@ -413,7 +421,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     new_p = (
                         supabase.table("products")
                         .insert({
-                            "tenant_id": BOT_TENANT_ID,
+                            "tenant_id": tenant_id,
                             "name": item["name"],
                             "price": item["price"],
                             "active": True,
@@ -429,7 +437,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 # 3. إنشاء الصنف variant
                 supabase.table("variants").insert({
-                    "tenant_id": BOT_TENANT_ID,
+                    "tenant_id": tenant_id,
                     "product_id": product_id,
                     "sku": sku,
                     "size": item["size"],
@@ -447,7 +455,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 supabase.rpc(
                     "apply_stock_movement",
                     {
-                        "p_tenant": BOT_TENANT_ID,
+                        "p_tenant": tenant_id,
                         "p_variant": item["variant_id"],
                         "p_change": item["change"],
                         "p_reason": item["kind"],
