@@ -95,26 +95,66 @@ async def process_meta_event(data: dict):
         # ب) رسائل واتساب (WhatsApp Business Cloud API)
         changes = entry.get("changes", [])
         for change in changes:
+            field = change.get("field")
             value = change.get("value", {})
-            phone_number_id = value.get("metadata", {}).get("phone_number_id")
-            messages = value.get("messages", [])
-            for msg in messages:
-                if msg.get("type") == "text":
-                    wa_from = msg.get("from")
-                    wa_text = msg.get("text", {}).get("body")
-                    
-                    # البحث عن التاجر برقم الواتساب
-                    rows = (
-                        supabase.table("tenants")
-                        .select("id, name")
-                        .eq("whatsapp_phone_number_id", phone_number_id)
-                        .execute()
-                        .data
-                    )
-                    if rows:
-                        tenant = rows[0]
-                        reply = handle_customer_message(tenant["id"], wa_from, wa_text)
-                        print(f"🟢 واتساب «{tenant['name']}» -> رد للعميل {wa_from}: {reply}")
+
+            # 1. معالجة التعليقات على بوستات فيسبوك (Facebook Page Feed & Comments)
+            if field == "feed" and value.get("item") == "comment" and value.get("verb") == "add":
+                comment_id = value.get("comment_id")
+                post_id = value.get("post_id")
+                sender_id = value.get("from", {}).get("id")
+                sender_name = value.get("from", {}).get("name", "يا فندم")
+                comment_text = value.get("message", "")
+                page_id = entry.get("id") # معرف صفحة فيسبوك
+
+                # تجاهل تعليقات الصفحة نفسها
+                if sender_id == page_id or not comment_text:
+                    continue
+
+                # البحث عن التاجر صاحب الصفحة
+                rows = (
+                    supabase.table("tenants")
+                    .select("id, name")
+                    .eq("facebook_page_id", page_id)
+                    .execute()
+                    .data
+                )
+                if rows:
+                    tenant = rows[0]
+                    print(f"💬 تعليق جديد على بوست لـ «{tenant['name']}» من {sender_name}: {comment_text}")
+
+                    # الذكاء الاصطناعي بيولد الرد المناسب بناء على بضاعة التاجر
+                    reply_text = handle_customer_message(tenant["id"], sender_id, f"أنا علقت على بوست وكتبت: {comment_text}")
+
+                    # 1. إرسال رد خاص في رسائل الماسنجر (Private Reply)
+                    print(f"   [📩 رد ماسنجر خاص للعميل {sender_name}]: {reply_text}")
+                    # await send_meta_private_reply(comment_id, reply_text, page_token)
+
+                    # 2. إرسال رد عام تحت التعليق مباشرة (Public Comment Reply)
+                    public_comment = f"أهلاً بحضرتك {sender_name} ❤️ تم الرد على استفسارك في رسائل الصفحة، وتقدر تطلب شحن فوري والدفع عند الاستلام!"
+                    print(f"   [💬 رد عام تحت الكومنت]: {public_comment}")
+                    # await send_public_comment_reply(comment_id, public_comment, page_token)
+
+            # 2. رسائل واتساب
+            elif field == "messages":
+                phone_number_id = value.get("metadata", {}).get("phone_number_id")
+                messages = value.get("messages", [])
+                for msg in messages:
+                    if msg.get("type") == "text":
+                        wa_from = msg.get("from")
+                        wa_text = msg.get("text", {}).get("body")
+                        
+                        rows = (
+                            supabase.table("tenants")
+                            .select("id, name")
+                            .eq("whatsapp_phone_number_id", phone_number_id)
+                            .execute()
+                            .data
+                        )
+                        if rows:
+                            tenant = rows[0]
+                            reply = handle_customer_message(tenant["id"], wa_from, wa_text)
+                            print(f"🟢 واتساب «{tenant['name']}» -> رد للعميل {wa_from}: {reply}")
 
 
 @app.post("/webhook/meta")
