@@ -53,6 +53,7 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 8. لو ذكر كذا لون أو مقاس لنفس المنتج، نادِ propose_new_product لكل لون/مقاس في نفس الرد فوراً لتجهيزهم معاً دفعة واحدة!
 9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
 10. لو صاحب المحل طلب إضافة فرع أو عنوان للمحل (مثلاً: فرع مدينة نصر، شارع كذا، لوكيشن ماب كذا)، استخرج البيانات ونادِ propose_new_branch.
+11. لو صاحب المحل طلب عمل كود خصم أو عرض ترويجي (مثلاً: كود EID20 خصم 20%، أو عرض شحن مجاني لأي حد يطلب قطعتين أو أكتر)، استخرج البيانات ونادِ propose_new_promo.
 
 معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها (لارج = L، ميديم = M، إكس لارج = XL). الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج، أحمر، أصفر، بنفسجي، أخضر.
 """
@@ -381,9 +382,29 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         return {"status": "waiting_confirmation", "branch": name}
 
+    def propose_new_promo(code: str = "", promo_type: str = "percentage", discount_value: float = 0.0, description: str = "", min_order_items: int = 1) -> dict:
+        """بتجهّز إضافة كود خصم أو عرض ترويجي للمحل (شحن مجاني، نسبة خصم، أو خصم بالجنيه) وتستنى تأكيد التاجر.
+        
+        Args:
+            code: كود الخصم (زي EID20 أو SUMMER10) أو اتركه فارغاً لو عرض عام تلقائي (زي شحن مجاني لأي حد يطلب قطعتين)
+            promo_type: نوع الخصم (percentage = نسبة مئوية، fixed = خصم بالجنيه، free_shipping = شحن مجاني)
+            discount_value: قيمة الخصم (مثلاً 20 لو 20% أو 50 لو 50 جنيه)
+            description: وصف العرض بالعربي
+            min_order_items: الحد الأدنى لعدد القطع لتطبيق العرض (افتراضي 1)
+        """
+        proposals.append({
+            "type": "new_promo",
+            "code": code.strip().upper(),
+            "promo_type": promo_type.strip(),
+            "discount_value": float(discount_value),
+            "description": description.strip() or f"عرض {code}",
+            "min_order_items": int(min_order_items),
+        })
+        return {"status": "waiting_confirmation", "promo": description}
+
     content_to_send = update.message.text
     reply = await asyncio.to_thread(
-        run_llm, chat_id, content_to_send, [check_stock, propose_stock_change, propose_new_product, propose_new_branch]
+        run_llm, chat_id, content_to_send, [check_stock, propose_stock_change, propose_new_product, propose_new_branch, propose_new_promo]
     )
 
     if not proposals:
@@ -404,6 +425,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             summary_lines.append(f"✨ إضافة منتج جديد: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f} جنيه | الكمية: {p['qty']}")
         elif p.get("type") == "new_branch":
             summary_lines.append(f"📍 إضافة فرع جديد: {p['name']} ({p['governorate']} - {p['address']})")
+        elif p.get("type") == "new_promo":
+            code_txt = f" (كود: {p['code']})" if p.get('code') else ""
+            summary_lines.append(f"🎁 إضافة عرض/خصم: {p['description']}{code_txt}")
         else:
             summary_lines.append(f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}")
 
@@ -494,12 +518,23 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         return {"status": "waiting_confirmation", "branch": name}
 
+    def propose_new_promo(code: str = "", promo_type: str = "percentage", discount_value: float = 0.0, description: str = "", min_order_items: int = 1) -> dict:
+        proposals.append({
+            "type": "new_promo",
+            "code": code.strip().upper(),
+            "promo_type": promo_type.strip(),
+            "discount_value": float(discount_value),
+            "description": description.strip() or f"عرض {code}",
+            "min_order_items": int(min_order_items),
+        })
+        return {"status": "waiting_confirmation", "promo": description}
+
     # تمرير الصوت كـ Part إلى Gemini
     audio_part = types.Part.from_bytes(data=bytes(audio_bytes), mime_type="audio/ogg")
     content_list = [audio_part, "استمع للريكورد ده من صاحب المحل ونفّذ المطلوب واستدعِ الأدوات المناسبة."]
 
     reply = await asyncio.to_thread(
-        run_llm, chat_id, content_list, [check_stock, propose_stock_change, propose_new_product, propose_new_branch]
+        run_llm, chat_id, content_list, [check_stock, propose_stock_change, propose_new_product, propose_new_branch, propose_new_promo]
     )
 
     await status_msg.delete()
@@ -521,6 +556,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             summary_lines.append(f"✨ إضافة منتج جديد: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f} جنيه | الكمية: {p['qty']}")
         elif p.get("type") == "new_branch":
             summary_lines.append(f"📍 إضافة فرع جديد: {p['name']} ({p['governorate']} - {p['address']})")
+        elif p.get("type") == "new_promo":
+            code_txt = f" (كود: {p['code']})" if p.get('code') else ""
+            summary_lines.append(f"🎁 إضافة عرض/خصم: {p['description']}{code_txt}")
         else:
             summary_lines.append(f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}")
 
@@ -559,8 +597,24 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failures = []
     success_new_products = []
     success_branches = []
+    success_promos = []
     for i, item in enumerate(pending["items"]):
-        if item.get("type") == "new_branch":
+        if item.get("type") == "new_promo":
+            try:
+                supabase.table("promotions").insert({
+                    "tenant_id": tenant_id,
+                    "code": item.get("code") or None,
+                    "promo_type": item["promo_type"],
+                    "discount_value": item.get("discount_value", 0),
+                    "min_order_items": item.get("min_order_items", 1),
+                    "description": item["description"],
+                    "is_active": True,
+                }).execute()
+                success_promos.append(item["description"])
+            except Exception as e:
+                print("فشل إضافة العرض:", e)
+                failures.append(item["description"])
+        elif item.get("type") == "new_branch":
             try:
                 supabase.table("branches").insert({
                     "tenant_id": tenant_id,
@@ -639,6 +693,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if failures:
         await query.edit_message_text("حصلت مشكلة في: " + "، ".join(failures))
+    elif success_promos:
+        await query.edit_message_text(f"تم تفعيل العرض بنجاح 🎁✅:\n" + "\n".join(f"• {p}" for p in success_promos))
     elif success_branches:
         await query.edit_message_text(f"تم إضافة الفرع بنجاح 📍✅:\n" + "\n".join(f"• {b}" for b in success_branches))
     elif success_new_products:

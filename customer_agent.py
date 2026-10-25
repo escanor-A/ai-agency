@@ -45,6 +45,15 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
    - استدعي أداة get_google_review_link فوراً.
    - ابعتله الرابط المباشر بأسلوب شكر وتقدير وافرح بيه (مثلاً: هتسعدنا جداً يا فندم! ده رابط صفحتنا على خرائط جوجل تقدر تسيب تقييمك ورأيك الجميل هناك: [الرابط]).
 
+قواعد العروض وأكواد الخصم (Promotions & Offers):
+1. لو العميل سأل: "عندكم عروض؟"، "فيه خصم؟"، أو ذكر كود خصم:
+   - استدعي أداة get_active_offers فوراً لمعرفة العروض المتاحة.
+   - لو فيه عروض أو أكواد، وضّحها للعميل بحماس وشجعه يستفيد منها.
+2. أسلوب البيع وتعلية الأوردر (Up-selling):
+   - لو التاجر عامل عرض (زي شحن مجاني على قطعتين أو أكتر)، والزبون بيطلب قطعة واحدة: اقترح عليه بلطف العرض علشان يكسب الشحن المجاني!
+3. عند حساب الأوردر (quote_order):
+   - لو العميل معاه كود خصم، مرره في خانة promo_code علشان يتخصم في الفاتورة.
+
 خطوات تسجيل الأوردر (الدفع عند الاستلام فقط):
 1. لما العميل يقرر يشتري، اجمع اللي ناقص بس: الاسم، رقم الموبايل، المحافظة، العنوان بالتفصيل.
 2. نادِ quote_order علشان تجيب الإجمالي. ممنوع تحسب الأسعار أو الشحن بنفسك.
@@ -66,8 +75,15 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str) -> str:
     def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
         return db_check_stock(tenant_id, product_name, size=size or None, color=color or None)
 
-    def quote_order(items: list[str], governorate: str) -> dict:
-        return orders.quote_order(tenant_id, items, governorate)
+    def quote_order(items: list[str], governorate: str, promo_code: str = "") -> dict:
+        return orders.quote_order(tenant_id, items, governorate, promo_code=promo_code)
+
+    def get_active_offers() -> dict:
+        """بترجّع كل العروض وأكواد الخصم النشطة حالياً للمحل (عروض الشحن المجاني، نسب الخصم، أكواد التخفيض)."""
+        offers = orders.get_active_promotions(tenant_id)
+        if not offers:
+            return {"status": "no_offers", "message": "حالياً مفيش عروض إضافية، بس أسعارنا ممتازة وشحن سريع ومعاينة قبل الاستلام!"}
+        return {"status": "ok", "offers": offers}
 
     def place_order(customer_name: str, phone: str, governorate: str, address: str, items: list[str]) -> dict:
         return orders.place_order(tenant_id, customer_name, phone, governorate, address, items)
@@ -140,7 +156,7 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str) -> str:
     if session_key not in CUSTOMER_CHATS:
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            tools=[check_stock, quote_order, place_order, get_branches, submit_customer_review, get_google_review_link],
+            tools=[check_stock, quote_order, place_order, get_branches, submit_customer_review, get_google_review_link, get_active_offers],
         )
         CUSTOMER_CHATS[session_key] = client.chats.create(model=MODEL, config=config)
 

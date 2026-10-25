@@ -90,8 +90,24 @@ def load_items(tenant_id, items):
     return lines, None
 
 
-def quote_order(tenant_id, items, governorate):
-    """حساب السعر والشحن من غير ما يسجّل أي حاجة"""
+def get_active_promotions(tenant_id):
+    """بترجع كل العروض النشطة الخاصة بالتاجر"""
+    try:
+        rows = (
+            supabase.table("promotions")
+            .select("code,promo_type,discount_value,min_order_items,description")
+            .eq("tenant_id", tenant_id)
+            .eq("is_active", True)
+            .execute()
+            .data
+        )
+        return rows or []
+    except Exception:
+        return []
+
+
+def quote_order(tenant_id, items, governorate, promo_code=""):
+    """حساب السعر والشحن مع تطبيق العروض التلقائية أو أكواد الخصم"""
     ship = find_shipping(tenant_id, governorate)
     if not ship:
         return {"status": "error", "reason": "unknown_governorate"}
@@ -100,6 +116,43 @@ def quote_order(tenant_id, items, governorate):
         return {"status": "error", "reason": error}
     subtotal = sum(l["line_total"] for l in lines)
     fee = float(ship["price"])
+    total_qty = sum(l["qty"] for l in lines)
+
+    discount = 0.0
+    discount_note = ""
+
+    # فحص العروض المسجلة للتاجر
+    promos = get_active_promotions(tenant_id)
+    clean_code = (promo_code or "").strip().upper()
+
+    # 1. تطبيق العروض التلقائية (شحن مجاني على قطعتين مثلاً)
+    for p in promos:
+        if not p.get("code") and p.get("promo_type") == "free_shipping":
+            if total_qty >= int(p.get("min_order_items") or 1):
+                fee = 0.0
+                discount_note = p.get("description", "عرض شحن مجاني")
+                break
+
+    # 2. تطبيق كود الخصم لو العميل دخله
+    if clean_code:
+        matched = next((p for p in promos if (p.get("code") or "").upper() == clean_code), None)
+        if matched:
+            ptype = matched.get("promo_type")
+            val = float(matched.get("discount_value") or 0)
+            if ptype == "percentage":
+                discount = subtotal * (val / 100.0)
+                discount_note = f"كود خصم {clean_code} (-{val:.0f}%)"
+            elif ptype == "fixed":
+                discount = min(subtotal, val)
+                discount_note = f"كود خصم {clean_code} (-{val:.0f} جنيه)"
+            elif ptype == "free_shipping":
+                fee = 0.0
+                discount_note = f"كود خصم {clean_code} (شحن مجاني)"
+        else:
+            discount_note = f"كود الخصم '{promo_code}' غير صالح أو منتهي"
+
+    total = max(0.0, subtotal - discount) + fee
+
     return {
         "status": "ok",
         "governorate": ship["governorate"],
@@ -108,8 +161,10 @@ def quote_order(tenant_id, items, governorate):
             for l in lines
         ],
         "subtotal": subtotal,
+        "discount": discount,
+        "discount_note": discount_note,
         "shipping_fee": fee,
-        "total": subtotal + fee,
+        "total": total,
         "payment": "الدفع عند الاستلام",
     }
 
