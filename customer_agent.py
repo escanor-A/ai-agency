@@ -6,6 +6,7 @@ from google import genai
 from google.genai import types
 
 import orders
+import notify
 from check_stock import check_stock as db_check_stock
 from check_stock import supabase
 
@@ -26,12 +27,18 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
 1. ممنوع تقول إن حاجة متاحة أو خلصانة من غير ما تنادي على أداة check_stock الأول.
 2. ممنوع تخترع سعر أو منتج أو لون أو مقاس مش راجع من الأدوات.
 3. لو الصنف خلصان، اقترح فوراً بدائل من اللي الأداة رجّعته بس.
+4. لو العميل ماحددش مقاس أو لون، اسأله بدل ما تخمّن.
 5. لو العميل سأل عن حاجة مالهاش علاقة بالمنتجات، رد بلطف وارجّعه للموضوع.
 
 قواعد الفروع وعناوين المحل:
 1. لو العميل سأل عن مكان المحل، عنوان الفرع، أقرب فرع، أو مواعيد العمل: استدعي أداة get_branches فوراً بالمحافظة أو سيبها فاضية لو ما حددش.
 2. لو رجعت فروع: ابعتله اسم الفرع، العنوان بالظبط، مواعيد العمل، ورابط اللوكيشن على الخريطة (لو متاح).
 3. لو رجع إنه أونلاين بس: وضّح له بلطف إنه متجر أونلاين مع شحن لباب البيت ومعاينة قبل الاستلام.
+
+قواعد آراء العملاء والريفيوهات (Customer Reviews):
+1. لو العميل بيشكر في اللبس أو الخامة أو وصله الأوردر وعجبه، أو بيعبر عن امتنانه ورأيه الإيجابي:
+   - استدعي أداة submit_customer_review فوراً بنص كلامه ورأيه علشان تتبعت لصاحب المحل على تليجرام.
+   - رد عليه بحرارة وأسلوب مصري ودود ومبهج جداً (مثلاً: ألف شكر على كلامك الجميل.. تعيش وتلبس وتتهنى بيه يا رب، فرحتنا برأيك ومنورنا دايماً!).
 
 خطوات تسجيل الأوردر (الدفع عند الاستلام فقط):
 1. لما العميل يقرر يشتري، اجمع اللي ناقص بس: الاسم، رقم الموبايل، المحافظة، العنوان بالتفصيل.
@@ -78,11 +85,32 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str) -> str:
             }
         return {"status": "ok", "branches": rows}
 
+    def submit_customer_review(feedback: str, rating: int = 5, reviewer_name: str = "") -> dict:
+        """تسجيل رأي أو ريفيو أو شكر من العميل وإشعار صاحب المحل فوراً على تليجرام.
+        
+        Args:
+            feedback: نص كلام العميل ورأيه بالظبط
+            rating: تقييم العميل من 1 إلى 5 نجوم (افتراضي 5)
+            reviewer_name: اسم العميل لو قاله في الشات (اختياري)
+        """
+        name = reviewer_name or customer_id
+        notify.send_review_notification(tenant_id, name, feedback, rating)
+        try:
+            supabase.table("reviews").insert({
+                "tenant_id": tenant_id,
+                "customer_id": name,
+                "feedback": feedback,
+                "rating": rating
+            }).execute()
+        except Exception:
+            pass
+        return {"status": "ok", "message": "تم إشعار التاجر وتسجيل الريفيو بنجاح"}
+
     session_key = f"{tenant_id}:{customer_id}"
     if session_key not in CUSTOMER_CHATS:
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            tools=[check_stock, quote_order, place_order, get_branches],
+            tools=[check_stock, quote_order, place_order, get_branches, submit_customer_review],
         )
         CUSTOMER_CHATS[session_key] = client.chats.create(model=MODEL, config=config)
 

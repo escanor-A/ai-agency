@@ -53,3 +53,15 @@ def send_order_notification(tenant_id, order, customer_name, phone, governorate,
         f"💰 الإجمالي: {float(order['total']):.0f} جنيه (الدفع عند الاستلام)"
     )
     return send_telegram(tenant_id, text)
+
+
+def send_review_notification(tenant_id, customer_name, feedback, rating=5):
+    """إرسال إشعار فوري للتاجر على تليجرام عند استلام ريفيو أو كلام حلو من عميل"""
+    stars = "⭐" * max(1, min(5, int(rating)))
+    text = (
+        f"🌟 ريفيو وكلام حلو من عميل! {stars}\n\n"
+        f"👤 العميل: {customer_name}\n"
+        f"💬 \"{feedback}\"\n\n"
+        f"📸 تقدر تاخدها سكرين شوت وتشاركها ستوري لزيادة مبيعاتك وثقة الزباين! 🚀"
+    )
+    return send_telegram(tenant_id, text)
