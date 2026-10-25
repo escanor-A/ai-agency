@@ -50,8 +50,10 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 5. لو الكمية ماتقالتش افترض 1.
 6. أنواع العمليات: sale = بيع من المحل (بينقص)، restock = وصلت بضاعة (بتزيد)، return = مرتجع (بيزيد).
 7. لو صاحب المحل طلب إضافة منتج جديد (مش موجود قبل كده في المخزن): اطلب أو استخرج (اسم المنتج، السعر، المقاس، اللون، الكمية) ونادِ propose_new_product.
+8. لو ذكر كذا لون أو مقاس لنفس المنتج (مثلاً: 5 أبيض و5 أحمر مقاس L بـ 500)، نادِ propose_new_product لكل لون/مقاس في نفس الرد فوراً لتجهيزهم معاً دفعة واحدة!
+9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
 
-معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها. الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج.
+معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها (لارج = L، ميديم = M، إكس لارج = XL). الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج، أحمر، أصفر، بنفسجي، أخضر.
 """
 
 NOT_OWNER_MESSAGE = "البوت ده خاص بصاحب المحل. لو إنت صاحب المحل، افتح رابط الربط اللي وصلك."
@@ -249,22 +251,35 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-def run_llm(text, tools):
-    """بيشغّل الموديل مع الأدوات. بيعيد المحاولة مع 503 بس، مش مع 429"""
-    config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=tools)
+# جلسات محادثات التليجرام لحفظ الذاكرة وسياق الكلام
+MERCHANT_SESSIONS = {}
+
+
+def get_merchant_chat(chat_id: int, tools: list):
+    """بيرجّع جلسة الشات الحالية للتاجر أو ينشئ واحدة جديدة لحفظ سياق المحادثة"""
+    if chat_id not in MERCHANT_SESSIONS:
+        config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=tools)
+        MERCHANT_SESSIONS[chat_id] = client.chats.create(model=MODEL, config=config)
+    return MERCHANT_SESSIONS[chat_id]
+
+
+def run_llm(chat_id: int, text: str, tools: list):
+    """بيشغّل الموديل مع الأدوات وسياق المحادثة المحفوظ"""
     for attempt in range(3):
         try:
-            chat = client.chats.create(model=MODEL, config=config)
-            return chat.send_message(text).text or "ماقدرتش أفهم، ممكن توضّح؟"
+            chat = get_merchant_chat(chat_id, tools)
+            return chat.send_message(text).text or "تمام، أقدر أساعدك في إيه تاني؟"
         except Exception as e:
             msg = str(e)
             if "429" in msg:
                 print("وصلنا لحد الحصة المجانية:", msg[:300])
                 return "وصلنا لحد الاستخدام المجاني للذكاء الاصطناعي دلوقتي، جرّب بعد شوية."
             if "503" in msg and attempt < 2:
-                time.sleep(5 * (attempt + 1))
+                time.sleep(4 * (attempt + 1))
                 continue
             print("خطأ من الموديل:", type(e).__name__, msg[:300])
+            # إعادة تهيئة الجلسة عند حدوث خطأ غير متوقع
+            MERCHANT_SESSIONS.pop(chat_id, None)
             return "حصلت مشكلة مؤقتة، جرّب تاني بعد شوية."
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -347,7 +362,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return {"status": "waiting_confirmation", "product": name, "price": price}
 
     reply = await asyncio.to_thread(
-        run_llm, update.message.text, [check_stock, propose_stock_change, propose_new_product]
+        run_llm, chat_id, update.message.text, [check_stock, propose_stock_change, propose_new_product]
     )
 
     if not proposals:
