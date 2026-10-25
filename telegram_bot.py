@@ -48,8 +48,9 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 4. لو المقاس أو اللون ناقص أو في أكتر من احتمال، اسأل بدل ما تخمّن.
 5. لو الكمية ماتقالتش افترض 1.
 6. أنواع العمليات: sale = بيع من المحل (بينقص)، restock = وصلت بضاعة (بتزيد)، return = مرتجع (بيزيد).
+7. لو صاحب المحل طلب إضافة منتج جديد (مش موجود قبل كده في المخزن): اطلب أو استخرج (اسم المنتج، السعر، المقاس، اللون، الكمية) ونادِ propose_new_product.
 
-معلومات: المقاسات M و L و XL (لارج = L، ميديم = M). الألوان بالعربي: أسود، أبيض، رمادي، كحلي.
+معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها. الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج.
 """
 
 NOT_OWNER_MESSAGE = "البوت ده خاص بصاحب المحل. لو إنت صاحب المحل، افتح رابط الربط اللي وصلك."
@@ -242,12 +243,37 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         label = f"{v['products']['name']} {v['color']} {v['size']}"
         change = -qty if kind == "sale" else qty
         proposals.append(
-            {"variant_id": v["id"], "label": label, "change": change, "kind": kind}
+            {"type": "movement", "variant_id": v["id"], "label": label, "change": change, "kind": kind}
         )
         return {"status": "waiting_confirmation", "item": label, "change": change}
 
+    def propose_new_product(name: str, price: float, size: str, color: str, qty: int = 1) -> dict:
+        """بتجهّز إضافة منتج أو صنف جديد خالص في المخزن وتستنى تأكيد صاحب المحل.
+        
+        Args:
+            name: اسم المنتج (مثلاً: جاكيت جينز، سويت شيرت)
+            price: سعر البيع بالجنيه
+            size: المقاس (M, L, XL, 42, إلخ)
+            color: اللون بالعربي (أسود، كحلي، إلخ)
+            qty: الكمية المتاحة الأولية (افتراضي 1)
+        """
+        if price <= 0:
+            return {"status": "error", "reason": "السعر لازم يكون أكبر من صفر"}
+        if qty <= 0:
+            return {"status": "error", "reason": "الكمية لازم تكون أكبر من صفر"}
+        
+        proposals.append({
+            "type": "new_product",
+            "name": name.strip(),
+            "price": float(price),
+            "size": size.strip().upper(),
+            "color": color.strip(),
+            "qty": int(qty),
+        })
+        return {"status": "waiting_confirmation", "product": name, "price": price}
+
     reply = await asyncio.to_thread(
-        run_llm, update.message.text, [check_stock, propose_stock_change]
+        run_llm, update.message.text, [check_stock, propose_stock_change, propose_new_product]
     )
 
     if not proposals:
@@ -260,9 +286,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "items": proposals,
     }
     kinds = {"sale": "خصم (بيع من المحل)", "restock": "إضافة بضاعة", "return": "مرتجع"}
-    summary = "\n".join(
-        f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}" for p in proposals
-    )
+    
+    summary_lines = []
+    for p in proposals:
+        if p.get("type") == "new_product":
+            summary_lines.append(f"✨ إضافة منتج جديد: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f} جنيه | الكمية: {p['qty']}")
+        else:
+            summary_lines.append(f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}")
+
+    summary = "\n".join(summary_lines)
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -272,7 +304,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     )
     await update.message.reply_text(
-        f"هنفّذ التعديل ده:\n{summary}\n\nتأكيد؟", reply_markup=keyboard
+        f"هنفّذ العملية دي:\n{summary}\n\nتأكيد؟", reply_markup=keyboard
     )
 
 
@@ -293,25 +325,75 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     failures = []
+    success_new_products = []
     for i, item in enumerate(pending["items"]):
-        try:
-            supabase.rpc(
-                "apply_stock_movement",
-                {
-                    "p_tenant": BOT_TENANT_ID,
-                    "p_variant": item["variant_id"],
-                    "p_change": item["change"],
-                    "p_reason": item["kind"],
-                    "p_source": "telegram",
-                    "p_ref": f"tg-{pid}-{i}",
-                },
-            ).execute()
-        except Exception as e:
-            print("فشل تعديل المخزون:", type(e).__name__)
-            failures.append(item["label"])
+        if item.get("type") == "new_product":
+            try:
+                # 1. فحص هل المنتج نفسه موجود، لو مش موجود ننشئه
+                prod_rows = (
+                    supabase.table("products")
+                    .select("id")
+                    .eq("tenant_id", BOT_TENANT_ID)
+                    .ilike("name", item["name"])
+                    .execute()
+                    .data
+                )
+                if prod_rows:
+                    product_id = prod_rows[0]["id"]
+                else:
+                    new_p = (
+                        supabase.table("products")
+                        .insert({
+                            "tenant_id": BOT_TENANT_ID,
+                            "name": item["name"],
+                            "price": item["price"],
+                            "active": True,
+                        })
+                        .execute()
+                        .data
+                    )
+                    product_id = new_p[0]["id"]
+
+                # 2. توليد sku للصنف
+                sku_clean = "".join(w[0] for w in item["name"].split()[:2]).upper()
+                sku = f"{sku_clean}-{item['size']}-{uuid.uuid4().hex[:4].upper()}"
+
+                # 3. إنشاء الصنف variant
+                supabase.table("variants").insert({
+                    "tenant_id": BOT_TENANT_ID,
+                    "product_id": product_id,
+                    "sku": sku,
+                    "size": item["size"],
+                    "color": item["color"],
+                    "stock": item["qty"],
+                    "reserved": 0,
+                    "active": True,
+                }).execute()
+                success_new_products.append(f"{item['name']} ({item['color']} {item['size']})")
+            except Exception as e:
+                print("فشل إضافة المنتج الجديد:", e)
+                failures.append(item["name"])
+        else:
+            try:
+                supabase.rpc(
+                    "apply_stock_movement",
+                    {
+                        "p_tenant": BOT_TENANT_ID,
+                        "p_variant": item["variant_id"],
+                        "p_change": item["change"],
+                        "p_reason": item["kind"],
+                        "p_source": "telegram",
+                        "p_ref": f"tg-{pid}-{i}",
+                    },
+                ).execute()
+            except Exception as e:
+                print("فشل تعديل المخزون:", type(e).__name__)
+                failures.append(item["label"])
 
     if failures:
         await query.edit_message_text("حصلت مشكلة في: " + "، ".join(failures))
+    elif success_new_products:
+        await query.edit_message_text(f"تم إضافة المنتج بنجاح ✅:\n" + "\n".join(f"• {p}" for p in success_new_products))
     else:
         await query.edit_message_text("تم ✅ المخزون اتحدّث.")
 
