@@ -16,7 +16,7 @@ load_dotenv()
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 # لو ظهر خطأ إن الموديل مش موجود، خد اسم موديل Flash متاح من Google AI Studio
-MODEL = "gemini-3.5-flash"
+MODEL = "gemini-3.5-flash-lite"
 
 TENANT_ID = get_demo_tenant_id()
 

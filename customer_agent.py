@@ -14,7 +14,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 load_dotenv()
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-3.5-flash"
+MODEL = "gemini-3.5-flash-lite"
 
 SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد على العملاء على السوشيال ميديا (واتساب، فيسبوك ماسنجر، إنستجرام، تيك توك).
 
@@ -39,6 +39,11 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
 1. لو العميل بيشكر في اللبس أو الخامة أو وصله الأوردر وعجبه، أو بيعبر عن امتنانه ورأيه الإيجابي:
    - استدعي أداة submit_customer_review فوراً بنص كلامه ورأيه علشان تتبعت لصاحب المحل على تليجرام.
    - رد عليه بحرارة وأسلوب مصري ودود ومبهج جداً (مثلاً: ألف شكر على كلامك الجميل.. تعيش وتلبس وتتهنى بيه يا رب، فرحتنا برأيك ومنورنا دايماً!).
+
+قواعد تقييمات وريفيو جوجل (Google Review):
+1. لو العميل سأل: "عايز أكتب ريفيو على جوجل"، "فين رابط تقييم جوجل"، "إزاي أقيمكم على جوجل ماب":
+   - استدعي أداة get_google_review_link فوراً.
+   - ابعتله الرابط المباشر بأسلوب شكر وتقدير وافرح بيه (مثلاً: هتسعدنا جداً يا فندم! ده رابط صفحتنا على خرائط جوجل تقدر تسيب تقييمك ورأيك الجميل هناك: [الرابط]).
 
 خطوات تسجيل الأوردر (الدفع عند الاستلام فقط):
 1. لما العميل يقرر يشتري، اجمع اللي ناقص بس: الاسم، رقم الموبايل، المحافظة، العنوان بالتفصيل.
@@ -106,11 +111,36 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str) -> str:
             pass
         return {"status": "ok", "message": "تم إشعار التاجر وتسجيل الريفيو بنجاح"}
 
+    def get_google_review_link(branch_name: str = "") -> dict:
+        """بترجّع رابط التقييم على خرائط جوجل (Google Review / Maps) علشان العميل يسيب ريفيو للمحل.
+        
+        Args:
+            branch_name: اسم الفرع أو المنطقة لو العميل حدد فرع معين (اختياري)
+        """
+        query = supabase.table("branches").select("name, google_maps_url, address").eq("tenant_id", tenant_id)
+        if branch_name:
+            query = query.ilike("name", f"%{branch_name.strip()}%")
+        rows = query.execute().data
+        
+        valid = [r for r in rows if r.get("google_maps_url")]
+        if valid:
+            b = valid[0]
+            return {
+                "status": "ok",
+                "branch_name": b["name"],
+                "url": b["google_maps_url"],
+                "address": b["address"],
+            }
+        return {
+            "status": "not_available",
+            "message": "حالياً مفيش رابط مباشر لخرائط جوجل مسجل، بس تقدر تسيب رأيك الجميل هنا في الشات وهيوصل فوراً لصاحب المحل!"
+        }
+
     session_key = f"{tenant_id}:{customer_id}"
     if session_key not in CUSTOMER_CHATS:
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            tools=[check_stock, quote_order, place_order, get_branches, submit_customer_review],
+            tools=[check_stock, quote_order, place_order, get_branches, submit_customer_review, get_google_review_link],
         )
         CUSTOMER_CHATS[session_key] = client.chats.create(model=MODEL, config=config)
 
