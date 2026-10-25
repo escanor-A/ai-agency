@@ -64,14 +64,22 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
 5. بعد التأكيد نادِ place_order مرة واحدة بس. ممنوع تناديها مرتين لنفس الأوردر.
 6. لو العميل طلب إلغاء أوردر سابق: اسأله عن رقم الأوردر لو ما قالوش، واستدعي أداة cancel_customer_order فوراً ورجّع له تأكيد الإلغاء بلطف.
 7. لو العميل طلب تعديل عنوان الشحن أو رقم الموبايل لأوردر مسجل: استدعي أداة update_order_address_or_phone فوراً بالبيانات الجديدة.
+
+قواعد فحص الصور والأخطاء الإملائية (Images & Typo Handling):
+1. لو العميل بعت صورة وسأل: "ده متاح؟"، "بكام ده؟"، "عندكم منه؟":
+   - حلل الصورة كويس جداً بذكاء وحدد نوع القطعة (تيشيرت، بنطلون، هودي، سويت شيرت) ولونها.
+   - نادِ check_stock فوراً باسم الصنف للتأكد من وجوده ومقاساته وسعره في المخزن.
+   - رد عليه بترحيب: "أيوة يا فندم! ده [اسم الصنف]، متاح باللون ده ومقاسات كذا وسعره كذا".
+2. لو العميل كتب اسم الصنف غلط أو بحروف عامية (زي: تشيرت، سوتشيرت، كارجو، هودى):
+   - افهم الكلمة المقصودة بذكاء من كتالوج المحل، ونادِ check_stock بالاسم الصحيح مباشرة.
 """
 
 # ذاكرة بسيطة للمحادثات (لكل عميل session مستقلة)
 CUSTOMER_CHATS = {}
 
 
-def handle_customer_message(tenant_id: str, customer_id: str, text: str) -> str:
-    """معالجة رسالة عميل جاية من أي منصة (واتساب، ماسنجر، إنستا، تيك توك) وحفظ سياق الشات"""
+def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", image_bytes: bytes = None, image_mime_type: str = "image/jpeg") -> str:
+    """معالجة رسالة عميل (نصية أو صورة) جاية من أي منصة (واتساب، ماسنجر، إنستا، تيك توك) وحفظ سياق الشات"""
     
     # تعريف أدوات الموديل الخاصة بهذا التاجر تحديداً (عزل تام)
     def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
@@ -186,9 +194,20 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str) -> str:
         CUSTOMER_CHATS[session_key] = client.chats.create(model=MODEL, config=config)
 
     chat = CUSTOMER_CHATS[session_key]
+
+    contents_to_send = []
+    if image_bytes:
+        contents_to_send.append(types.Part.from_bytes(data=bytes(image_bytes), mime_type=image_mime_type))
+    if text and text.strip():
+        contents_to_send.append(text.strip())
+    elif not contents_to_send:
+        contents_to_send.append("أهلاً بحضرتك")
+
+    message_payload = contents_to_send if len(contents_to_send) > 1 else contents_to_send[0]
+
     for attempt in range(3):
         try:
-            res = chat.send_message(text)
+            res = chat.send_message(message_payload)
             return res.text or "تمام يا فندم، أقدر أساعدك بإيه تاني؟"
         except Exception as e:
             if ("503" in str(e) or "429" in str(e)) and attempt < 2:

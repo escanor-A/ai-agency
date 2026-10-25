@@ -19,15 +19,50 @@ def get_demo_tenant_id():
 
 
 def check_stock(tenant_id, product_name, size=None, color=None):
+    clean_name = product_name.strip()
     rows = (
         supabase.table("variants")
         .select("sku,size,color,available,image_url,products!inner(name,price,image_url)")
         .eq("tenant_id", tenant_id)
         .eq("active", True)
-        .ilike("products.name", f"%{product_name}%")
+        .ilike("products.name", f"%{clean_name}%")
         .execute()
         .data
     )
+
+    # لو الاسم مش متطابق بالظبط (مثلاً فيه غلطة إملائية أو كلمة زيادة)، نجرب بأهم كلمات
+    if not rows and " " in clean_name:
+        for word in clean_name.split():
+            if len(word) >= 3:
+                r_word = (
+                    supabase.table("variants")
+                    .select("sku,size,color,available,image_url,products!inner(name,price,image_url)")
+                    .eq("tenant_id", tenant_id)
+                    .eq("active", True)
+                    .ilike("products.name", f"%{word}%")
+                    .execute()
+                    .data
+                )
+                if r_word:
+                    rows = r_word
+                    break
+
+    # لو لسه مفيش نتايج، نرجع كتالوج المحل المتاح للـ AI علشان يقارن ويفهم ذكياً
+    if not rows:
+        prods = (
+            supabase.table("products")
+            .select("name,price")
+            .eq("tenant_id", tenant_id)
+            .eq("active", True)
+            .execute()
+            .data
+        )
+        return {
+            "status": "not_found",
+            "searched": clean_name,
+            "catalog": prods or [],
+            "message": "الصنف مش مطابق حرفياً، دي قايمة المنتجات المتاحة في المحل، قارن وشوف لو العميل يقصد واحد منهم أو اقترحهم عليه."
+        }
 
     wanted = [
         r
