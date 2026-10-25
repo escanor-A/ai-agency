@@ -26,8 +26,12 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
 1. ممنوع تقول إن حاجة متاحة أو خلصانة من غير ما تنادي على أداة check_stock الأول.
 2. ممنوع تخترع سعر أو منتج أو لون أو مقاس مش راجع من الأدوات.
 3. لو الصنف خلصان، اقترح فوراً بدائل من اللي الأداة رجّعته بس.
-4. لو العميل ماحددش مقاس أو لون، اسأله بدل ما تخمّن.
 5. لو العميل سأل عن حاجة مالهاش علاقة بالمنتجات، رد بلطف وارجّعه للموضوع.
+
+قواعد الفروع وعناوين المحل:
+1. لو العميل سأل عن مكان المحل، عنوان الفرع، أقرب فرع، أو مواعيد العمل: استدعي أداة get_branches فوراً بالمحافظة أو سيبها فاضية لو ما حددش.
+2. لو رجعت فروع: ابعتله اسم الفرع، العنوان بالظبط، مواعيد العمل، ورابط اللوكيشن على الخريطة (لو متاح).
+3. لو رجع إنه أونلاين بس: وضّح له بلطف إنه متجر أونلاين مع شحن لباب البيت ومعاينة قبل الاستلام.
 
 خطوات تسجيل الأوردر (الدفع عند الاستلام فقط):
 1. لما العميل يقرر يشتري، اجمع اللي ناقص بس: الاسم، رقم الموبايل، المحافظة، العنوان بالتفصيل.
@@ -56,11 +60,29 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str) -> str:
     def place_order(customer_name: str, phone: str, governorate: str, address: str, items: list[str]) -> dict:
         return orders.place_order(tenant_id, customer_name, phone, governorate, address, items)
 
+    def get_branches(governorate: str = "") -> dict:
+        """بترجّع فروع ومحلات البراند، العناوين، مواعيد العمل، ورابط اللوكيشن على الخريطة.
+        
+        Args:
+            governorate: اسم المحافظة أو المنطقة اللي العميل بيسأل عنها (سيبها فاضية لو بيسأل عن كل الفروع)
+        """
+        query = supabase.table("branches").select("name, governorate, city, address, google_maps_url, working_hours, phone").eq("tenant_id", tenant_id)
+        if governorate:
+            query = query.ilike("governorate", f"%{governorate.strip()}%")
+        rows = query.execute().data
+        if not rows:
+            # لو مفيش فروع مسجلة، نرجع إنه متجر أونلاين بشحن فوري
+            return {
+                "status": "online_only",
+                "message": "إحنا متجر أونلاين وشغالين شحن لجميع محافظات مصر لحد باب البيت، وتقدر تعاين الشحنة قبل الاستلام!"
+            }
+        return {"status": "ok", "branches": rows}
+
     session_key = f"{tenant_id}:{customer_id}"
     if session_key not in CUSTOMER_CHATS:
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            tools=[check_stock, quote_order, place_order],
+            tools=[check_stock, quote_order, place_order, get_branches],
         )
         CUSTOMER_CHATS[session_key] = client.chats.create(model=MODEL, config=config)
 

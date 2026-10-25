@@ -52,6 +52,7 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 7. لو صاحب المحل طلب إضافة منتج جديد (مش موجود قبل كده في المخزن) واكتملت بياناته (الاسم، السعر، المقاس، اللون، الكمية): استدعي دالة propose_new_product فوراً في الخلفية! ممنوع تقول باللسان 'تأكد من الأزرار' أو 'جهزت الإضافة' من غير ما تستدعي الدالة فعلياً.
 8. لو ذكر كذا لون أو مقاس لنفس المنتج، نادِ propose_new_product لكل لون/مقاس في نفس الرد فوراً لتجهيزهم معاً دفعة واحدة!
 9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
+10. لو صاحب المحل طلب إضافة فرع أو عنوان للمحل (مثلاً: فرع مدينة نصر، شارع كذا، لوكيشن ماب كذا)، استخرج البيانات ونادِ propose_new_branch.
 
 معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها (لارج = L، ميديم = M، إكس لارج = XL). الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج، أحمر، أصفر، بنفسجي، أخضر.
 """
@@ -360,9 +361,29 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         return {"status": "waiting_confirmation", "product": name, "price": price}
 
+    def propose_new_branch(name: str, governorate: str, address: str, google_maps_url: str = "", working_hours: str = "من 12 ظهراً لـ 11 مساءً") -> dict:
+        """بتجهّز إضافة فرع أو عنوان للمحل وتستنى تأكيد صاحب المحل.
+        
+        Args:
+            name: اسم الفرع (مثلاً: فرع مدينة نصر، فرع الدقي)
+            governorate: المحافظة (القاهرة، الجيزة، الإسكندرية...)
+            address: العنوان بالتفصيل
+            google_maps_url: رابط اللوكيشن على خرائط جوجل (إن وجد)
+            working_hours: مواعيد العمل
+        """
+        proposals.append({
+            "type": "new_branch",
+            "name": name.strip(),
+            "governorate": governorate.strip(),
+            "address": address.strip(),
+            "google_maps_url": google_maps_url.strip(),
+            "working_hours": working_hours.strip(),
+        })
+        return {"status": "waiting_confirmation", "branch": name}
+
     content_to_send = update.message.text
     reply = await asyncio.to_thread(
-        run_llm, chat_id, content_to_send, [check_stock, propose_stock_change, propose_new_product]
+        run_llm, chat_id, content_to_send, [check_stock, propose_stock_change, propose_new_product, propose_new_branch]
     )
 
     if not proposals:
@@ -381,6 +402,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for p in proposals:
         if p.get("type") == "new_product":
             summary_lines.append(f"✨ إضافة منتج جديد: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f} جنيه | الكمية: {p['qty']}")
+        elif p.get("type") == "new_branch":
+            summary_lines.append(f"📍 إضافة فرع جديد: {p['name']} ({p['governorate']} - {p['address']})")
         else:
             summary_lines.append(f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}")
 
@@ -460,12 +483,23 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         return {"status": "waiting_confirmation", "product": name, "price": price}
 
+    def propose_new_branch(name: str, governorate: str, address: str, google_maps_url: str = "", working_hours: str = "من 12 ظهراً لـ 11 مساءً") -> dict:
+        proposals.append({
+            "type": "new_branch",
+            "name": name.strip(),
+            "governorate": governorate.strip(),
+            "address": address.strip(),
+            "google_maps_url": google_maps_url.strip(),
+            "working_hours": working_hours.strip(),
+        })
+        return {"status": "waiting_confirmation", "branch": name}
+
     # تمرير الصوت كـ Part إلى Gemini
     audio_part = types.Part.from_bytes(data=bytes(audio_bytes), mime_type="audio/ogg")
-    content_list = [audio_part, "استمع للريكورد ده من صاحب المحل المصري ونفّذ المطلوب واستدعِ الأدوات المناسبة."]
+    content_list = [audio_part, "استمع للريكورد ده من صاحب المحل ونفّذ المطلوب واستدعِ الأدوات المناسبة."]
 
     reply = await asyncio.to_thread(
-        run_llm, chat_id, content_list, [check_stock, propose_stock_change, propose_new_product]
+        run_llm, chat_id, content_list, [check_stock, propose_stock_change, propose_new_product, propose_new_branch]
     )
 
     await status_msg.delete()
@@ -485,6 +519,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for p in proposals:
         if p.get("type") == "new_product":
             summary_lines.append(f"✨ إضافة منتج جديد: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f} جنيه | الكمية: {p['qty']}")
+        elif p.get("type") == "new_branch":
+            summary_lines.append(f"📍 إضافة فرع جديد: {p['name']} ({p['governorate']} - {p['address']})")
         else:
             summary_lines.append(f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}")
 
@@ -522,8 +558,23 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     failures = []
     success_new_products = []
+    success_branches = []
     for i, item in enumerate(pending["items"]):
-        if item.get("type") == "new_product":
+        if item.get("type") == "new_branch":
+            try:
+                supabase.table("branches").insert({
+                    "tenant_id": tenant_id,
+                    "name": item["name"],
+                    "governorate": item["governorate"],
+                    "address": item["address"],
+                    "google_maps_url": item.get("google_maps_url"),
+                    "working_hours": item.get("working_hours", "من 12 ظهراً لـ 11 مساءً"),
+                }).execute()
+                success_branches.append(f"{item['name']} ({item['address']})")
+            except Exception as e:
+                print("فشل إضافة الفرع:", e)
+                failures.append(item["name"])
+        elif item.get("type") == "new_product":
             try:
                 # 1. فحص هل المنتج نفسه موجود، لو مش موجود ننشئه
                 prod_rows = (
@@ -588,6 +639,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if failures:
         await query.edit_message_text("حصلت مشكلة في: " + "، ".join(failures))
+    elif success_branches:
+        await query.edit_message_text(f"تم إضافة الفرع بنجاح 📍✅:\n" + "\n".join(f"• {b}" for b in success_branches))
     elif success_new_products:
         await query.edit_message_text(f"تم إضافة المنتج بنجاح ✅:\n" + "\n".join(f"• {p}" for p in success_new_products))
     else:
