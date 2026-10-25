@@ -49,8 +49,8 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 4. لو المقاس أو اللون ناقص أو في أكتر من احتمال، اسأل بدل ما تخمّن.
 5. لو الكمية ماتقالتش افترض 1.
 6. أنواع العمليات: sale = بيع من المحل (بينقص)، restock = وصلت بضاعة (بتزيد)، return = مرتجع (بيزيد).
-7. لو صاحب المحل طلب إضافة منتج جديد (مش موجود قبل كده في المخزن): اطلب أو استخرج (اسم المنتج، السعر، المقاس، اللون، الكمية) ونادِ propose_new_product.
-8. لو ذكر كذا لون أو مقاس لنفس المنتج (مثلاً: 5 أبيض و5 أحمر مقاس L بـ 500)، نادِ propose_new_product لكل لون/مقاس في نفس الرد فوراً لتجهيزهم معاً دفعة واحدة!
+7. لو صاحب المحل طلب إضافة منتج جديد (مش موجود قبل كده في المخزن) واكتملت بياناته (الاسم، السعر، المقاس، اللون، الكمية): استدعي دالة propose_new_product فوراً في الخلفية! ممنوع تقول باللسان 'تأكد من الأزرار' أو 'جهزت الإضافة' من غير ما تستدعي الدالة فعلياً.
+8. لو ذكر كذا لون أو مقاس لنفس المنتج، نادِ propose_new_product لكل لون/مقاس في نفس الرد فوراً لتجهيزهم معاً دفعة واحدة!
 9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
 
 معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها (لارج = L، ميديم = M، إكس لارج = XL). الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج، أحمر، أصفر، بنفسجي، أخضر.
@@ -255,19 +255,20 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 MERCHANT_SESSIONS = {}
 
 
-def get_merchant_chat(chat_id: int, tools: list):
-    """بيرجّع جلسة الشات الحالية للتاجر أو ينشئ واحدة جديدة لحفظ سياق المحادثة"""
-    if chat_id not in MERCHANT_SESSIONS:
-        config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=tools)
-        MERCHANT_SESSIONS[chat_id] = client.chats.create(model=MODEL, config=config)
-    return MERCHANT_SESSIONS[chat_id]
-
-
 def run_llm(chat_id: int, text: str, tools: list):
     """بيشغّل الموديل مع الأدوات وسياق المحادثة المحفوظ"""
+    config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=tools)
+    
+    # لو الجلسة مش موجودة بننشئها
+    if chat_id not in MERCHANT_SESSIONS:
+        MERCHANT_SESSIONS[chat_id] = client.chats.create(model=MODEL, config=config)
+    else:
+        # تحديث الـ config بالأدوات الحالية (closures الخاصة بالطلب الحالي)
+        MERCHANT_SESSIONS[chat_id]._config = config
+
+    chat = MERCHANT_SESSIONS[chat_id]
     for attempt in range(3):
         try:
-            chat = get_merchant_chat(chat_id, tools)
             return chat.send_message(text).text or "تمام، أقدر أساعدك في إيه تاني؟"
         except Exception as e:
             msg = str(e)
@@ -275,10 +276,9 @@ def run_llm(chat_id: int, text: str, tools: list):
                 print("وصلنا لحد الحصة المجانية:", msg[:300])
                 return "وصلنا لحد الاستخدام المجاني للذكاء الاصطناعي دلوقتي، جرّب بعد شوية."
             if "503" in msg and attempt < 2:
-                time.sleep(4 * (attempt + 1))
+                time.sleep(3 * (attempt + 1))
                 continue
             print("خطأ من الموديل:", type(e).__name__, msg[:300])
-            # إعادة تهيئة الجلسة عند حدوث خطأ غير متوقع
             MERCHANT_SESSIONS.pop(chat_id, None)
             return "حصلت مشكلة مؤقتة، جرّب تاني بعد شوية."
 
