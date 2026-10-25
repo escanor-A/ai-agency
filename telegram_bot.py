@@ -153,16 +153,21 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # استخراج الاسم والموبايل إن وجد
-    args = context.args
-    phone = None
-    if args[-1].isdigit() and len(args[-1]) >= 10:
-        phone = args[-1]
-        name = " ".join(args[:-1]).strip()
+    import re
+    full_text = " ".join(context.args)
+    # البحث عن رقم موبايل مصري أو دولي في النص
+    phone_match = re.search(r"(\+?20\d{10}|01[0125]\d{8})", full_text.replace(" ", ""))
+    if phone_match:
+        phone = phone_match.group(0)
+        # مسح الرقم من النص للحصول على الاسم فقط
+        name = re.sub(r"(\+?20[\s\d]{10,}|01[0125][\s\d]{8,})", "", full_text).strip()
     else:
-        name = " ".join(args).strip()
+        phone = None
+        name = full_text.strip()
 
+    msg = update.effective_message
     if not name:
-        await update.message.reply_text("لازم تكتب اسم المحل!")
+        await msg.reply_text("لازم تكتب اسم المحل!")
         return
 
     import secrets
@@ -178,11 +183,11 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         res = supabase.table("tenants").insert(data).execute()
         if not res.data:
-            await update.message.reply_text("❌ حصل خطأ أثناء حفظ التاجر في قاعدة البيانات.")
+            await msg.reply_text("❌ حصل خطأ أثناء حفظ التاجر في قاعدة البيانات.")
             return
 
         t = res.data[0]
-        await update.message.reply_text(
+        await msg.reply_text(
             f"🎉 *تم إنشاء حساب التاجر بنجاح!*\n\n"
             f"🏢 *المحل:* `{t['name']}`\n"
             f"🔑 *كود الربط:* `{link_code}`\n\n"
@@ -195,7 +200,7 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"❌ حدث خطأ: {e}")
+        await msg.reply_text(f"❌ حدث خطأ: {e}")
 
 
 async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
