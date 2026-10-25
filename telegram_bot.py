@@ -21,6 +21,7 @@ from telegram.ext import (
 
 from check_stock import check_stock as db_check_stock
 from check_stock import get_demo_tenant_id, supabase
+from orders import cancel_order
 
 sys.stdout.reconfigure(encoding="utf-8")
 load_dotenv()
@@ -111,8 +112,25 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• المتاح من التيشيرت الأبيض؟\n\n"
         "أوامر:\n"
         "/orders - آخر 5 أوردرات\n"
-        "/today - ملخص آخر 24 ساعة"
+        "/today - ملخص آخر 24 ساعة\n"
+        "/cancel <رقم_الأوردر> - إلغاء أوردر ورجوع بضاعته للمخزن"
     )
+
+
+async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not get_owner_tenant(update.effective_chat.id):
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+    if not context.args:
+        await update.message.reply_text("اكتب رقم الأوردر بعد الأمر، مثلاً:\n/cancel 1")
+        return
+
+    order_num = context.args[0].strip().replace("#", "")
+    res = cancel_order(BOT_TENANT_ID, order_num)
+    if res["status"] == "ok":
+        await update.message.reply_text(f"تم إلغاء الأوردر #{order_num} ورجعت الكميات للمخزن بنجاح ✅")
+    else:
+        await update.message.reply_text(f"فشل الإلغاء: {res.get('reason', 'حصل خطأ')}")
 
 
 async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -307,6 +325,7 @@ def main():
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("orders", orders_cmd))
     app.add_handler(CommandHandler("today", today_cmd))
+    app.add_handler(CommandHandler("cancel", cancel_cmd))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     print("بوت التاجر شغال... (Ctrl+C للإيقاف)")

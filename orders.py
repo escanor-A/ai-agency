@@ -159,3 +159,57 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items):
     except Exception:
         pass  # فشل الإشعار ما يبوّظش الأوردر
     return order
+
+
+def cancel_order(tenant_id, order_number):
+    """إلغاء أوردر ورجوع كمياته للمخزن لو كان ساري"""
+    try:
+        order_num = int(order_number)
+    except (ValueError, TypeError):
+        return {"status": "error", "reason": "رقم الأوردر مش صحيح"}
+
+    # 1. هات الأوردر
+    rows = (
+        supabase.table("orders")
+        .select("id,status")
+        .eq("tenant_id", tenant_id)
+        .eq("order_number", order_num)
+        .execute()
+        .data
+    )
+    if not rows:
+        return {"status": "error", "reason": f"الأوردر #{order_num} مش موجود"}
+
+    order = rows[0]
+    if order["status"] == "cancelled":
+        return {"status": "error", "reason": f"الأوردر #{order_num} ملغي بالفعل"}
+
+    # 2. هات عناصر الأوردر عشان نرجعها للمخزن
+    items = (
+        supabase.table("order_items")
+        .select("variant_id,qty")
+        .eq("order_id", order["id"])
+        .execute()
+        .data
+    )
+
+    # 3. رجّع الكميات لحركة المخزون
+    for item in items:
+        try:
+            supabase.rpc(
+                "apply_stock_movement",
+                {
+                    "p_tenant": tenant_id,
+                    "p_variant": item["variant_id"],
+                    "p_change": item["qty"],
+                    "p_reason": "return",
+                    "p_source": "order_cancelled",
+                    "p_ref": f"cancel-order-{order_num}",
+                },
+            ).execute()
+        except Exception as e:
+            print("خطأ في إعادة كمية الصنف:", e)
+
+    # 4. حدّث حالة الأوردر لـ cancelled
+    supabase.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
+    return {"status": "ok", "order_number": order_num}
