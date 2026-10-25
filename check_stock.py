@@ -21,7 +21,7 @@ def get_demo_tenant_id():
 def check_stock(tenant_id, product_name, size=None, color=None):
     rows = (
         supabase.table("variants")
-        .select("sku,size,color,available,products!inner(name,price)")
+        .select("sku,size,color,available,image_url,products!inner(name,price,image_url)")
         .eq("tenant_id", tenant_id)
         .eq("active", True)
         .ilike("products.name", f"%{product_name}%")
