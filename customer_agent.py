@@ -54,14 +54,14 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
 3. عند حساب الأوردر (quote_order):
    - لو العميل معاه كود خصم، مرره في خانة promo_code علشان يتخصم في الفاتورة.
 
-خطوات تسجيل الأوردر (الدفع عند الاستلام فقط):
+خطوات تسجيل وتعديل وإلغاء الأوردر (الدفع عند الاستلام فقط):
 1. لما العميل يقرر يشتري، اجمع اللي ناقص بس: الاسم، رقم الموبايل، المحافظة، العنوان بالتفصيل.
 2. نادِ quote_order علشان تجيب الإجمالي. ممنوع تحسب الأسعار أو الشحن بنفسك.
 3. اعرض ملخص واضح: الأصناف والكميات، سعر القطع، الشحن، الإجمالي، وإن الدفع عند الاستلام.
 4. استنى العميل يأكد صراحة (زي: تمام، أكد، ماشي). ممنوع تسجّل الأوردر قبل التأكيد.
 5. بعد التأكيد نادِ place_order مرة واحدة بس. ممنوع تناديها مرتين لنفس الأوردر.
-6. لو نجح، قول رقم الأوردر والإجمالي وإنهم هيتصلوا بيه للتوصيل.
-7. لو فشل، اشرح السبب ببساطة. لو الكمية خلصت اعتذر واقترح بديل من check_stock.
+6. لو العميل طلب إلغاء أوردر سابق: اسأله عن رقم الأوردر لو ما قالوش، واستدعي أداة cancel_customer_order فوراً ورجّع له تأكيد الإلغاء بلطف.
+7. لو العميل طلب تعديل عنوان الشحن أو رقم الموبايل لأوردر مسجل: استدعي أداة update_order_address_or_phone فوراً بالبيانات الجديدة.
 """
 
 # ذاكرة بسيطة للمحادثات (لكل عميل session مستقلة)
@@ -152,11 +152,34 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str) -> str:
             "message": "حالياً مفيش رابط مباشر لخرائط جوجل مسجل، بس تقدر تسيب رأيك الجميل هنا في الشات وهيوصل فوراً لصاحب المحل!"
         }
 
+    def cancel_customer_order(order_number: int, reason: str = "") -> dict:
+        """إلغاء أوردر مسجل سابقاً بناءً على طلب العميل وإرجاع الكميات للمخزن وإشعار صاحب المحل.
+        
+        Args:
+            order_number: رقم الأوردر المراد إلغاؤه (مثلاً 5)
+            reason: سبب الإلغاء إذا ذكره العميل
+        """
+        return orders.cancel_order(tenant_id, order_number, reason=reason)
+
+    def update_order_address_or_phone(order_number: int, phone: str = "", address: str = "") -> dict:
+        """تعديل رقم الموبايل أو عنوان الشحن لأوردر قائم لم يتم شحنه بعد.
+        
+        Args:
+            order_number: رقم الأوردر المراد تعديله
+            phone: رقم الموبايل الجديد إن وجد
+            address: العنوان الجديد بالتفصيل إن وجد
+        """
+        return orders.update_order_shipping(tenant_id, order_number, phone=phone, address=address)
+
     session_key = f"{tenant_id}:{customer_id}"
     if session_key not in CUSTOMER_CHATS:
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
-            tools=[check_stock, quote_order, place_order, get_branches, submit_customer_review, get_google_review_link, get_active_offers],
+            tools=[
+                check_stock, quote_order, place_order, get_branches,
+                submit_customer_review, get_google_review_link, get_active_offers,
+                cancel_customer_order, update_order_address_or_phone
+            ],
         )
         CUSTOMER_CHATS[session_key] = client.chats.create(model=MODEL, config=config)
 

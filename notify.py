@@ -64,4 +64,26 @@ def send_review_notification(tenant_id, customer_name, feedback, rating=5):
         f"💬 \"{feedback}\"\n\n"
         f"📸 تقدر تاخدها سكرين شوت وتشاركها ستوري لزيادة مبيعاتك وثقة الزباين! 🚀"
     )
-    return send_telegram(tenant_id, text)
+    return send_telegram(tenant_id, text)
+
+
+def send_order_cancellation_notification(tenant_id, order_number, customer_name="", reason=""):
+    """إرسال إشعار فوري للتاجر عند إلغاء أوردر ورجوع البضاعة للمخزن"""
+    reason_line = f"\nسبب الإلغاء: {reason}" if reason else ""
+    cust_line = f"👤 العميل: {customer_name}\n" if customer_name else ""
+    text = (
+        f"❌ تم إلغاء الأوردر #{order_number}\n\n"
+        f"{cust_line}"
+        f"🔄 تم إرجاع جميع كميات الأصناف للمخزن تلقائياً.{reason_line}"
+    )
+    return send_telegram(tenant_id, text)
+
+
+def send_order_update_notification(tenant_id, order_number, changes_desc):
+    """إرسال إشعار فوري للتاجر عند تعديل بيانات أوردر"""
+    text = (
+        f"✏️ تحديث في الأوردر #{order_number}\n\n"
+        f"📋 التعديل الجديد:\n{changes_desc}"
+    )
+    return send_telegram(tenant_id, text)
+

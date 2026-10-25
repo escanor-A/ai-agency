@@ -216,8 +216,8 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items):
     return order
 
 
-def cancel_order(tenant_id, order_number):
-    """إلغاء أوردر ورجوع كمياته للمخزن لو كان ساري"""
+def cancel_order(tenant_id, order_number, reason=""):
+    """إلغاء أوردر ورجوع كمياته للمخزن لو كان ساري، وإشعار التاجر فوراً"""
     try:
         order_num = int(order_number)
     except (ValueError, TypeError):
@@ -226,7 +226,7 @@ def cancel_order(tenant_id, order_number):
     # 1. هات الأوردر
     rows = (
         supabase.table("orders")
-        .select("id,status")
+        .select("id,status,customer_name")
         .eq("tenant_id", tenant_id)
         .eq("order_number", order_num)
         .execute()
@@ -267,4 +267,83 @@ def cancel_order(tenant_id, order_number):
 
     # 4. حدّث حالة الأوردر لـ cancelled
     supabase.table("orders").update({"status": "cancelled"}).eq("id", order["id"]).execute()
+
+    # 5. إشعار التاجر على تليجرام
+    try:
+        notify.send_order_cancellation_notification(
+            tenant_id, order_num, order.get("customer_name", ""), reason
+        )
+    except Exception:
+        pass
+
     return {"status": "ok", "order_number": order_num}
+
+
+def update_order_shipping(tenant_id, order_number, phone="", address=""):
+    """تعديل رقم الموبايل أو عنوان الشحن لأوردر قائم"""
+    try:
+        order_num = int(order_number)
+    except (ValueError, TypeError):
+        return {"status": "error", "reason": "رقم الأوردر مش صحيح"}
+
+    rows = (
+        supabase.table("orders")
+        .select("id,status,phone,address,customer_name")
+        .eq("tenant_id", tenant_id)
+        .eq("order_number", order_num)
+        .execute()
+        .data
+    )
+    if not rows:
+        return {"status": "error", "reason": f"الأوردر #{order_num} مش موجود"}
+
+    order = rows[0]
+    if order["status"] in ("cancelled", "delivered"):
+        return {"status": "error", "reason": f"مستحيل تعديل أوردر حالته {order['status']}"}
+
+    update_data = {}
+    changes = []
+    if phone:
+        clean_phone = normalize_phone(phone)
+        if not clean_phone:
+            return {"status": "error", "reason": "رقم الموبايل غلط"}
+        update_data["phone"] = clean_phone
+        changes.append(f"• الموبايل الجديد: {clean_phone}")
+
+    if address and len(address.strip()) >= 5:
+        update_data["address"] = address.strip()
+        changes.append(f"• العنوان الجديد: {address.strip()}")
+
+    if not update_data:
+        return {"status": "error", "reason": "مفيش بيانات جديدة للتعديل"}
+
+    supabase.table("orders").update(update_data).eq("id", order["id"]).execute()
+
+    # إشعار التاجر
+    try:
+        notify.send_order_update_notification(tenant_id, order_num, "\n".join(changes))
+    except Exception:
+        pass
+
+    return {"status": "ok", "order_number": order_num, "changes": changes}
+
+
+def update_order_status(tenant_id, order_number, new_status):
+    """تحديث حالة الأوردر (shipped / delivered / confirmed)"""
+    try:
+        order_num = int(order_number)
+    except (ValueError, TypeError):
+        return {"status": "error", "reason": "رقم الأوردر مش صحيح"}
+
+    valid_statuses = {"new", "confirmed", "shipped", "delivered", "cancelled"}
+    if new_status not in valid_statuses:
+        return {"status": "error", "reason": f"الحالة غلط. المتاح: {', '.join(valid_statuses)}"}
+
+    if new_status == "cancelled":
+        return cancel_order(tenant_id, order_num)
+
+    res = supabase.table("orders").update({"status": new_status}).eq("tenant_id", tenant_id).eq("order_number", order_num).execute()
+    if not res.data:
+        return {"status": "error", "reason": f"الأوردر #{order_num} مش موجود"}
+
+    return {"status": "ok", "order_number": order_num, "new_status": new_status}

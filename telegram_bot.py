@@ -21,7 +21,7 @@ from telegram.ext import (
 
 from check_stock import check_stock as db_check_stock
 from check_stock import get_demo_tenant_id, supabase
-from orders import cancel_order
+from orders import cancel_order, update_order_shipping, update_order_status
 
 sys.stdout.reconfigure(encoding="utf-8")
 load_dotenv()
@@ -54,6 +54,7 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
 10. لو صاحب المحل طلب إضافة فرع أو عنوان للمحل (مثلاً: فرع مدينة نصر، شارع كذا، لوكيشن ماب كذا)، استخرج البيانات ونادِ propose_new_branch.
 11. لو صاحب المحل طلب عمل كود خصم أو عرض ترويجي (مثلاً: كود EID20 خصم 20%، أو عرض شحن مجاني لأي حد يطلب قطعتين أو أكتر)، استخرج البيانات ونادِ propose_new_promo.
+12. لو صاحب المحل طلب إلغاء أوردر (مثلاً: الغي أوردر 5)، أو تعديل عنوان/موبايل أوردر، أو تحديث حالته (مثلاً: أوردر 5 تم الشحن / اتسلم): استدعِ أداة cancel_order_direct أو update_order_direct فوراً.
 
 معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها (لارج = L، ميديم = M، إكس لارج = XL). الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج، أحمر، أصفر، بنفسجي، أخضر.
 """
@@ -402,9 +403,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         return {"status": "waiting_confirmation", "promo": description}
 
+    def cancel_order_direct(order_number: int, reason: str = "") -> dict:
+        """إلغاء أوردر فوراً وإرجاع بضاعته للمخزن."""
+        return cancel_order(tenant_id, order_number, reason=reason)
+
+    def update_order_direct(order_number: int, phone: str = "", address: str = "", status: str = "") -> dict:
+        """تحديث عنوان، رقم موبايل، أو حالة أوردر (shipped / delivered)."""
+        res = {}
+        if phone or address:
+            res["shipping"] = update_order_shipping(tenant_id, order_number, phone=phone, address=address)
+        if status:
+            res["status"] = update_order_status(tenant_id, order_number, new_status=status)
+        return res or {"status": "ok"}
+
     content_to_send = update.message.text
     reply = await asyncio.to_thread(
-        run_llm, chat_id, content_to_send, [check_stock, propose_stock_change, propose_new_product, propose_new_branch, propose_new_promo]
+        run_llm, chat_id, content_to_send, [
+            check_stock, propose_stock_change, propose_new_product,
+            propose_new_branch, propose_new_promo, cancel_order_direct, update_order_direct
+        ]
     )
 
     if not proposals:
@@ -529,12 +546,28 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         return {"status": "waiting_confirmation", "promo": description}
 
+    def cancel_order_direct(order_number: int, reason: str = "") -> dict:
+        """إلغاء أوردر فوراً وإرجاع بضاعته للمخزن."""
+        return cancel_order(tenant_id, order_number, reason=reason)
+
+    def update_order_direct(order_number: int, phone: str = "", address: str = "", status: str = "") -> dict:
+        """تحديث عنوان، رقم موبايل، أو حالة أوردر (shipped / delivered)."""
+        res = {}
+        if phone or address:
+            res["shipping"] = update_order_shipping(tenant_id, order_number, phone=phone, address=address)
+        if status:
+            res["status"] = update_order_status(tenant_id, order_number, new_status=status)
+        return res or {"status": "ok"}
+
     # تمرير الصوت كـ Part إلى Gemini
     audio_part = types.Part.from_bytes(data=bytes(audio_bytes), mime_type="audio/ogg")
     content_list = [audio_part, "استمع للريكورد ده من صاحب المحل ونفّذ المطلوب واستدعِ الأدوات المناسبة."]
 
     reply = await asyncio.to_thread(
-        run_llm, chat_id, content_list, [check_stock, propose_stock_change, propose_new_product, propose_new_branch, propose_new_promo]
+        run_llm, chat_id, content_list, [
+            check_stock, propose_stock_change, propose_new_product,
+            propose_new_branch, propose_new_promo, cancel_order_direct, update_order_direct
+        ]
     )
 
     await status_msg.delete()
