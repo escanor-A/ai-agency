@@ -255,21 +255,20 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 MERCHANT_SESSIONS = {}
 
 
-def run_llm(chat_id: int, text: str, tools: list):
-    """بيشغّل الموديل مع الأدوات وسياق المحادثة المحفوظ"""
+def run_llm(chat_id: int, content, tools: list):
+    """بيشغّل الموديل مع الأدوات وسياق المحادثة المحفوظ (يدعم النص والصوت)"""
     config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=tools)
     
     # لو الجلسة مش موجودة بننشئها
     if chat_id not in MERCHANT_SESSIONS:
         MERCHANT_SESSIONS[chat_id] = client.chats.create(model=MODEL, config=config)
     else:
-        # تحديث الـ config بالأدوات الحالية (closures الخاصة بالطلب الحالي)
         MERCHANT_SESSIONS[chat_id]._config = config
 
     chat = MERCHANT_SESSIONS[chat_id]
     for attempt in range(3):
         try:
-            return chat.send_message(text).text or "تمام، أقدر أساعدك في إيه تاني؟"
+            return chat.send_message(content).text or "تمام، أقدر أساعدك في إيه تاني؟"
         except Exception as e:
             msg = str(e)
             if "429" in msg:
@@ -361,8 +360,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         return {"status": "waiting_confirmation", "product": name, "price": price}
 
+    content_to_send = update.message.text
     reply = await asyncio.to_thread(
-        run_llm, chat_id, update.message.text, [check_stock, propose_stock_change, propose_new_product]
+        run_llm, chat_id, content_to_send, [check_stock, propose_stock_change, propose_new_product]
     )
 
     if not proposals:
@@ -395,6 +395,110 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(
         f"هنفّذ العملية دي:\n{summary}\n\nتأكيد؟", reply_markup=keyboard
+    )
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال وتحليل الفويسات الصوتية مباشرة بـ Gemini Multimodal"""
+    chat_id = update.effective_chat.id
+    tenant = get_owner_tenant(chat_id)
+    if not tenant:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    tenant_id = tenant["id"]
+    voice = update.message.voice or update.message.audio
+    if not voice:
+        return
+
+    status_msg = await update.message.reply_text("🎙️ جاري الاستماع للفويس وتحليله...")
+
+    # تحميل ملف الصوت من تليجرام في الذاكرة
+    voice_file = await context.bot.get_file(voice.file_id)
+    audio_bytes = await voice_file.download_as_bytearray()
+
+    proposals = []
+
+    def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
+        return db_check_stock(tenant_id, product_name, size=size or None, color=color or None)
+
+    def propose_stock_change(sku: str, qty: int, kind: str) -> dict:
+        if qty <= 0:
+            return {"status": "error", "reason": "الكمية لازم تكون أكبر من صفر"}
+        if kind not in ("sale", "restock", "return"):
+            return {"status": "error", "reason": "نوع العملية غلط"}
+        rows = (
+            supabase.table("variants")
+            .select("id,sku,size,color,available,products!inner(name)")
+            .eq("tenant_id", tenant_id)
+            .eq("sku", sku)
+            .execute()
+            .data
+        )
+        if not rows:
+            return {"status": "error", "reason": f"الكود {sku} مش موجود"}
+        v = rows[0]
+        if kind == "sale" and v["available"] < qty:
+            return {"status": "error", "reason": f"المتاح {v['available']} بس"}
+        label = f"{v['products']['name']} {v['color']} {v['size']}"
+        change = -qty if kind == "sale" else qty
+        proposals.append(
+            {"type": "movement", "variant_id": v["id"], "label": label, "change": change, "kind": kind}
+        )
+        return {"status": "waiting_confirmation", "item": label, "change": change}
+
+    def propose_new_product(name: str, price: float, size: str, color: str, qty: int = 1) -> dict:
+        if price <= 0 or qty <= 0:
+            return {"status": "error", "reason": "السعر والكمية لازم يكونوا أكبر من صفر"}
+        proposals.append({
+            "type": "new_product",
+            "name": name.strip(),
+            "price": float(price),
+            "size": size.strip().upper(),
+            "color": color.strip(),
+            "qty": int(qty),
+        })
+        return {"status": "waiting_confirmation", "product": name, "price": price}
+
+    # تمرير الصوت كـ Part إلى Gemini
+    audio_part = types.Part.from_bytes(data=bytes(audio_bytes), mime_type="audio/ogg")
+    content_list = [audio_part, "استمع للريكورد ده من صاحب المحل المصري ونفّذ المطلوب واستدعِ الأدوات المناسبة."]
+
+    reply = await asyncio.to_thread(
+        run_llm, chat_id, content_list, [check_stock, propose_stock_change, propose_new_product]
+    )
+
+    await status_msg.delete()
+
+    if not proposals:
+        await update.message.reply_text(reply)
+        return
+
+    pid = uuid.uuid4().hex[:12]
+    context.application.bot_data.setdefault("pending", {})[pid] = {
+        "chat_id": chat_id,
+        "tenant_id": tenant_id,
+        "items": proposals,
+    }
+    kinds = {"sale": "خصم (بيع من المحل)", "restock": "إضافة بضاعة", "return": "مرتجع"}
+    summary_lines = []
+    for p in proposals:
+        if p.get("type") == "new_product":
+            summary_lines.append(f"✨ إضافة منتج جديد: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f} جنيه | الكمية: {p['qty']}")
+        else:
+            summary_lines.append(f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}")
+
+    summary = "\n".join(summary_lines)
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ تأكيد", callback_data=f"ok:{pid}"),
+                InlineKeyboardButton("❌ إلغاء", callback_data=f"no:{pid}"),
+            ]
+        ]
+    )
+    await update.message.reply_text(
+        f"سمعت الفويس، وهنفّذ العملية دي:\n{summary}\n\nتأكيد؟", reply_markup=keyboard
     )
 
 
@@ -503,6 +607,7 @@ def main():
     app.add_handler(CommandHandler("new_tenant", new_tenant_cmd))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     print("بوت التاجر شغال... (Ctrl+C للإيقاف)")
     app.run_polling()
 
