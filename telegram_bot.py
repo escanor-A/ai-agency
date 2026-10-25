@@ -37,6 +37,7 @@ MODEL = "gemini-3.5-flash"
 
 # البوت ده بتاع تاجر واحد (بوت لكل تاجر). للتجربة: التاجر التجريبي.
 BOT_TENANT_ID = get_demo_tenant_id()
+SUPER_ADMIN_CHAT_ID = int(os.environ.get("SUPER_ADMIN_CHAT_ID", "1464362905"))
 
 SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مصري، بتتكلم معاه على تليجرام.
 أسلوبك: لهجة مصرية بسيطة، ردود قصيرة جداً.
@@ -132,6 +133,69 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"تم إلغاء الأوردر #{order_num} ورجعت الكميات للمخزن بنجاح ✅")
     else:
         await update.message.reply_text(f"فشل الإلغاء: {res.get('reason', 'حصل خطأ')}")
+
+
+async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر خاص بالـ Super Admin فقط لإنشاء تاجر جديد وتوليد كود ربط فوري"""
+    chat_id = update.effective_chat.id
+    if chat_id != SUPER_ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ عذراً، الأمر ده مخصص للـ Super Admin فقط.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "اكتب اسم المحل بعد الأمر، مثلاً:\n"
+            "`/new_tenant محل السعادة`\n"
+            "أو مع رقم الموبايل:\n"
+            "`/new_tenant محل السعادة 01012345678`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # استخراج الاسم والموبايل إن وجد
+    args = context.args
+    phone = None
+    if args[-1].isdigit() and len(args[-1]) >= 10:
+        phone = args[-1]
+        name = " ".join(args[:-1]).strip()
+    else:
+        name = " ".join(args).strip()
+
+    if not name:
+        await update.message.reply_text("لازم تكتب اسم المحل!")
+        return
+
+    import secrets
+    link_code = secrets.token_hex(3).upper()
+    data = {
+        "name": name,
+        "bot_enabled": True,
+        "telegram_link_code": link_code,
+    }
+    if phone:
+        data["owner_phone"] = phone
+
+    try:
+        res = supabase.table("tenants").insert(data).execute()
+        if not res.data:
+            await update.message.reply_text("❌ حصل خطأ أثناء حفظ التاجر في قاعدة البيانات.")
+            return
+
+        t = res.data[0]
+        await update.message.reply_text(
+            f"🎉 *تم إنشاء حساب التاجر بنجاح!*\n\n"
+            f"🏢 *المحل:* `{t['name']}`\n"
+            f"🔑 *كود الربط:* `{link_code}`\n\n"
+            f"انسخ الرسالة دي وابعتها للتاجر:\n"
+            f"👇👇👇\n"
+            f"أهلاً بحضرتك في سيستم إدارة المبيعات والمخزن 🚀\n"
+            f"ادخل على البوت: @ORIK_1_bot\n"
+            f"واكتب الكود ده لتفعيل حسابك:\n"
+            f"`/start {link_code}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ حدث خطأ: {e}")
 
 
 async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -408,6 +472,7 @@ def main():
     app.add_handler(CommandHandler("orders", orders_cmd))
     app.add_handler(CommandHandler("today", today_cmd))
     app.add_handler(CommandHandler("cancel", cancel_cmd))
+    app.add_handler(CommandHandler("new_tenant", new_tenant_cmd))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     print("بوت التاجر شغال... (Ctrl+C للإيقاف)")
