@@ -124,7 +124,7 @@ async def process_meta_event(data: dict):
             # البحث عن التاجر صاحب هذه الصفحة أو هذا الحساب
             rows = (
                 supabase.table("tenants")
-                .select("id, name, facebook_page_id, instagram_account_id, facebook_page_token")
+                .select("id, name, bot_enabled, facebook_page_id, instagram_account_id, facebook_page_token")
                 .or_(f"facebook_page_id.eq.{recipient_id},instagram_account_id.eq.{recipient_id}")
                 .execute()
                 .data
@@ -134,6 +134,10 @@ async def process_meta_event(data: dict):
                 continue
 
             tenant = rows[0]
+            if not tenant.get("bot_enabled", True):
+                print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» (لم يدفع الاشتراك) — تم تجاهل الرسالة")
+                continue
+
             page_token = tenant.get("facebook_page_token", "")
             print(f"📩 رسالة جديدة للتاجر «{tenant['name']}» من العميل {sender_id}: {text}")
 
@@ -167,13 +171,16 @@ async def process_meta_event(data: dict):
 
                 rows = (
                     supabase.table("tenants")
-                    .select("id, name, facebook_page_token")
+                    .select("id, name, bot_enabled, facebook_page_token")
                     .eq("facebook_page_id", page_id)
                     .execute()
                     .data
                 )
                 if rows:
                     tenant = rows[0]
+                    if not tenant.get("bot_enabled", True):
+                        print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل تعليق فيسبوك")
+                        continue
                     page_token = tenant.get("facebook_page_token", "")
                     print(f"💬 تعليق على بوست «{tenant['name']}» من {sender_name}: {comment_text}")
 
@@ -207,13 +214,16 @@ async def process_meta_event(data: dict):
 
                 rows = (
                     supabase.table("tenants")
-                    .select("id, name, facebook_page_token")
+                    .select("id, name, bot_enabled, facebook_page_token")
                     .eq("instagram_account_id", page_id)
                     .execute()
                     .data
                 )
                 if rows:
                     tenant = rows[0]
+                    if not tenant.get("bot_enabled", True):
+                        print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل تعليق إنستجرام")
+                        continue
                     page_token = tenant.get("facebook_page_token", "")
                     print(f"📸 كومنت إنستجرام على «{tenant['name']}» من {sender_name}: {comment_text}")
 
@@ -241,13 +251,16 @@ async def process_meta_event(data: dict):
 
                         rows = (
                             supabase.table("tenants")
-                            .select("id, name, whatsapp_phone_number_id, whatsapp_access_token")
+                            .select("id, name, bot_enabled, whatsapp_phone_number_id, whatsapp_access_token")
                             .eq("whatsapp_phone_number_id", phone_number_id)
                             .execute()
                             .data
                         )
                         if rows:
                             tenant = rows[0]
+                            if not tenant.get("bot_enabled", True):
+                                print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل رسالة واتساب")
+                                continue
                             wa_token = tenant.get("whatsapp_access_token", "")
                             reply = handle_customer_message(tenant["id"], wa_from, wa_text)
                             print(f"🟢 واتساب «{tenant['name']}» -> رد للعميل {wa_from}: {reply}")
@@ -338,7 +351,7 @@ async def process_tiktok_event(data: dict):
         # البحث عن التاجر بـ tiktok_account_id
         rows = (
             supabase.table("tenants")
-            .select("id, name, tiktok_access_token")
+            .select("id, name, bot_enabled, tiktok_access_token")
             .eq("tiktok_account_id", account_id)
             .execute()
             .data
@@ -348,6 +361,10 @@ async def process_tiktok_event(data: dict):
             return
 
         tenant = rows[0]
+        if not tenant.get("bot_enabled", True):
+            print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل كومنت تيك توك")
+            return
+
         tiktok_token = tenant.get("tiktok_access_token", "")
         print(f"🎵 كومنت على «{tenant['name']}» من {display_name}: {comment_text}")
 
@@ -374,7 +391,7 @@ async def process_tiktok_event(data: dict):
 
         rows = (
             supabase.table("tenants")
-            .select("id, name, tiktok_access_token")
+            .select("id, name, bot_enabled, tiktok_access_token")
             .eq("tiktok_account_id", account_id)
             .execute()
             .data
@@ -384,6 +401,10 @@ async def process_tiktok_event(data: dict):
             return
 
         tenant = rows[0]
+        if not tenant.get("bot_enabled", True):
+            print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل DM تيك توك")
+            return
+
         tiktok_token = tenant.get("tiktok_access_token", "")
         print(f"🎵 DM تيك توك لـ «{tenant['name']}» من {display_name}: {message_text}")
 

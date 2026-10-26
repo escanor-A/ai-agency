@@ -22,8 +22,13 @@ from telegram.ext import (
 from check_stock import check_stock as db_check_stock
 from check_stock import get_demo_tenant_id, supabase
 from orders import cancel_order, update_order_shipping, update_order_status
+from subscriptions import (
+    add_or_renew_subscription,
+    check_and_update_subscriptions,
+    get_tenant_subscription,
+)
 
-sys.stdout.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 load_dotenv()
 
 # مهم: مكتبات الشبكة ممكن تطبع رابط فيه التوكن لو المستوى INFO، فبنقفلها
@@ -112,19 +117,44 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not get_owner_tenant(update.effective_chat.id):
+    chat_id = update.effective_chat.id
+    tenant = get_owner_tenant(chat_id)
+    is_admin = (chat_id == SUPER_ADMIN_CHAT_ID)
+
+    if not tenant and not is_admin:
         await update.message.reply_text(NOT_OWNER_MESSAGE)
         return
-    await update.message.reply_text(
-        "تقدر تكتبلي بالمصري، أمثلة:\n"
-        "• بعت 2 تيشيرت أسود L\n"
-        "• وصل 20 هودي رمادي L\n"
-        "• المتاح من التيشيرت الأبيض؟\n\n"
-        "أوامر:\n"
-        "/orders - آخر 5 أوردرات\n"
-        "/today - ملخص آخر 24 ساعة\n"
-        "/cancel <رقم_الأوردر> - إلغاء أوردر ورجوع بضاعته للمخزن"
+
+    text = ""
+    if is_admin:
+        text += (
+            "👑 *لوحة تحكم مدير النظام (Super Admin):*\n"
+            "• `/new_tenant <اسم المحل> [الموبايل] [1m|3m]` — إنشاء تاجر جديد وتحديد مدة اشتراكه\n"
+            "• `/tenants` — عرض قائمة التجار وحالة اشتراكاتهم\n"
+            "• `/renew <الرقم> [1m|3m|6m|1y]` — تجديد اشتراك تاجر وتفعيل البوت\n"
+            "• `/pause_bot <الرقم>` — إيقاف بوت تاجر مؤقتاً (لو مدفعش الاشتراك)\n"
+            "• `/resume_bot <الرقم>` — إعادة تشغيل بوت تاجر بعد ما يدفع\n"
+            "• `/delete_tenant <الرقم>` — حذف تاجر وبياناته نهائياً\n"
+            "• `/link_page <الرقم> fb=<id> token=<token>` — ربط قنوات السوشيال ميديا\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+        )
+
+    text += (
+        "📦 *إدارة المخزن والمبيعات:*\n"
+        "تقدر تكلمني بالعامية المصرية عادي جداً، مثلاً:\n"
+        "• *بعت 2 تيشيرت أسود L*\n"
+        "• *وصل 20 هودي رمادي L*\n"
+        "• *المتاح إيه من التيشيرت الأبيض؟*\n"
+        "• *ضيف فرع جديد في مدينة نصر...*\n"
+        "• *اعمل كود خصم EID20 خصم 20%*\n\n"
+        "📊 *الأوامر السريعة:*\n"
+        "• `/orders` — آخر 5 أوردرات وتفاصيلها\n"
+        "• `/today` — تقرير ملخص مبيعات اليوم\n"
+        "• `/cancel <رقم_الأوردر>` — إلغاء أوردر وإرجاع بضاعته للمخزن\n\n"
+        "📁 *تحديث المخزن دفعة واحدة:*\n"
+        "ابعت أي ملف Excel (.xlsx) أو CSV فيه بضاعتك، وهقرأه وأحدث المخزن فوراً!"
     )
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 
 async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -160,9 +190,25 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # استخراج الاسم والموبايل إن وجد
+    # استخراج الاسم والموبايل ومدة الاشتراك إن وجدت
     import re
     full_text = " ".join(context.args)
+
+    # استخراج مدة الاشتراك: 1m, 3m, 6m, 1y (الافتراضي 1m = شهر)
+    months = 1
+    dur_match = re.search(r"\b(1m|3m|6m|12m|1y|شهرين|سنة)\b", full_text, re.IGNORECASE)
+    if dur_match:
+        tag = dur_match.group(1).lower()
+        if "3" in tag:
+            months = 3
+        elif "6" in tag:
+            months = 6
+        elif "12" in tag or "y" in tag or "سنة" in tag:
+            months = 12
+        elif "شهرين" in tag:
+            months = 2
+        full_text = re.sub(r"\b(1m|3m|6m|12m|1y|شهرين|سنة)\b", "", full_text, flags=re.IGNORECASE).strip()
+
     # البحث عن رقم موبايل مصري أو دولي في النص
     phone_match = re.search(r"(\+?20\d{10}|01[0125]\d{8})", full_text.replace(" ", ""))
     if phone_match:
@@ -180,6 +226,44 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     import secrets
     link_code = secrets.token_hex(3).upper()
+
+    # فحص إذا كان المتجر مسجل بالفعل لمنع التكرار
+    try:
+        existing = (
+            supabase.table("tenants")
+            .select("id, name, telegram_chat_id, telegram_link_code")
+            .ilike("name", name)
+            .execute()
+            .data
+        )
+        if existing:
+            ex = existing[0]
+            if ex.get("telegram_chat_id"):
+                await msg.reply_text(
+                    f"⚠️ *تنبيه:* متجر «{name}» مسجل ومربوط بالفعل في السيستم!\n"
+                    f"شوف بياناته عبر `/tenants` أو جدد اشتراكه بـ `/renew {name} {months}m`",
+                    parse_mode="Markdown"
+                )
+                return
+            else:
+                code = ex.get("telegram_link_code") or link_code
+                if not ex.get("telegram_link_code"):
+                    supabase.table("tenants").update({"telegram_link_code": link_code}).eq("id", ex["id"]).execute()
+                await msg.reply_text(
+                    f"ℹ️ *المحل «{name}» متسجل مسبقاً وبانتظار التفعيل:*\n\n"
+                    f"🔑 *كود الربط:* `{code}`\n\n"
+                    f"انسخ الرسالة دي وابعتها للتاجر:\n"
+                    f"👇👇👇\n"
+                    f"أهلاً بحضرتك في سيستم إدارة المبيعات والمخزن 🚀\n"
+                    f"ادخل على البوت: @ORIK_1_bot\n"
+                    f"واكتب الكود ده لتفعيل حسابك:\n"
+                    f"`/start {code}`",
+                    parse_mode="Markdown"
+                )
+                return
+    except Exception as e:
+        print("Error checking existing tenant:", e)
+
     data = {
         "name": name,
         "bot_enabled": True,
@@ -195,10 +279,15 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         t = res.data[0]
+        # تفعيل مدة الاشتراك في نظام الاشتراكات
+        sub = add_or_renew_subscription(t["id"], months=months)
+        ends_str = sub["ends_at"].strftime("%Y-%m-%d")
+
         await msg.reply_text(
             f"🎉 *تم إنشاء حساب التاجر بنجاح!*\n\n"
             f"🏢 *المحل:* `{t['name']}`\n"
-            f"🔑 *كود الربط:* `{link_code}`\n\n"
+            f"🔑 *كود الربط:* `{link_code}`\n"
+            f"📅 *مدة الاشتراك:* {months} شهر (ساري حتى: `{ends_str}`)\n\n"
             f"انسخ الرسالة دي وابعتها للتاجر:\n"
             f"👇👇👇\n"
             f"أهلاً بحضرتك في سيستم إدارة المبيعات والمخزن 🚀\n"
@@ -246,25 +335,11 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     tenant_id_str = context.args[0].strip()
-
-    # التحقق من وجود التاجر
-    try:
-        rows = (
-            supabase.table("tenants")
-            .select("id,name")
-            .eq("id", tenant_id_str)
-            .execute()
-            .data
-        )
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطأ في الاتصال بقاعدة البيانات: {e}")
+    tenant = resolve_tenant(tenant_id_str)
+    if not tenant:
+        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{tenant_id_str}`\nاستخدم /tenants تشوف الأرقام الصح.", parse_mode="Markdown")
         return
 
-    if not rows:
-        await update.message.reply_text(f"❌ مفيش تاجر بالـ ID: `{tenant_id_str}`\nاستخدم /tenants تشوف الأرقام الصح.", parse_mode="Markdown")
-        return
-
-    tenant = rows[0]
     updates = {}
 
     # تحليل المعاملات
@@ -296,7 +371,7 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        supabase.table("tenants").update(updates).eq("id", tenant_id_str).execute()
+        supabase.table("tenants").update(updates).eq("id", tenant["id"]).execute()
     except Exception as e:
         await update.message.reply_text(f"❌ فشل التحديث: {e}")
         return
@@ -328,8 +403,44 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+def resolve_tenant(identifier: str):
+    """
+    بيبحث عن التاجر:
+    1. بالرقم الترتيبي السهل (1, 2, 3...) حسب ترتيب /tenants
+    2. بالـ UUID المباشر
+    3. بالاسم أو جزء من الاسم
+    """
+    rows = (
+        supabase.table("tenants")
+        .select("id, name, bot_enabled, telegram_chat_id, facebook_page_id, instagram_account_id, whatsapp_phone_number_id, tiktok_account_id")
+        .order("name")
+        .execute()
+        .data or []
+    )
+    if not rows:
+        return None
+
+    clean = identifier.strip()
+    if clean.isdigit():
+        idx = int(clean) - 1
+        if 0 <= idx < len(rows):
+            return rows[idx]
+
+    # مطابقة UUID كامل
+    for r in rows:
+        if str(r.get("id", "")).lower() == clean.lower():
+            return r
+
+    # مطابقة الاسم
+    for r in rows:
+        if clean.lower() in str(r.get("name", "")).lower():
+            return r
+
+    return None
+
+
 async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """أمر للـ Super Admin يشوف كل التجار وأرقامهم."""
+    """أمر للـ Super Admin يشوف كل التجار وأرقامهم وحالتهم."""
     chat_id = update.effective_chat.id
     if chat_id != SUPER_ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
@@ -337,8 +448,8 @@ async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     rows = (
         supabase.table("tenants")
-        .select("id,name,facebook_page_id,instagram_account_id,whatsapp_phone_number_id,tiktok_account_id,telegram_chat_id")
-        .order("id")
+        .select("id,name,bot_enabled,facebook_page_id,instagram_account_id,whatsapp_phone_number_id,tiktok_account_id,telegram_chat_id")
+        .order("name")
         .execute()
         .data
     )
@@ -346,19 +457,319 @@ async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("مفيش تجار مسجلين لحد دلوقتي.")
         return
 
-    lines = ["📋 *التجار المسجلين:*\n"]
-    for t in rows:
-        fb = f"📘 {t['facebook_page_id']}" if t.get("facebook_page_id") else "📘 ❌"
-        ig = f"📸 {t['instagram_account_id']}" if t.get("instagram_account_id") else "📸 ❌"
-        wa = f"🟢 {t['whatsapp_phone_number_id']}" if t.get("whatsapp_phone_number_id") else "🟢 ❌"
-        tt = f"🎵 {t['tiktok_account_id']}" if t.get("tiktok_account_id") else "🎵 ❌"
-        tg = f"✈️ مربوط" if t.get("telegram_chat_id") else "✈️ ❌"
+    lines = ["📋 *قائمة التجار المسجلين في السيستم:*\n"]
+    for i, t in enumerate(rows, 1):
+        is_active = t.get("bot_enabled", True)
+        status_badge = "🟢 شغال" if is_active else "🔴 موقوف"
+
+        sub = get_tenant_subscription(t["id"])
+        if sub["has_subscription"]:
+            if sub["is_active"]:
+                if sub["days_left"] <= 3:
+                    sub_str = f"🟡 باقي {sub['days_left']} يوم ({sub['ends_at_str']})"
+                else:
+                    sub_str = f"⏳ باقي {sub['days_left']} يوم ({sub['ends_at_str']})"
+            else:
+                sub_str = f"🔴 منتهي من {abs(sub['days_left'])} يوم"
+        else:
+            sub_str = "📅 غير محدد (جدده بـ /renew)"
+
+        channels = []
+        if t.get("facebook_page_id"):
+            channels.append("📘 فيسبوك")
+        if t.get("instagram_account_id"):
+            channels.append("📸 إنستا")
+        if t.get("whatsapp_phone_number_id"):
+            channels.append("🟢 واتساب")
+        if t.get("tiktok_account_id"):
+            channels.append("🎵 تيك توك")
+        if t.get("telegram_chat_id"):
+            channels.append("✈️ تليجرام")
+
+        ch_str = " | ".join(channels) if channels else "لا توجد قنوات مربوطة بعد"
+
         lines.append(
-            f"*{t['id']}.* {t['name']}\n"
-            f"   {fb} | {ig} | {wa} | {tt} | {tg}"
+            f"*{i}.* *«{t['name']}»* — {status_badge}\n"
+            f"   📅 الاشتراك: {sub_str}\n"
+            f"   🔗 القنوات: {ch_str}\n"
+            f"   🆔 كود: `{t['id'][:8]}...`\n"
         )
 
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append("⚡ *التحكم السريع في التجار:*")
+    lines.append("• تجديد اشتراك: `/renew <الرقم> [1m|3m|6m|1y]` (مثال: `/renew 1 3m`)")
+    lines.append("• إيقاف مؤقت: `/pause_bot <الرقم>` (مثلاً: `/pause_bot 1`)")
+    lines.append("• إعادة تشغيل: `/resume_bot <الرقم>` (مثلاً: `/resume_bot 1`)")
+    lines.append("• حذف تاجر: `/delete_tenant <الرقم>` (مثلاً: `/delete_tenant 1`)")
+
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def pause_bot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إيقاف البوت مؤقتاً للتاجر (لو مدفعش الاشتراك)"""
+    chat_id = update.effective_chat.id
+    if chat_id != SUPER_ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "⚠️ اكتب رقم التاجر من قائمة /tenants أو اسمه:\n"
+            "مثال: `/pause_bot 1` أو `/pause_bot عمهم`",
+            parse_mode="Markdown"
+        )
+        return
+
+    target = " ".join(context.args).strip()
+    tenant = resolve_tenant(target)
+    if not tenant:
+        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants لمعرفة الأرقام.", parse_mode="Markdown")
+        return
+
+    try:
+        supabase.table("tenants").update({"bot_enabled": False}).eq("id", tenant["id"]).execute()
+        await update.message.reply_text(
+            f"⏸️ *تم إيقاف البوت للتاجر «{tenant['name']}» مؤقتاً!* 🔴\n\n"
+            "السيستم دلوقتي مش هيرد على أي رسايل أو كومنتات على صفحاته حتى يدفع الاشتراك.\n\n"
+            f"لإعادة تشغيله بعد الدفع:\n`/resume_bot {tenant['name']}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ فشل إيقاف البوت: {e}")
+
+
+async def resume_bot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إعادة تشغيل البوت للتاجر بعد ما يدفع"""
+    chat_id = update.effective_chat.id
+    if chat_id != SUPER_ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "⚠️ اكتب رقم التاجر من قائمة /tenants أو اسمه:\n"
+            "مثال: `/resume_bot 1` أو `/resume_bot عمهم`",
+            parse_mode="Markdown"
+        )
+        return
+
+    target = " ".join(context.args).strip()
+    tenant = resolve_tenant(target)
+    if not tenant:
+        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants لمعرفة الأرقام.", parse_mode="Markdown")
+        return
+
+    try:
+        supabase.table("tenants").update({"bot_enabled": True}).eq("id", tenant["id"]).execute()
+        await update.message.reply_text(
+            f"▶️ *تم إعادة تشغيل البوت للتاجر «{tenant['name']}» بنجاح!* 🟢\n\n"
+            "البوت هيرجع يرد فوراً على كل الرسائل والكومنتات في كل القنوات المربوطة.",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ فشل تشغيل البوت: {e}")
+
+
+async def delete_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف التاجر وبياناته من السيستم"""
+    chat_id = update.effective_chat.id
+    if chat_id != SUPER_ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "⚠️ اكتب رقم التاجر من قائمة /tenants أو اسمه:\n"
+            "مثال: `/delete_tenant 1` أو `/delete_tenant عمهم`",
+            parse_mode="Markdown"
+        )
+        return
+
+    args = context.args
+    is_confirmed = False
+    if len(args) > 1 and args[-1].lower() in ["confirm", "تأكيد", "نعم", "yes"]:
+        is_confirmed = True
+        target = " ".join(args[:-1]).strip()
+    else:
+        target = " ".join(args).strip()
+
+    tenant = resolve_tenant(target)
+    if not tenant:
+        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants", parse_mode="Markdown")
+        return
+
+    if not is_confirmed:
+        await update.message.reply_text(
+            f"⚠️ *تحذير: هل أنت متأكد من حذف التاجر «{tenant['name']}» نهائياً؟*\n"
+            f"ده هيحذف كل منتجاته ومخزنه وسجل أوردراته بالكامل ولا يمكن التراجع!\n\n"
+            f"للتأكيد، اكتب:\n"
+            f"`/delete_tenant {target} confirm`",
+            parse_mode="Markdown"
+        )
+        return
+
+    tid = tenant["id"]
+    try:
+        for table in ["order_items", "orders", "variants", "products", "branches", "tenant_promos"]:
+            try:
+                supabase.table(table).delete().eq("tenant_id", tid).execute()
+            except Exception:
+                pass
+        supabase.table("tenants").delete().eq("id", tid).execute()
+        await update.message.reply_text(f"🗑️ *تم حذف التاجر «{tenant['name']}» وبياناته من السيستم نهائياً.* ✅", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ فشل الحذف: {e}")
+
+
+async def renew_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تجديد اشتراك تاجر: /renew <الرقم أو الاسم> [1m | 3m | 6m | 1y]"""
+    chat_id = update.effective_chat.id
+    if chat_id != SUPER_ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "📋 *طريقة تجديد الاشتراك:*\n"
+            "`/renew <رقم أو اسم التاجر> [المدة]`\n\n"
+            "أمثلة:\n"
+            "• `/renew 1 1m` — تجديد شهر للتاجر رقم 1\n"
+            "• `/renew 1 3m` — تجديد 3 شهور للتاجر رقم 1\n"
+            "• `/renew عمهم 3m` — تجديد 3 شهور لـ عمهم",
+            parse_mode="Markdown"
+        )
+        return
+
+    target = context.args[0].strip()
+    months = 1
+    if len(context.args) > 1:
+        m_str = context.args[1].lower().strip()
+        if "3" in m_str:
+            months = 3
+        elif "6" in m_str:
+            months = 6
+        elif "12" in m_str or "y" in m_str or "سنة" in m_str:
+            months = 12
+        elif "شهرين" in m_str:
+            months = 2
+
+    tenant = resolve_tenant(target)
+    if not tenant:
+        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants", parse_mode="Markdown")
+        return
+
+    tid = tenant["id"]
+    res = add_or_renew_subscription(tid, months=months)
+    supabase.table("tenants").update({"bot_enabled": True}).eq("id", tid).execute()
+
+    ends_str = res["ends_at"].strftime("%Y-%m-%d")
+    await update.message.reply_text(
+        f"✅ *تم تجديد اشتراك «{tenant['name']}» بنجاح!* 🎉\n\n"
+        f"📅 *مدة التجديد:* {months} شهر\n"
+        f"⏳ *تاريخ الانتهاء الجديد:* `{ends_str}` (باقي {res['days_left']} يوم)\n"
+        f"🟢 *حالة البوت:* شغال ويرد تلقائياً على كل الرسائل.",
+        parse_mode="Markdown"
+    )
+
+    tg_chat = tenant.get("telegram_chat_id")
+    if tg_chat:
+        try:
+            await context.bot.send_message(
+                chat_id=tg_chat,
+                text=(
+                    f"🎉 *مبروك! تم تجديد اشتراك متجرك «{tenant['name']}» بنجاح!*\n\n"
+                    f"📅 *مدة التجديد:* {months} شهر\n"
+                    f"⏳ *ساري حتى:* `{ends_str}`\n\n"
+                    "خدمة الرد التلقائي وإدارة الأوردرات والمخزن تعمل بكامل طاقتها 🚀"
+                ),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Failed to notify tenant {tenant['name']} of renewal:", e)
+
+
+async def check_subscriptions_and_notify(app):
+    """فحص دوري لكل اشتراكات التجار وإرسال التنبيهات للأدمن والتاجر"""
+    alerts = check_and_update_subscriptions()
+
+    # 1. تنبيهات اقتراب الانتهاء (3 أيام أو أقل)
+    for w in alerts.get("warnings", []):
+        tid = w["tenant_id"]
+        rows = supabase.table("tenants").select("id, name, telegram_chat_id").eq("id", tid).execute().data
+        if not rows:
+            continue
+        tenant = rows[0]
+        days = w["days_left"]
+        ends_str = w["ends_at"].strftime("%Y-%m-%d")
+
+        try:
+            await app.bot.send_message(
+                chat_id=SUPER_ADMIN_CHAT_ID,
+                text=(
+                    f"🔔 *تنبيه تجديد اشتراك:* ⏳\n\n"
+                    f"المحل: *«{tenant['name']}»*\n"
+                    f"متبقي على انتهاء الاشتراك: *{days} أيام* (ينتهي في: `{ends_str}`)\n"
+                    f"تواصل مع التاجر لتجديد الاشتراك.\n\n"
+                    f"للتجديد السريع:\n`/renew {tenant['name']} 1m` أو `3m`"
+                ),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print("Failed to alert admin:", e)
+
+        if tenant.get("telegram_chat_id"):
+            try:
+                await app.bot.send_message(
+                    chat_id=tenant["telegram_chat_id"],
+                    text=(
+                        f"⚠️ *تنبيه هام بخصوص اشتراكك:*\n\n"
+                        f"عزيزي صاحب متجر «{tenant['name']}»، متبقي *{days} أيام فقط* على انتهاء فترة اشتراكك في السيستم (ينتهي في: `{ends_str}`).\n\n"
+                        "يرجى التواصل مع إدارة السيستم لتجديد الاشتراك وتجنب توقف خدمة الرد التلقائي على العملاء 🙏"
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                print("Failed to alert tenant:", e)
+
+    # 2. انتهاء الاشتراك الفعلي (إيقاف البوت فوراً)
+    for exp in alerts.get("expirations", []):
+        tid = exp["tenant_id"]
+        rows = supabase.table("tenants").select("id, name, telegram_chat_id").eq("id", tid).execute().data
+        if not rows:
+            continue
+        tenant = rows[0]
+        ends_str = exp["ends_at"].strftime("%Y-%m-%d")
+
+        supabase.table("tenants").update({"bot_enabled": False}).eq("id", tid).execute()
+
+        try:
+            await app.bot.send_message(
+                chat_id=SUPER_ADMIN_CHAT_ID,
+                text=(
+                    f"🔴 *انتهاء اشتراك وإيقاف البوت:* ⏸️\n\n"
+                    f"المحل: *«{tenant['name']}»*\n"
+                    f"انتهى الاشتراك بتاريخ `{ends_str}` وتم إيقاف الرد الآلي للتاجر تلقائياً.\n\n"
+                    f"أول ما التاجر يدفع ويجدد، اكتب:\n"
+                    f"`/renew {tenant['name']} 1m` أو `3m`"
+                ),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print("Failed to alert admin on expiration:", e)
+
+        if tenant.get("telegram_chat_id"):
+            try:
+                await app.bot.send_message(
+                    chat_id=tenant["telegram_chat_id"],
+                    text=(
+                        f"🔴 *تنبيه: انتهت فترة اشتراك متجرك «{tenant['name']}»!*\n\n"
+                        "تم إيقاف خدمة الرد التلقائي وإدارة المبيعات مؤقتاً.\n"
+                        "يرجى التواصل مع الإدارة وسداد الاشتراك لإعادة تفعيل الخدمة فوراً 🚀"
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                print("Failed to alert tenant on expiration:", e)
 
 
 async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1043,7 +1454,19 @@ def main():
     # لازم على بايثون 3.14 علشان مايحصلش خطأ في الـ event loop
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    async def post_init(application):
+        async def background_checker():
+            while True:
+                await asyncio.sleep(1800)  # فحص كل 30 دقيقة
+                try:
+                    await check_subscriptions_and_notify(application)
+                except Exception as err:
+                    print("Error in subscription background checker:", err)
+
+        asyncio.create_task(background_checker())
+        asyncio.create_task(check_subscriptions_and_notify(application))
+
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("orders", orders_cmd))
@@ -1052,11 +1475,15 @@ def main():
     app.add_handler(CommandHandler("new_tenant", new_tenant_cmd))
     app.add_handler(CommandHandler("link_page", link_page_cmd))
     app.add_handler(CommandHandler("tenants", list_tenants_cmd))
+    app.add_handler(CommandHandler("pause_bot", pause_bot_cmd))
+    app.add_handler(CommandHandler("resume_bot", resume_bot_cmd))
+    app.add_handler(CommandHandler("delete_tenant", delete_tenant_cmd))
+    app.add_handler(CommandHandler("renew", renew_cmd))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    print("بوت التاجر شغال... (Ctrl+C للإيقاف)")
+    print("بوت التاجر شغال... (Ctrl+C للإيقاف)", flush=True)
     app.run_polling()
 
 
