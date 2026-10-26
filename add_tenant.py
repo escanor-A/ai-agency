@@ -7,10 +7,14 @@ from check_stock import supabase
 sys.stdout.reconfigure(encoding="utf-8")
 
 
+import time
+
+
 def add_tenant(name: str, telegram_bot_token: str = None, owner_phone: str = None):
-    """إضافة تاجر جديد في الداتابيز وتوليد كود ربط لتليجرام"""
-    # توليد كود ربط عشوائي سهل القراءة (6 حروف وأرقام)
-    link_code = secrets.token_hex(3).upper()
+    """إضافة تاجر جديد في الداتابيز وتوليد كود ربط قوي لتليجرام (16 حرف وصلاحية 24 ساعة)"""
+    raw_code = secrets.token_hex(8).upper()
+    expiry_ts = int(time.time() + 24 * 3600)
+    link_code = f"{raw_code}_{expiry_ts}"
 
     data = {
         "name": name.strip(),

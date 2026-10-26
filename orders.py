@@ -47,7 +47,7 @@ def load_items(tenant_id, items):
     wanted = {}
     for raw in items:
         sku, _, qty_text = raw.partition(":")
-        sku = sku.strip()
+        sku = sku.strip().upper()
         try:
             qty = int(qty_text.strip() or 1)
         except ValueError:
@@ -169,8 +169,83 @@ def quote_order(tenant_id, items, governorate, promo_code=""):
     }
 
 
-def place_order(tenant_id, customer_name, phone, governorate, address, items):
-    """تسجيل الأوردر فعلياً وخصم المخزون (في خطوة واحدة داخل الداتابيز)"""
+def normalize_channel(ch):
+    """بيوحّد اسم القناة ليتوافق مع قيود قاعدة البيانات (whatsapp, instagram, messenger)"""
+    ch = (ch or "").lower().strip()
+    if "wa" in ch or "whats" in ch:
+        return "whatsapp"
+    if "ig" in ch or "insta" in ch:
+        return "instagram"
+    return "messenger"
+
+
+def get_or_create_customer(tenant_id, channel, channel_user_id, name="", phone=""):
+    """
+    تسجيل أو جلب هوية العميل في جدول customers
+    channel: 'whatsapp' | 'instagram' | 'messenger'
+    channel_user_id: معرّف العميل على المنصة
+    """
+    if not tenant_id or not channel_user_id:
+        return None
+
+    clean_channel = normalize_channel(channel)
+    user_str = str(channel_user_id).strip()
+    clean_phone = normalize_phone(phone) if phone else None
+
+    # البحث عن العميل
+    try:
+        rows = (
+            supabase.table("customers")
+            .select("id,name,phone")
+            .eq("tenant_id", tenant_id)
+            .eq("channel", clean_channel)
+            .eq("channel_user_id", user_str)
+            .execute()
+            .data
+        )
+        if rows:
+            cust = rows[0]
+            updates = {}
+            if name and not cust.get("name"):
+                updates["name"] = name.strip()
+            if clean_phone and not cust.get("phone"):
+                updates["phone"] = clean_phone
+            if updates:
+                supabase.table("customers").update(updates).eq("id", cust["id"]).execute()
+            return cust["id"]
+
+        # إنشاء العميل
+        new_row = {
+            "tenant_id": tenant_id,
+            "channel": clean_channel,
+            "channel_user_id": user_str,
+            "name": name.strip() if name else None,
+            "phone": clean_phone,
+        }
+        res = supabase.table("customers").insert(new_row).execute()
+        if res.data:
+            return res.data[0]["id"]
+    except Exception as e:
+        print("خطأ في تسجيل أو جلب العميل:", e)
+        try:
+            rows = (
+                supabase.table("customers")
+                .select("id")
+                .eq("tenant_id", tenant_id)
+                .eq("channel", clean_channel)
+                .eq("channel_user_id", user_str)
+                .execute()
+                .data
+            )
+            if rows:
+                return rows[0]["id"]
+        except Exception:
+            pass
+    return None
+
+
+def place_order(tenant_id, customer_name, phone, governorate, address, items, channel="messenger", channel_user_id=None, promo_code=""):
+    """تسجيل الأوردر فعلياً وخصم المخزون وربطه بهوية العميل وتطبيق العروض وأكواد الخصم"""
     if len(customer_name.strip()) < 2:
         return {"status": "error", "reason": "الاسم ناقص"}
     clean_phone = normalize_phone(phone)
@@ -179,6 +254,11 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items):
     if len(address.strip()) < 10:
         return {"status": "error", "reason": "العنوان ناقص، محتاج تفاصيل أكتر"}
 
+    # 1. حساب الفاتورة الحقيقية والعروض والشحن وكود الخصم أولاً
+    quote = quote_order(tenant_id, items, governorate, promo_code=promo_code)
+    if quote.get("status") != "ok":
+        return quote
+
     ship = find_shipping(tenant_id, governorate)
     if not ship:
         return {"status": "error", "reason": "unknown_governorate"}
@@ -186,6 +266,13 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items):
     lines, error = load_items(tenant_id, items)
     if error:
         return {"status": "error", "reason": error}
+
+    # تسجيل هوية العميل أولاً
+    cust_uuid = None
+    if channel_user_id:
+        cust_uuid = get_or_create_customer(
+            tenant_id, channel, channel_user_id, name=customer_name.strip(), phone=clean_phone
+        )
 
     try:
         result = supabase.rpc(
@@ -206,6 +293,35 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items):
         return {"status": "error", "reason": "system_error"}
 
     order = {"status": "ok", **result.data}
+
+    # تحديث مصاريف الشحن والإجمالي والعميل في جدول orders
+    # لأن دالة الداتابيز place_order لا تأخذ العروض وأكواد الخصم في الحسبان
+    order_updates = {
+        "shipping_fee": quote["shipping_fee"],
+        "total": quote["total"],
+    }
+    if cust_uuid:
+        order_updates["customer_id"] = cust_uuid
+
+    order_id = order.get("id")
+    order_num = order.get("order_number")
+    if order_id or order_num:
+        try:
+            q = supabase.table("orders").update(order_updates).eq("tenant_id", tenant_id)
+            if order_id:
+                q = q.eq("id", order_id)
+            else:
+                q = q.eq("order_number", order_num)
+            q.execute()
+        except Exception as e:
+            print("خطأ في تحديث بيانات الأوردر وعروض الخصم:", e)
+
+    # تحديث كائن order المرجع ليعكس الخصم والشحن الفعلي
+    order["shipping_fee"] = quote["shipping_fee"]
+    order["total"] = quote["total"]
+    order["discount"] = quote.get("discount", 0.0)
+    order["discount_note"] = quote.get("discount_note", "")
+
     try:
         notify.send_order_notification(
             tenant_id, order, customer_name.strip(), clean_phone,
@@ -236,8 +352,10 @@ def cancel_order(tenant_id, order_number, reason=""):
         return {"status": "error", "reason": f"الأوردر #{order_num} مش موجود"}
 
     order = rows[0]
-    if order["status"] == "cancelled":
-        return {"status": "error", "reason": f"الأوردر #{order_num} ملغي بالفعل"}
+    if order["status"] not in ("new", "confirmed"):
+        if order["status"] == "cancelled":
+            return {"status": "error", "reason": f"الأوردر #{order_num} ملغي بالفعل"}
+        return {"status": "error", "reason": f"لا يمكن إلغاء أوردر حالته {order['status']} (مسموح بالإلغاء فقط في حالة new و confirmed)"}
 
     # 2. هات عناصر الأوردر عشان نرجعها للمخزن
     items = (
@@ -248,7 +366,7 @@ def cancel_order(tenant_id, order_number, reason=""):
         .data
     )
 
-    # 3. رجّع الكميات لحركة المخزون
+    # 3. رجّع الكميات لحركة المخزون مع إضافة variant_id للمرجع لمنع تجاوز الأصناف التالية
     for item in items:
         try:
             supabase.rpc(
@@ -259,7 +377,7 @@ def cancel_order(tenant_id, order_number, reason=""):
                     "p_change": item["qty"],
                     "p_reason": "return",
                     "p_source": "order_cancelled",
-                    "p_ref": f"cancel-order-{order_num}",
+                    "p_ref": f"cancel-order-{order_num}-{item['variant_id']}",
                 },
             ).execute()
         except Exception as e:
@@ -298,8 +416,8 @@ def update_order_shipping(tenant_id, order_number, phone="", address=""):
         return {"status": "error", "reason": f"الأوردر #{order_num} مش موجود"}
 
     order = rows[0]
-    if order["status"] in ("cancelled", "delivered"):
-        return {"status": "error", "reason": f"مستحيل تعديل أوردر حالته {order['status']}"}
+    if order["status"] not in ("new", "confirmed"):
+        return {"status": "error", "reason": f"مستحيل تعديل أوردر حالته {order['status']} (مسموح بالتعديل فقط في حالة new و confirmed)"}
 
     update_data = {}
     changes = []

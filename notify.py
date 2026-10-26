@@ -43,16 +43,24 @@ def send_order_notification(tenant_id, order, customer_name, phone, governorate,
         f"• {l['qty']} × {l['name']} ({l['color']} - {l['size']}): {l['line_total']:.0f} جنيه"
         for l in lines
     )
+    discount_line = ""
+    if order.get("discount"):
+        discount_line = f"🏷️ الخصم: {float(order['discount']):.0f} جنيه ({order.get('discount_note', '')})\n"
+    elif order.get("discount_note"):
+        discount_line = f"🏷️ عرض: {order['discount_note']}\n"
+
     text = (
         f"🛒 أوردر جديد #{order['order_number']}\n\n"
         f"👤 {customer_name}\n"
         f"📞 {phone}\n"
         f"📍 {governorate} - {address}\n\n"
         f"{items}\n"
+        f"{discount_line}"
         f"🚚 الشحن: {float(order['shipping_fee']):.0f} جنيه\n"
         f"💰 الإجمالي: {float(order['total']):.0f} جنيه (الدفع عند الاستلام)"
     )
     return send_telegram(tenant_id, text)
+
 
 
 def send_review_notification(tenant_id, customer_name, feedback, rating=5):

@@ -1,7 +1,13 @@
+import asyncio
+import hashlib
+import hmac
+import json
 import os
+import re
 import sys
+import time
 import httpx
-from fastapi import FastAPI, Request, Response, Query, BackgroundTasks
+from fastapi import FastAPI, Request, Response, Query, BackgroundTasks, HTTPException, status
 from dotenv import load_dotenv
 
 from check_stock import supabase
@@ -12,8 +18,71 @@ load_dotenv()
 
 app = FastAPI(title="AI Agency Omnichannel Webhook Server")
 
-# توكن التحقق السري الخاص بك لربط Meta Webhooks (تقدر تخليه أي كلمة سر تختارها)
+
+from collections import OrderedDict
+
+
+class MessageDeduplicator:
+    """منع تكرار معالجة الرسائل والتعليقات عند إعادة إرسالها من Meta أو الشبكة"""
+    def __init__(self, max_size=10000, ttl_seconds=900):  # 15 دقيقة صلاحية منع التكرار
+        self.seen = OrderedDict()  # id -> timestamp
+        self.max_size = max_size
+        self.ttl = ttl_seconds
+
+    def is_duplicate(self, msg_id: str) -> bool:
+        if not msg_id:
+            return False
+        now = time.time()
+        if msg_id in self.seen:
+            ts = self.seen[msg_id]
+            if now - ts < self.ttl:
+                return True
+            del self.seen[msg_id]
+
+        while len(self.seen) >= self.max_size:
+            self.seen.popitem(last=False)
+
+        self.seen[msg_id] = now
+        return False
+
+
+DEDUPLICATOR = MessageDeduplicator()
+
+# توكن التحقق السري ومفاتيح التوقيع الخاصة بالـ Webhooks
 META_VERIFY_TOKEN = os.environ.get("META_VERIFY_TOKEN", "my_secret_agency_token_2026")
+META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
+TIKTOK_APP_SECRET = os.environ.get("TIKTOK_APP_SECRET", "")
+
+
+def verify_meta_signature(raw_body: bytes, signature_header: str) -> bool:
+    """التحقق من توقيع X-Hub-Signature-256 لمنع استهلاك الذكاء الاصطناعي بطلبات مزيفة"""
+    if not META_APP_SECRET:
+        # لو غير معرّف في بيئة التطوير المحلية
+        return True
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    expected_hash = signature_header.split("sha256=")[1].strip()
+    computed_hash = hmac.new(
+        key=META_APP_SECRET.encode("utf-8"),
+        msg=raw_body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(computed_hash, expected_hash)
+
+
+def verify_tiktok_signature(raw_body: bytes, signature_header: str) -> bool:
+    """التحقق من توقيع تيك توك باستخدام TIKTOK_APP_SECRET"""
+    if not TIKTOK_APP_SECRET:
+        return True
+    if not signature_header:
+        return False
+    clean_sig = signature_header.replace("sha256=", "").strip()
+    computed_hash = hmac.new(
+        key=TIKTOK_APP_SECRET.encode("utf-8"),
+        msg=raw_body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(computed_hash, clean_sig)
 
 
 @app.get("/")
@@ -112,13 +181,24 @@ async def process_meta_event(data: dict):
         # أ) رسائل فيسبوك ماسنجر & إنستجرام
         messaging_list = entry.get("messaging", [])
         for event in messaging_list:
-            sender_id = event.get("sender", {}).get("id")
-            recipient_id = event.get("recipient", {}).get("id")  # ده الـ page_id أو instagram_id
+            sender_id = str(event.get("sender", {}).get("id") or "").strip()
+            recipient_id = str(event.get("recipient", {}).get("id") or "").strip()  # ده الـ page_id أو instagram_id
             message = event.get("message", {})
             text = message.get("text")
+            mid = message.get("mid")
+
+            # منع تكرار الرسائل المكررة من Meta (Deduplication)
+            if mid and DEDUPLICATOR.is_duplicate(f"meta_msg:{mid}"):
+                print(f"⏩ تم تجاهل رسالة مكررة من Meta (mid: {mid})")
+                continue
 
             # تجاهل الرسائل اللي البوت باعتها بنفسه (echo)
             if not text or message.get("is_echo"):
+                continue
+
+            # التحقق الصارم من أن recipient_id أرقام فقط لمنع حقن فلاتر PostgREST
+            if not recipient_id or not recipient_id.isdigit():
+                print(f"⚠️ تم تجاهل حدث بسبب recipient_id غير صالح (يجب أن يكون أرقام فقط): {recipient_id}")
                 continue
 
             # البحث عن التاجر صاحب هذه الصفحة أو هذا الحساب
@@ -141,8 +221,9 @@ async def process_meta_event(data: dict):
             page_token = tenant.get("facebook_page_token", "")
             print(f"📩 رسالة جديدة للتاجر «{tenant['name']}» من العميل {sender_id}: {text}")
 
-            # تشغيل الذكاء الاصطناعي الخاص بالتاجر ده
-            reply = handle_customer_message(tenant["id"], sender_id, text)
+            # تشغيل الذكاء الاصطناعي بشكل غير معطل للـ Event Loop (non-blocking)
+            meta_channel = "instagram" if str(tenant.get("instagram_account_id") or "") == str(recipient_id) else "messenger"
+            reply = await asyncio.to_thread(handle_customer_message, tenant["id"], sender_id, text, channel=meta_channel)
             print(f"🤖 رد البوت: {reply}")
 
             # إرسال الرد للعميل
@@ -164,9 +245,18 @@ async def process_meta_event(data: dict):
                 sender_id = value.get("from", {}).get("id")
                 sender_name = value.get("from", {}).get("name", "يا فندم")
                 comment_text = value.get("message", "")
-                page_id = entry.get("id")
+                page_id = str(entry.get("id") or "").strip()
+
+                if not page_id or not page_id.isdigit():
+                    print(f"⚠️ تم تجاهل تعليق فيسبوك بسبب page_id غير صالح: {page_id}")
+                    continue
 
                 if sender_id == page_id or not comment_text:
+                    continue
+
+                # منع تكرار الرد على نفس تعليق فيسبوك
+                if comment_id and DEDUPLICATOR.is_duplicate(f"fb_comment:{comment_id}"):
+                    print(f"⏩ تم تجاهل تعليق فيسبوك مكرر (id: {comment_id})")
                     continue
 
                 rows = (
@@ -184,10 +274,12 @@ async def process_meta_event(data: dict):
                     page_token = tenant.get("facebook_page_token", "")
                     print(f"💬 تعليق على بوست «{tenant['name']}» من {sender_name}: {comment_text}")
 
-                    # الـ AI بيولّد الرد الكامل
-                    full_reply = handle_customer_message(
+                    # الـ AI بيولّد الرد بشكل غير معطل للـ Event Loop
+                    full_reply = await asyncio.to_thread(
+                        handle_customer_message,
                         tenant["id"], sender_id,
-                        f"أنا علقت على بوست وكتبت: {comment_text}"
+                        f"أنا علقت على بوست وكتبت: {comment_text}",
+                        channel="messenger"
                     )
 
                     if page_token:
@@ -207,9 +299,18 @@ async def process_meta_event(data: dict):
                 sender_name = value.get("from", {}).get("name", "يا فندم")
                 comment_text = value.get("text", "")
                 ig_media_id = value.get("media", {}).get("id", "")
-                page_id = entry.get("id")
+                page_id = str(entry.get("id") or "").strip()
 
                 if not comment_text or not comment_id:
+                    continue
+
+                # منع تكرار الرد على نفس تعليق إنستجرام
+                if comment_id and DEDUPLICATOR.is_duplicate(f"ig_comment:{comment_id}"):
+                    print(f"⏩ تم تجاهل كومنت إنستجرام مكرر (id: {comment_id})")
+                    continue
+
+                if not page_id or not page_id.isdigit():
+                    print(f"⚠️ تم تجاهل تعليق إنستجرام بسبب page_id غير صالح: {page_id}")
                     continue
 
                 rows = (
@@ -227,9 +328,12 @@ async def process_meta_event(data: dict):
                     page_token = tenant.get("facebook_page_token", "")
                     print(f"📸 كومنت إنستجرام على «{tenant['name']}» من {sender_name}: {comment_text}")
 
-                    full_reply = handle_customer_message(
+                    # الـ AI بيولّد الرد بشكل غير معطل للـ Event Loop
+                    full_reply = await asyncio.to_thread(
+                        handle_customer_message,
                         tenant["id"], sender_id,
-                        f"علّقت على بوست وكتبت: {comment_text}"
+                        f"علّقت على بوست وكتبت: {comment_text}",
+                        channel="instagram"
                     )
 
                     if page_token:
@@ -242,12 +346,21 @@ async def process_meta_event(data: dict):
 
             # 2. رسائل واتساب
             elif field == "messages":
-                phone_number_id = value.get("metadata", {}).get("phone_number_id")
+                phone_number_id = str(value.get("metadata", {}).get("phone_number_id") or "").strip()
+                if not phone_number_id or not phone_number_id.isdigit():
+                    print(f"⚠️ تم تجاهل رسالة واتساب بسبب phone_number_id غير صالح: {phone_number_id}")
+                    continue
                 messages = value.get("messages", [])
                 for msg in messages:
                     if msg.get("type") == "text":
+                        wa_mid = msg.get("id")
                         wa_from = msg.get("from")
                         wa_text = msg.get("text", {}).get("body")
+
+                        # منع تكرار معالجة رسائل واتساب المكررة
+                        if wa_mid and DEDUPLICATOR.is_duplicate(f"wa_msg:{wa_mid}"):
+                            print(f"⏩ تم تجاهل رسالة واتساب مكررة (id: {wa_mid})")
+                            continue
 
                         rows = (
                             supabase.table("tenants")
@@ -262,7 +375,8 @@ async def process_meta_event(data: dict):
                                 print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل رسالة واتساب")
                                 continue
                             wa_token = tenant.get("whatsapp_access_token", "")
-                            reply = handle_customer_message(tenant["id"], wa_from, wa_text)
+                            # تشغيل الـ AI بشكل غير معطل للـ Event Loop
+                            reply = await asyncio.to_thread(handle_customer_message, tenant["id"], wa_from, wa_text, channel="whatsapp")
                             print(f"🟢 واتساب «{tenant['name']}» -> رد للعميل {wa_from}: {reply}")
                             if wa_token and phone_number_id:
                                 await send_whatsapp_reply(wa_from, reply, phone_number_id, wa_token)
@@ -273,8 +387,17 @@ async def process_meta_event(data: dict):
 
 @app.post("/webhook/meta")
 async def receive_meta_webhook(request: Request, background_tasks: BackgroundTasks):
-    """استقبال رسائل فيسبوك، إنستجرام، واتساب في الخلفية"""
-    payload = await request.json()
+    """استقبال رسائل فيسبوك، إنستجرام، واتساب في الخلفية بعد فحص توقيع X-Hub-Signature-256"""
+    raw_body = await request.body()
+    sig = request.headers.get("X-Hub-Signature-256")
+    if not verify_meta_signature(raw_body, sig):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid X-Hub-Signature-256")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
+
     background_tasks.add_task(process_meta_event, payload)
     return {"status": "received"}
 
@@ -343,9 +466,9 @@ async def process_tiktok_event(data: dict):
         user_id     = data.get("user_id", "")
         display_name = data.get("display_name", "يا فندم")
         comment_text = data.get("text", "")
-        account_id  = data.get("owner_id", "")   # معرف صاحب الفيديو (التاجر)
+        account_id  = str(data.get("owner_id") or "").strip()   # معرف صاحب الفيديو (التاجر)
 
-        if not comment_text:
+        if not comment_text or not account_id or not re.match(r"^[a-zA-Z0-9_\-]+$", account_id):
             return
 
         # البحث عن التاجر بـ tiktok_account_id
@@ -365,13 +488,20 @@ async def process_tiktok_event(data: dict):
             print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل كومنت تيك توك")
             return
 
+        # منع تكرار كومنت تيك توك
+        if comment_id and DEDUPLICATOR.is_duplicate(f"tiktok_comment:{comment_id}"):
+            print(f"⏩ تم تجاهل كومنت تيك توك مكرر (id: {comment_id})")
+            return
+
         tiktok_token = tenant.get("tiktok_access_token", "")
         print(f"🎵 كومنت على «{tenant['name']}» من {display_name}: {comment_text}")
 
-        # الـ AI بيولّد الرد
-        full_reply = handle_customer_message(
+        # الـ AI بيولّد الرد بشكل غير معطل للـ Event Loop
+        full_reply = await asyncio.to_thread(
+            handle_customer_message,
             tenant["id"], user_id,
-            f"علّقت على فيديو تيك توك وكتبت: {comment_text}"
+            f"علّقت على فيديو تيك توك وكتبت: {comment_text}",
+            channel="messenger"
         )
 
         if tiktok_token and video_id and comment_id:
@@ -384,9 +514,15 @@ async def process_tiktok_event(data: dict):
         sender_id    = data.get("sender_id", "")
         display_name = data.get("sender_display_name", "يا فندم")
         message_text = data.get("message", {}).get("text", "")
-        account_id   = data.get("receiver_id", "")   # حساب التاجر المستقبِل
+        msg_id       = data.get("message_id") or data.get("id", "")
+        account_id   = str(data.get("receiver_id") or "").strip()   # حساب التاجر المستقبِل
 
-        if not message_text:
+        if not message_text or not account_id or not re.match(r"^[a-zA-Z0-9_\-]+$", account_id):
+            return
+
+        # منع تكرار رسالة تيك توك DM
+        if msg_id and DEDUPLICATOR.is_duplicate(f"tiktok_dm:{msg_id}"):
+            print(f"⏩ تم تجاهل رسالة DM تيك توك مكررة (id: {msg_id})")
             return
 
         rows = (
@@ -408,7 +544,7 @@ async def process_tiktok_event(data: dict):
         tiktok_token = tenant.get("tiktok_access_token", "")
         print(f"🎵 DM تيك توك لـ «{tenant['name']}» من {display_name}: {message_text}")
 
-        reply = handle_customer_message(tenant["id"], sender_id, message_text)
+        reply = await asyncio.to_thread(handle_customer_message, tenant["id"], sender_id, message_text, channel="messenger")
 
         if tiktok_token:
             await send_tiktok_dm(sender_id, reply, tiktok_token)
@@ -430,12 +566,26 @@ def verify_tiktok_webhook(
 
 @app.post("/webhook/tiktok")
 async def receive_tiktok_webhook(request: Request, background_tasks: BackgroundTasks):
-    """استقبال أحداث تيك توك (كومنتات + DMs) في الخلفية"""
-    payload = await request.json()
+    """استقبال أحداث تيك توك في الخلفية بعد التحقق من التوقيع"""
+    raw_body = await request.body()
+    sig = (
+        request.headers.get("TikTok-Signature")
+        or request.headers.get("X-TikTok-Signature")
+        or request.headers.get("X-Signature")
+    )
+    if not verify_tiktok_signature(raw_body, sig):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid TikTok webhook signature")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
+
     background_tasks.add_task(process_tiktok_event, payload)
     return {"status": "received"}
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

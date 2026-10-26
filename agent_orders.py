@@ -67,16 +67,17 @@ def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
     )
 
 
-def quote_order(items: list[str], governorate: str) -> dict:
-    """بتحسب سعر الأوردر والشحن والإجمالي من غير ما تسجّل حاجة.
+def quote_order(items: list[str], governorate: str, promo_code: str = "") -> dict:
+    """بتحسب سعر الأوردر والشحن والإجمالي من غير ما تسجّل حاجة، مع تطبيق كود الخصم وعروض الشحن المجاني.
     لازم تناديها قبل ما تعرض الملخص على العميل.
 
     Args:
         items: قايمة الأصناف، كل عنصر نص بالشكل 'كود_الصنف:الكمية' مثلاً ['TS-BLK-L:2']. الكود (sku) بييجي من check_stock.
         governorate: اسم المحافظة بالعربي، مثلاً: القاهرة
+        promo_code: كود الخصم لو العميل ذكره (اختياري)
     """
-    print(f"   [🧮 حساب الأوردر: {items} / {governorate}]")
-    return orders.quote_order(TENANT_ID, items, governorate)
+    print(f"   [🧮 حساب الأوردر: {items} / {governorate} / {promo_code}]")
+    return orders.quote_order(TENANT_ID, items, governorate, promo_code=promo_code)
 
 
 def place_order(
@@ -85,6 +86,7 @@ def place_order(
     governorate: str,
     address: str,
     items: list[str],
+    promo_code: str = "",
 ) -> dict:
     """بتسجّل الأوردر فعلياً وبتخصم من المخزن. ماتناديهاش غير بعد ما العميل يأكد الملخص صراحة.
 
@@ -94,10 +96,11 @@ def place_order(
         governorate: اسم المحافظة بالعربي
         address: العنوان بالتفصيل (الشارع، المنطقة، علامة مميزة)
         items: قايمة الأصناف بالشكل 'كود_الصنف:الكمية' مثلاً ['TS-BLK-L:2']
+        promo_code: كود الخصم المطبق إن وجد (اختياري)
     """
     print(f"   [📦 تسجيل أوردر: {customer_name} / {governorate} / {items}]")
     return orders.place_order(
-        TENANT_ID, customer_name, phone, governorate, address, items
+        TENANT_ID, customer_name, phone, governorate, address, items, promo_code=promo_code
     )
 
 

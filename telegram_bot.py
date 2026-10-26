@@ -20,7 +20,7 @@ from telegram.ext import (
 )
 
 from check_stock import check_stock as db_check_stock
-from check_stock import get_demo_tenant_id, supabase
+from check_stock import supabase
 from orders import cancel_order, update_order_shipping, update_order_status
 from subscriptions import (
     add_or_renew_subscription,
@@ -40,9 +40,9 @@ client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 MODEL = "gemini-3.5-flash-lite"
  # غيّره لو الاسم اتغير في Google AI Studio
 
-# البوت ده بتاع تاجر واحد (بوت لكل تاجر). للتجربة: التاجر التجريبي.
-BOT_TENANT_ID = get_demo_tenant_id()
-SUPER_ADMIN_CHAT_ID = int(os.environ.get("SUPER_ADMIN_CHAT_ID", "1464362905"))
+if "SUPER_ADMIN_CHAT_ID" not in os.environ or not os.environ["SUPER_ADMIN_CHAT_ID"].strip():
+    raise ValueError("⚠️ المتغير SUPER_ADMIN_CHAT_ID إجباري ويجب ضبطه في ملف .env لحماية النظام!")
+SUPER_ADMIN_CHAT_ID = int(os.environ["SUPER_ADMIN_CHAT_ID"].strip())
 
 SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مصري، بتتكلم معاه على تليجرام.
 أسلوبك: لهجة مصرية بسيطة، ردود قصيرة جداً.
@@ -79,25 +79,78 @@ def get_owner_tenant(chat_id):
     return rows[0] if rows else None
 
 
+# سجل مؤقت لمحاولات الربط لحظر التخمين (Rate Limiting)
+# {chat_id: {"failures": int, "blocked_until": float}}
+LINK_CODE_ATTEMPTS = {}
+MAX_FAILED_LINK_ATTEMPTS = 5
+LINK_LOCKOUT_SECONDS = 15 * 60  # 15 دقيقة حظر بعد 5 محاولات فاشلة
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     chat_id = update.effective_chat.id
     code = context.args[0].strip().upper() if context.args else None
 
     if code:
-        # البحث عن الكود في كل التجار
+        now = time.time()
+        rate_info = LINK_CODE_ATTEMPTS.setdefault(chat_id, {"failures": 0, "blocked_until": 0})
+        
+        # 1. فحص إذا كان المستخدم محظوراً مؤقتاً بسبب تكرار المحاولات
+        if rate_info["blocked_until"] > now:
+            remaining_mins = int((rate_info["blocked_until"] - now) // 60) + 1
+            await msg.reply_text(f"⛔ تم حظر المحاولات مؤقتاً لتكرار إدخال أكواد خاطئة. جرّب بعد {remaining_mins} دقيقة.")
+            return
+
+        def handle_failure(reason_text="الكود غلط أو اتستخدم قبل كده."):
+            rate_info["failures"] += 1
+            if rate_info["failures"] >= MAX_FAILED_LINK_ATTEMPTS:
+                rate_info["blocked_until"] = now + LINK_LOCKOUT_SECONDS
+                rate_info["failures"] = 0
+                return "⛔ تم إدخال كود غير صالح 5 مرات. تم حظر محاولاتك لمدة 15 دقيقة لحماية الحسابات."
+            else:
+                remaining = MAX_FAILED_LINK_ATTEMPTS - rate_info["failures"]
+                return f"{reason_text}\nباقي لك {remaining} محاولات قبل الحظر المؤقت."
+
+        # 2. البحث عن الكود في كل التجار
         rows = (
             supabase.table("tenants")
-            .select("id,name")
-            .eq("telegram_link_code", code)
+            .select("id,name,telegram_link_code,created_at")
+            .or_(f"telegram_link_code.eq.{code},telegram_link_code.ilike.{code}_%")
             .execute()
             .data
         )
         if not rows:
-            await msg.reply_text("الكود غلط أو اتستخدم قبل كده.")
+            await msg.reply_text(handle_failure())
             return
         
         target_tenant = rows[0]
+        stored_code = target_tenant.get("telegram_link_code") or ""
+
+        # 3. فحص صلاحية الكود (24 ساعة)
+        is_expired = False
+        if "_" in stored_code:
+            _, _, expiry_str = stored_code.rpartition("_")
+            try:
+                expiry_ts = float(expiry_str)
+                if now > expiry_ts:
+                    is_expired = True
+            except ValueError:
+                pass
+        elif target_tenant.get("created_at"):
+            try:
+                created_dt = datetime.fromisoformat(target_tenant["created_at"].replace("Z", "+00:00"))
+                if datetime.now(timezone.utc) - created_dt > timedelta(hours=24):
+                    is_expired = True
+            except Exception:
+                pass
+
+        if is_expired:
+            supabase.table("tenants").update({"telegram_link_code": None}).eq("id", target_tenant["id"]).execute()
+            await msg.reply_text(handle_failure("⛔ كود الربط انتهت صلاحيته (الصلاحية 24 ساعة فقط). اطلب من الأدمن توليد كود جديد."))
+            return
+
+        # الربط ناجح: مسح كود الربط وتصفير عداد المحاولات الفاشلة
+        LINK_CODE_ATTEMPTS.pop(chat_id, None)
         supabase.table("tenants").update(
             {"telegram_chat_id": chat_id, "telegram_link_code": None}
         ).eq("id", target_tenant["id"]).execute()
@@ -158,7 +211,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not get_owner_tenant(update.effective_chat.id):
+    tenant = get_owner_tenant(update.effective_chat.id)
+    if not tenant:
         await update.message.reply_text(NOT_OWNER_MESSAGE)
         return
     if not context.args:
@@ -166,7 +220,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     order_num = context.args[0].strip().replace("#", "")
-    res = cancel_order(BOT_TENANT_ID, order_num)
+    res = cancel_order(tenant["id"], order_num)
     if res["status"] == "ok":
         await update.message.reply_text(f"تم إلغاء الأوردر #{order_num} ورجعت الكميات للمخزن بنجاح ✅")
     else:
@@ -225,7 +279,9 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     import secrets
-    link_code = secrets.token_hex(3).upper()
+    raw_code = secrets.token_hex(8).upper()  # 16 حرف عشوائي آمن
+    expiry_ts = int(time.time() + 24 * 3600)  # صلاحية 24 ساعة
+    link_code = f"{raw_code}_{expiry_ts}"
 
     # فحص إذا كان المتجر مسجل بالفعل لمنع التكرار
     try:
@@ -246,9 +302,8 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             else:
-                code = ex.get("telegram_link_code") or link_code
-                if not ex.get("telegram_link_code"):
-                    supabase.table("tenants").update({"telegram_link_code": link_code}).eq("id", ex["id"]).execute()
+                code = link_code
+                supabase.table("tenants").update({"telegram_link_code": link_code}).eq("id", ex["id"]).execute()
                 await msg.reply_text(
                     f"ℹ️ *المحل «{name}» متسجل مسبقاً وبانتظار التفعيل:*\n\n"
                     f"🔑 *كود الربط:* `{code}`\n\n"
@@ -773,13 +828,14 @@ async def check_subscriptions_and_notify(app):
 
 
 async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not get_owner_tenant(update.effective_chat.id):
+    tenant = get_owner_tenant(update.effective_chat.id)
+    if not tenant:
         await update.message.reply_text(NOT_OWNER_MESSAGE)
         return
     rows = (
         supabase.table("orders")
         .select("order_number,customer_name,governorate,total,status")
-        .eq("tenant_id", BOT_TENANT_ID)
+        .eq("tenant_id", tenant["id"])
         .order("created_at", desc=True)
         .limit(5)
         .execute()
@@ -796,14 +852,15 @@ async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not get_owner_tenant(update.effective_chat.id):
+    tenant = get_owner_tenant(update.effective_chat.id)
+    if not tenant:
         await update.message.reply_text(NOT_OWNER_MESSAGE)
         return
     since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     rows = (
         supabase.table("orders")
         .select("total,status")
-        .eq("tenant_id", BOT_TENANT_ID)
+        .eq("tenant_id", tenant["id"])
         .gte("created_at", since)
         .execute()
         .data
@@ -817,19 +874,33 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # جلسات محادثات التليجرام لحفظ الذاكرة وسياق الكلام
 MERCHANT_SESSIONS = {}
+MAX_MERCHANT_SESSIONS = 200
+MERCHANT_SESSION_TTL = 4 * 3600  # 4 ساعات صلاحية الجلسة بالرام
 
 
 def run_llm(chat_id: int, content, tools: list):
-    """بيشغّل الموديل مع الأدوات وسياق المحادثة المحفوظ (يدعم النص والصوت)"""
+    """بيشغّل الموديل مع الأدوات وسياق المحادثة المحفوظ مع إدارة الذاكرة ومنع تسريب الرام"""
+    now = time.time()
     config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=tools)
-    
-    # لو الجلسة مش موجودة بننشئها
-    if chat_id not in MERCHANT_SESSIONS:
-        MERCHANT_SESSIONS[chat_id] = client.chats.create(model=MODEL, config=config)
-    else:
-        MERCHANT_SESSIONS[chat_id]._config = config
 
-    chat = MERCHANT_SESSIONS[chat_id]
+    # تنظيف الجلسات القديمة لمنع تضخم الرام (LRU / TTL)
+    if len(MERCHANT_SESSIONS) > MAX_MERCHANT_SESSIONS:
+        expired = [cid for cid, sess in MERCHANT_SESSIONS.items() if now - sess.get("last_active", 0) > MERCHANT_SESSION_TTL]
+        for cid in expired:
+            MERCHANT_SESSIONS.pop(cid, None)
+        if len(MERCHANT_SESSIONS) > MAX_MERCHANT_SESSIONS:
+            sorted_s = sorted(MERCHANT_SESSIONS.keys(), key=lambda k: MERCHANT_SESSIONS[k].get("last_active", 0))
+            for k in sorted_s[:MAX_MERCHANT_SESSIONS // 5]:
+                MERCHANT_SESSIONS.pop(k, None)
+
+    if chat_id not in MERCHANT_SESSIONS:
+        chat = client.chats.create(model=MODEL, config=config)
+        MERCHANT_SESSIONS[chat_id] = {"chat": chat, "last_active": now}
+    else:
+        MERCHANT_SESSIONS[chat_id]["last_active"] = now
+        chat = MERCHANT_SESSIONS[chat_id]["chat"]
+        chat._config = config
+
     for attempt in range(3):
         try:
             return chat.send_message(content).text or "تمام، أقدر أساعدك في إيه تاني؟"
@@ -844,6 +915,48 @@ def run_llm(chat_id: int, content, tools: list):
             print("خطأ من الموديل:", type(e).__name__, msg[:300])
             MERCHANT_SESSIONS.pop(chat_id, None)
             return "حصلت مشكلة مؤقتة، جرّب تاني بعد شوية."
+
+MAX_PENDING_OPERATIONS = 500
+PENDING_OPERATION_TTL = 7200  # ساعتان كحد أقصى لتأكيد العملية في الرام
+
+
+def _get_bot_data(context):
+    if hasattr(context, "application") and hasattr(context.application, "bot_data"):
+        return context.application.bot_data
+    if hasattr(context, "bot_data"):
+        return context.bot_data
+    if isinstance(context, dict):
+        return context
+    return {}
+
+
+def store_pending_operation(context, pid: str, data: dict):
+    """حفظ عملية معلقة في الذاكرة مع وقت إنشاء وتنظيف العمليات القديمة لمنع تضخم الرام"""
+    now = time.time()
+    bot_data = _get_bot_data(context)
+    pending = bot_data.setdefault("pending", {})
+    if len(pending) > MAX_PENDING_OPERATIONS:
+        expired = [k for k, v in pending.items() if now - v.get("created_at", 0) > PENDING_OPERATION_TTL]
+        for k in expired:
+            pending.pop(k, None)
+        if len(pending) > MAX_PENDING_OPERATIONS:
+            sorted_keys = sorted(pending.keys(), key=lambda k: pending[k].get("created_at", 0))
+            for k in sorted_keys[:MAX_PENDING_OPERATIONS // 5]:
+                pending.pop(k, None)
+    data["created_at"] = now
+    pending[pid] = data
+
+
+def pop_pending_operation(context, pid: str) -> dict:
+    """استرجاع العملية المعلقة وحذفها مع فحص انتهاء صلاحيتها (ساعتان)"""
+    bot_data = _get_bot_data(context)
+    pending = bot_data.get("pending", {}).pop(pid, None)
+    if not pending:
+        return None
+    if time.time() - pending.get("created_at", 0) > PENDING_OPERATION_TTL:
+        return None
+    return pending
+
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -990,11 +1103,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     pid = uuid.uuid4().hex[:12]
-    context.application.bot_data.setdefault("pending", {})[pid] = {
+    store_pending_operation(context, pid, {
         "chat_id": chat_id,
         "tenant_id": tenant_id,
         "items": proposals,
-    }
+    })
     kinds = {"sale": "خصم (بيع من المحل)", "restock": "إضافة بضاعة", "return": "مرتجع"}
     
     summary_lines = []
@@ -1138,11 +1251,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     pid = uuid.uuid4().hex[:12]
-    context.application.bot_data.setdefault("pending", {})[pid] = {
+    store_pending_operation(context, pid, {
         "chat_id": chat_id,
         "tenant_id": tenant_id,
         "items": proposals,
-    }
+    })
     kinds = {"sale": "خصم (بيع من المحل)", "restock": "إضافة بضاعة", "return": "مرتجع"}
     summary_lines = []
     for p in proposals:
@@ -1176,13 +1289,14 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action, _, pid = query.data.partition(":")
     chat_id = query.message.chat.id
 
-    # pop = العملية تتنفذ مرة واحدة بس حتى لو الزرار اتداس مرتين
-    pending = context.application.bot_data.get("pending", {}).pop(pid, None)
-    if not pending or pending["chat_id"] != chat_id or not get_owner_tenant(chat_id):
-        await query.edit_message_text("العملية دي انتهت أو اتنفذت قبل كده.")
+    tenant = get_owner_tenant(chat_id)
+    # pop = العملية تتنفذ مرة واحدة بس حتى لو الزرار اتداس مرتين، مع التحقق من انتهاء الصلاحية
+    pending = pop_pending_operation(context, pid)
+    if not pending or pending["chat_id"] != chat_id or not tenant:
+        await query.edit_message_text("العملية دي انتهت صلاحيتها أو اتنفذت قبل كده.")
         return
 
-    tenant_id = pending.get("tenant_id", BOT_TENANT_ID)
+    tenant_id = pending.get("tenant_id") or tenant["id"]
 
     if action == "no":
         await query.edit_message_text("اتلغت ❌")
@@ -1423,11 +1537,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # عرض ملخص للتأكيد
     pid = uuid.uuid4().hex[:12]
-    context.application.bot_data.setdefault("pending", {})[pid] = {
+    store_pending_operation(context, pid, {
         "chat_id": chat_id,
         "tenant_id": tenant["id"],
         "items": rows_parsed,
-    }
+    })
 
     preview_lines = [f"📊 *لقيت {len(rows_parsed)} صنف في الشيت:*\n"]
     for p in rows_parsed[:15]:  # بنعرض أول 15 بس
