@@ -211,6 +211,156 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(f"❌ حدث خطأ: {e}")
 
 
+async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    أمر خاص بالـ Super Admin لربط حسابات السوشيال ميديا بتاجر معين.
+    الاستخدام:
+      /link_page <tenant_id> fb=<page_id> token=<access_token>
+      /link_page <tenant_id> ig=<instagram_account_id>
+      /link_page <tenant_id> wa=<whatsapp_phone_number_id> wa_token=<token>
+      /link_page <tenant_id> fb=<page_id> ig=<ig_id> wa=<wa_id>
+    مثال:
+      /link_page 3 fb=112233445566 token=EAABxx...
+    """
+    chat_id = update.effective_chat.id
+    if chat_id != SUPER_ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
+        return
+
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "📋 *طريقة استخدام /link_page:*\n\n"
+            "`/link_page <tenant_id> fb=<page_id>`\n"
+            "`/link_page <tenant_id> ig=<instagram_id>`\n"
+            "`/link_page <tenant_id> wa=<whatsapp_phone_number_id>`\n"
+            "`/link_page <tenant_id> tiktok=<tiktok_account_id>`\n"
+            "`/link_page <tenant_id> token=<fb_page_token>`\n"
+            "`/link_page <tenant_id> wa_token=<wa_access_token>`\n"
+            "`/link_page <tenant_id> tt_token=<tiktok_access_token>`\n\n"
+            "ممكن تجمعهم في أمر واحد:\n"
+            "`/link_page 3 fb=112233 ig=998877 wa=556644 tiktok=778899 token=EAABxx... tt_token=TKxx...`\n\n"
+            "📌 *تعرف الـ tenant_id ازاي?*\n"
+            "ابعت: `/tenants` تشوف كل التجار وأرقامهم.",
+            parse_mode="Markdown"
+        )
+        return
+
+    tenant_id_str = context.args[0].strip()
+
+    # التحقق من وجود التاجر
+    try:
+        rows = (
+            supabase.table("tenants")
+            .select("id,name")
+            .eq("id", tenant_id_str)
+            .execute()
+            .data
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ في الاتصال بقاعدة البيانات: {e}")
+        return
+
+    if not rows:
+        await update.message.reply_text(f"❌ مفيش تاجر بالـ ID: `{tenant_id_str}`\nاستخدم /tenants تشوف الأرقام الصح.", parse_mode="Markdown")
+        return
+
+    tenant = rows[0]
+    updates = {}
+
+    # تحليل المعاملات
+    for arg in context.args[1:]:
+        if "=" not in arg:
+            continue
+        key, _, val = arg.partition("=")
+        key = key.lower().strip()
+        val = val.strip()
+        if not val:
+            continue
+        if key == "fb":
+            updates["facebook_page_id"] = val
+        elif key == "ig":
+            updates["instagram_account_id"] = val
+        elif key == "wa":
+            updates["whatsapp_phone_number_id"] = val
+        elif key == "token":
+            updates["facebook_page_token"] = val
+        elif key == "wa_token":
+            updates["whatsapp_access_token"] = val
+        elif key == "tiktok":
+            updates["tiktok_account_id"] = val
+        elif key == "tt_token":
+            updates["tiktok_access_token"] = val
+
+    if not updates:
+        await update.message.reply_text("⚠️ مش فاهم أي معاملات! استخدم fb= أو ig= أو wa= أو token=")
+        return
+
+    try:
+        supabase.table("tenants").update(updates).eq("id", tenant_id_str).execute()
+    except Exception as e:
+        await update.message.reply_text(f"❌ فشل التحديث: {e}")
+        return
+
+    # بناء رسالة التأكيد
+    lines = [f"✅ *تم ربط حسابات «{tenant['name']}» بنجاح!*\n"]
+    field_names = {
+        "facebook_page_id": "📘 فيسبوك Page ID",
+        "instagram_account_id": "📸 إنستجرام Account ID",
+        "whatsapp_phone_number_id": "🟢 واتساب Phone Number ID",
+        "tiktok_account_id": "🎵 تيك توك Account ID",
+        "facebook_page_token": "🔑 Facebook Page Token",
+        "whatsapp_access_token": "🔑 WhatsApp Access Token",
+        "tiktok_access_token": "🔑 TikTok Access Token",
+    }
+    for field, label in field_names.items():
+        if field in updates:
+            val = updates[field]
+            # إخفاء معظم التوكن للأمان
+            if "token" in field.lower() and len(val) > 10:
+                display = val[:6] + "..." + val[-4:]
+            else:
+                display = val
+            lines.append(f"{label}: `{display}`")
+
+    lines.append(
+        f"\n🔗 *دلوقتي أي رسالة جاية للـ Page/Account ده هتروح لـ AI بتاع «{tenant['name']}» تلقائياً!*"
+    )
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر للـ Super Admin يشوف كل التجار وأرقامهم."""
+    chat_id = update.effective_chat.id
+    if chat_id != SUPER_ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
+        return
+
+    rows = (
+        supabase.table("tenants")
+        .select("id,name,facebook_page_id,instagram_account_id,whatsapp_phone_number_id,tiktok_account_id,telegram_chat_id")
+        .order("id")
+        .execute()
+        .data
+    )
+    if not rows:
+        await update.message.reply_text("مفيش تجار مسجلين لحد دلوقتي.")
+        return
+
+    lines = ["📋 *التجار المسجلين:*\n"]
+    for t in rows:
+        fb = f"📘 {t['facebook_page_id']}" if t.get("facebook_page_id") else "📘 ❌"
+        ig = f"📸 {t['instagram_account_id']}" if t.get("instagram_account_id") else "📸 ❌"
+        wa = f"🟢 {t['whatsapp_phone_number_id']}" if t.get("whatsapp_phone_number_id") else "🟢 ❌"
+        tt = f"🎵 {t['tiktok_account_id']}" if t.get("tiktok_account_id") else "🎵 ❌"
+        tg = f"✈️ مربوط" if t.get("telegram_chat_id") else "✈️ ❌"
+        lines.append(
+            f"*{t['id']}.* {t['name']}\n"
+            f"   {fb} | {ig} | {wa} | {tt} | {tg}"
+        )
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not get_owner_tenant(update.effective_chat.id):
         await update.message.reply_text(NOT_OWNER_MESSAGE)
@@ -735,6 +885,159 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.edit_message_text("تم ✅ المخزون اتحدّث.")
 
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    استقبال ملف Excel أو CSV من التاجر وتحليله وإضافة المنتجات تلقائياً.
+    الأعمدة المتوقعة: اسم المنتج | السعر | المقاس | اللون | الكمية
+    """
+    chat_id = update.effective_chat.id
+    tenant = get_owner_tenant(chat_id)
+    if not tenant:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    doc = update.message.document
+    if not doc:
+        return
+
+    fname = (doc.file_name or "").lower()
+    if not (fname.endswith(".xlsx") or fname.endswith(".xls") or fname.endswith(".csv")):
+        await update.message.reply_text(
+            "📋 ابعتلي ملف Excel (.xlsx) أو CSV (.csv)\n"
+            "الأعمدة المطلوبة:\n"
+            "*اسم المنتج | السعر | المقاس | اللون | الكمية*",
+            parse_mode="Markdown"
+        )
+        return
+
+    status_msg = await update.message.reply_text("📊 جاري قراءة الشيت...")
+
+    # تحميل الملف
+    file = await context.bot.get_file(doc.file_id)
+    file_bytes = await file.download_as_bytearray()
+
+    rows_parsed = []
+    errors = []
+
+    try:
+        if fname.endswith(".csv"):
+            import csv, io
+            text = file_bytes.decode("utf-8-sig", errors="replace")
+            reader = csv.DictReader(io.StringIO(text))
+            raw_rows = list(reader)
+        else:
+            import openpyxl, io
+            wb = openpyxl.load_workbook(io.BytesIO(bytes(file_bytes)), data_only=True)
+            ws = wb.active
+            headers = [str(c.value or "").strip() for c in next(ws.iter_rows(min_row=1, max_row=1))]
+            raw_rows = []
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                raw_rows.append(dict(zip(headers, [str(v or "").strip() for v in row])))
+    except Exception as e:
+        await status_msg.edit_text(f"❌ فشل قراءة الملف: {type(e).__name__}")
+        return
+
+    # تطبيع أسماء الأعمدة (بيقبل عربي وإنجليزي)
+    COL_MAP = {
+        "name":  ["اسم المنتج", "المنتج", "الاسم", "name", "product"],
+        "price": ["السعر", "سعر البيع", "price"],
+        "size":  ["المقاس", "مقاس", "size"],
+        "color": ["اللون", "لون", "color"],
+        "qty":   ["الكمية", "كمية", "qty", "quantity", "stock"],
+    }
+
+    def find_col(row_keys, aliases):
+        for k in row_keys:
+            if k in aliases:
+                return k
+        return None
+
+    if not raw_rows:
+        await status_msg.edit_text("❌ الملف فاضي!")
+        return
+
+    first_keys = list(raw_rows[0].keys())
+    col_name  = find_col(first_keys, COL_MAP["name"])
+    col_price = find_col(first_keys, COL_MAP["price"])
+    col_size  = find_col(first_keys, COL_MAP["size"])
+    col_color = find_col(first_keys, COL_MAP["color"])
+    col_qty   = find_col(first_keys, COL_MAP["qty"])
+
+    missing = [k for k, v in {"اسم المنتج": col_name, "السعر": col_price, "المقاس": col_size, "اللون": col_color}.items() if not v]
+    if missing:
+        await status_msg.edit_text(
+            f"❌ الأعمدة دي مش موجودة في الشيت: {', '.join(missing)}\n"
+            f"الأعمدة اللي عندك: {', '.join(first_keys)}\n\n"
+            "الأعمدة المطلوبة:\n"
+            "*اسم المنتج | السعر | المقاس | اللون | الكمية*",
+            parse_mode="Markdown"
+        )
+        return
+
+    for i, row in enumerate(raw_rows, start=2):
+        name  = row.get(col_name, "").strip()
+        price_raw = row.get(col_price, "0").strip().replace(",", "")
+        size  = row.get(col_size, "").strip().upper()
+        color = row.get(col_color, "").strip()
+        qty_raw = row.get(col_qty, "1").strip() if col_qty else "1"
+
+        if not name or not size or not color:
+            errors.append(f"سطر {i}: بيانات ناقصة — تم تخطيه")
+            continue
+
+        try:
+            price = float(price_raw or 0)
+            qty   = int(float(qty_raw or 1))
+        except ValueError:
+            errors.append(f"سطر {i} ({name}): سعر أو كمية غلط")
+            continue
+
+        if price <= 0:
+            errors.append(f"سطر {i} ({name}): السعر لازم أكبر من صفر")
+            continue
+
+        rows_parsed.append({
+            "type":  "new_product",
+            "name":  name,
+            "price": price,
+            "size":  size,
+            "color": color,
+            "qty":   max(1, qty),
+        })
+
+    if not rows_parsed:
+        err_text = "\n".join(errors[:5])
+        await status_msg.edit_text(f"❌ مفيش صفوف صالحة في الشيت!\n{err_text}")
+        return
+
+    # عرض ملخص للتأكيد
+    pid = uuid.uuid4().hex[:12]
+    context.application.bot_data.setdefault("pending", {})[pid] = {
+        "chat_id": chat_id,
+        "tenant_id": tenant["id"],
+        "items": rows_parsed,
+    }
+
+    preview_lines = [f"📊 *لقيت {len(rows_parsed)} صنف في الشيت:*\n"]
+    for p in rows_parsed[:15]:  # بنعرض أول 15 بس
+        preview_lines.append(f"• {p['name']} | {p['color']} {p['size']} | {p['price']:.0f}ج | كمية: {p['qty']}")
+    if len(rows_parsed) > 15:
+        preview_lines.append(f"... و{len(rows_parsed) - 15} صنف تاني")
+
+    if errors:
+        preview_lines.append(f"\n⚠️ *{len(errors)} سطر اتتخطى:*")
+        for e in errors[:3]:
+            preview_lines.append(f"  - {e}")
+
+    preview_lines.append("\nتأكيد إضافة كل ده للمخزن؟")
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ تأكيد الكل", callback_data=f"ok:{pid}"),
+        InlineKeyboardButton("❌ إلغاء", callback_data=f"no:{pid}"),
+    ]])
+
+    await status_msg.edit_text("\n".join(preview_lines), reply_markup=keyboard, parse_mode="Markdown")
+
 
 def main():
     # لازم على بايثون 3.14 علشان مايحصلش خطأ في الـ event loop
@@ -747,9 +1050,12 @@ def main():
     app.add_handler(CommandHandler("today", today_cmd))
     app.add_handler(CommandHandler("cancel", cancel_cmd))
     app.add_handler(CommandHandler("new_tenant", new_tenant_cmd))
+    app.add_handler(CommandHandler("link_page", link_page_cmd))
+    app.add_handler(CommandHandler("tenants", list_tenants_cmd))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     print("بوت التاجر شغال... (Ctrl+C للإيقاف)")
     app.run_polling()
 
