@@ -7,19 +7,22 @@ import re
 import sys
 import time
 import httpx
+from contextlib import asynccontextmanager
+from typing import Optional
 from fastapi import FastAPI, Request, Response, Query, BackgroundTasks, HTTPException, status
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from check_stock import supabase
-from customer_agent import handle_customer_message
+from customer_agent import handle_customer_message, RATE_LIMITER, classify_comment
+from merchant_settings import load_merchant_settings, save_merchant_settings
+from notify import send_complaint_notification, submit_praise_review
+
+from collections import OrderedDict
 
 sys.stdout.reconfigure(encoding="utf-8")
 load_dotenv()
-
-app = FastAPI(title="AI Agency Omnichannel Webhook Server")
-
-
-from collections import OrderedDict
 
 
 class MessageDeduplicator:
@@ -49,16 +52,35 @@ class MessageDeduplicator:
 DEDUPLICATOR = MessageDeduplicator()
 
 # توكن التحقق السري ومفاتيح التوقيع الخاصة بالـ Webhooks
-META_VERIFY_TOKEN = os.environ.get("META_VERIFY_TOKEN", "my_secret_agency_token_2026")
+ALLOW_UNSIGNED = os.environ.get("ALLOW_UNSIGNED_WEBHOOKS") == "1"  # للتطوير المحلي بس
+META_VERIFY_TOKEN = os.environ.get("META_VERIFY_TOKEN", "")
 META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
 TIKTOK_APP_SECRET = os.environ.get("TIKTOK_APP_SECRET", "")
+
+
+def check_startup_warnings():
+    """فحص إعدادات الأمان عند الإقلاع وطباعة تحذيرات واضحة"""
+    if not META_APP_SECRET:
+        print("⚠️ [تحذير أمني] META_APP_SECRET غير مضبوط في متغيرات البيئة! سيتم رفض توقيعات الـ Webhooks ما لم يتم تفعيل وضع التطوير.")
+    if not META_VERIFY_TOKEN:
+        print("⚠️ [تحذير] META_VERIFY_TOKEN غير مضبوط في متغيرات البيئة! لن تتمكن خوادم Meta من التحقق من رابط الـ Webhook.")
+    if ALLOW_UNSIGNED:
+        print("🚨 [تحذير أمني خطير] وضع ALLOW_UNSIGNED_WEBHOOKS=1 مفعّل! السيرفر سيقبل طلبات Webhook غير موثقة (مخصص فقط للتطوير المحلي، خطر جداً في الإنتاج).")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    check_startup_warnings()
+    yield
+
+
+app = FastAPI(title="AI Agency Omnichannel Webhook Server", lifespan=lifespan)
 
 
 def verify_meta_signature(raw_body: bytes, signature_header: str) -> bool:
     """التحقق من توقيع X-Hub-Signature-256 لمنع استهلاك الذكاء الاصطناعي بطلبات مزيفة"""
     if not META_APP_SECRET:
-        # لو غير معرّف في بيئة التطوير المحلية
-        return True
+        return ALLOW_UNSIGNED
     if not signature_header or not signature_header.startswith("sha256="):
         return False
     expected_hash = signature_header.split("sha256=")[1].strip()
@@ -73,7 +95,7 @@ def verify_meta_signature(raw_body: bytes, signature_header: str) -> bool:
 def verify_tiktok_signature(raw_body: bytes, signature_header: str) -> bool:
     """التحقق من توقيع تيك توك باستخدام TIKTOK_APP_SECRET"""
     if not TIKTOK_APP_SECRET:
-        return True
+        return ALLOW_UNSIGNED
     if not signature_header:
         return False
     clean_sig = signature_header.replace("sha256=", "").strip()
@@ -101,22 +123,27 @@ def verify_meta_webhook(
     challenge: str = Query(None, alias="hub.challenge"),
 ):
     """التحقق التلقائي المطلوب من شركة Meta عند ربط الـ Webhook"""
-    if mode == "subscribe" and token == META_VERIFY_TOKEN:
+    if META_VERIFY_TOKEN and mode == "subscribe" and token and hmac.compare_digest(token, META_VERIFY_TOKEN):
         print("✅ تم التحقق من Meta Webhook بنجاح!")
         return Response(content=challenge, media_type="text/plain")
     return Response(content="Verification failed", status_code=403)
 
 
-async def send_meta_reply(recipient_id: str, text: str, page_access_token: str, platform: str = "messenger"):
-    """إرسال رد خاص (DM) للعميل على ماسنجر أو إنستجرام"""
-    url = f"https://graph.facebook.com/v21.0/me/messages?access_token={page_access_token}"
+async def send_meta_reply(recipient_id: str, text: str, page_access_token: str, platform: str = "messenger", comment_id: str = None):
+    """إرسال رد خاص (DM أو Private Reply) للعميل على ماسنجر أو إنستجرام"""
+    url = "https://graph.facebook.com/v21.0/me/messages"
+    headers = {
+        "Authorization": f"Bearer {page_access_token}",
+        "Content-Type": "application/json",
+    }
+    recipient = {"comment_id": comment_id} if comment_id else {"id": recipient_id}
     payload = {
-        "recipient": {"id": recipient_id},
+        "recipient": recipient,
         "message": {"text": text}
     }
     async with httpx.AsyncClient() as client:
         try:
-            r = await client.post(url, json=payload, timeout=10)
+            r = await client.post(url, json=payload, headers=headers, timeout=10)
             if r.status_code != 200:
                 print(f"❌ خطأ في إرسال الرد لـ {platform}:", r.text)
         except Exception as e:
@@ -126,11 +153,14 @@ async def send_meta_reply(recipient_id: str, text: str, page_access_token: str, 
 async def send_public_comment_reply(comment_id: str, text: str, page_access_token: str):
     """الرد العام تحت الكومنت مباشرة على فيسبوك"""
     url = f"https://graph.facebook.com/v21.0/{comment_id}/comments"
-    params = {"access_token": page_access_token}
+    headers = {
+        "Authorization": f"Bearer {page_access_token}",
+        "Content-Type": "application/json",
+    }
     payload = {"message": text}
     async with httpx.AsyncClient() as client:
         try:
-            r = await client.post(url, json=payload, params=params, timeout=10)
+            r = await client.post(url, json=payload, headers=headers, timeout=10)
             if r.status_code != 200:
                 print(f"❌ خطأ في الرد على الكومنت:", r.text[:200])
             else:
@@ -142,17 +172,151 @@ async def send_public_comment_reply(comment_id: str, text: str, page_access_toke
 async def send_instagram_comment_reply(comment_id: str, text: str, page_access_token: str):
     """الرد على كومنت إنستجرام"""
     url = f"https://graph.facebook.com/v21.0/{comment_id}/replies"
-    params = {"access_token": page_access_token}
+    headers = {
+        "Authorization": f"Bearer {page_access_token}",
+        "Content-Type": "application/json",
+    }
     payload = {"message": text}
     async with httpx.AsyncClient() as client:
         try:
-            r = await client.post(url, json=payload, params=params, timeout=10)
+            r = await client.post(url, json=payload, headers=headers, timeout=10)
             if r.status_code != 200:
                 print(f"❌ خطأ في الرد على كومنت إنستجرام:", r.text[:200])
             else:
                 print(f"✅ تم الرد على كومنت إنستجرام {comment_id}")
         except Exception as e:
             print(f"❌ استثناء إنستجرام:", type(e).__name__)
+
+
+POST_TEXT_CACHE = {}  # post_id -> (text, timestamp)
+PARENT_PAGE_CACHE = {}  # parent_id -> (is_page, timestamp)
+
+
+async def fetch_post_text(post_id: str, page_access_token: str) -> str:
+    """جلب نص البوست من Graph API مع كاش ساعة لتسريع الردود وتوفير الطلبات"""
+    if not post_id or not page_access_token:
+        return ""
+    now = time.time()
+    if post_id in POST_TEXT_CACHE:
+        cached_text, ts = POST_TEXT_CACHE[post_id]
+        if now - ts < 3600:
+            return cached_text
+
+    url = f"https://graph.facebook.com/v21.0/{post_id}"
+    params = {"fields": "message,story", "access_token": page_access_token}
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                msg = (data.get("message") or data.get("story") or "").strip()
+                POST_TEXT_CACHE[post_id] = (msg, now)
+                return msg
+    except Exception as e:
+        print(f"Error fetching post text for {post_id}: {type(e).__name__}")
+    return ""
+
+
+async def fetch_comment_image(value: dict, comment_id: str, page_access_token: str) -> tuple[Optional[bytes], str]:
+    """استخراج وتحميل صورة التعليق إذا توفرت في الحمولة أو عبر Graph API"""
+    img_url = None
+    if isinstance(value, dict):
+        attachment = value.get("attachment")
+        if isinstance(attachment, dict):
+            img_url = attachment.get("media", {}).get("image", {}).get("src") or attachment.get("url")
+        if not img_url:
+            img_url = value.get("photo") or value.get("attachment_url")
+
+    if not img_url and comment_id and page_access_token:
+        url = f"https://graph.facebook.com/v21.0/{comment_id}"
+        params = {"fields": "attachment", "access_token": page_access_token}
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.get(url, params=params)
+                if resp.status_code == 200:
+                    att = resp.json().get("attachment", {})
+                    if isinstance(att, dict):
+                        img_url = att.get("media", {}).get("image", {}).get("src")
+        except Exception:
+            pass
+
+    if img_url:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(img_url)
+                if resp.status_code == 200:
+                    mime = resp.headers.get("content-type", "image/jpeg")
+                    return resp.content, mime
+        except Exception as e:
+            print(f"Error downloading comment image: {type(e).__name__}")
+
+    return None, "image/jpeg"
+
+
+async def is_parent_comment_from_page(parent_id: str, page_id: str, page_access_token: str) -> bool:
+    """التحقق مما إذا كان التعليق الأب صادراً من الصفحة نفسها لمنع التدخل في ردود العملاء على بعض"""
+    if not parent_id or not page_access_token:
+        return False
+    now = time.time()
+    if parent_id in PARENT_PAGE_CACHE:
+        is_page, ts = PARENT_PAGE_CACHE[parent_id]
+        if now - ts < 1800:
+            return is_page
+
+    url = f"https://graph.facebook.com/v21.0/{parent_id}"
+    params = {"fields": "from", "access_token": page_access_token}
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                from_id = data.get("from", {}).get("id") if isinstance(data.get("from"), dict) else None
+                is_page = str(from_id).strip() == str(page_id).strip()
+                PARENT_PAGE_CACHE[parent_id] = (is_page, now)
+                return is_page
+    except Exception as e:
+        print(f"Error checking parent comment {parent_id}: {type(e).__name__}")
+    return False
+
+
+async def has_page_already_replied(comment_id: str, page_id: str, page_access_token: str) -> bool:
+    """فحص ما إذا كانت الصفحة قد قامت بالرد بالفعل على هذا التعليق عبر Graph API"""
+    if not comment_id or not page_access_token:
+        return False
+    url = f"https://graph.facebook.com/v21.0/{comment_id}/comments"
+    params = {"fields": "from", "access_token": page_access_token}
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                replies = resp.json().get("data", [])
+                for r in replies:
+                    from_info = r.get("from", {})
+                    if isinstance(from_info, dict) and str(from_info.get("id")).strip() == str(page_id).strip():
+                        return True
+    except Exception as e:
+        print(f"Error checking previous replies for {comment_id}: {type(e).__name__}")
+    return False
+
+
+async def has_ig_already_replied(comment_id: str, page_id: str, page_access_token: str) -> bool:
+    """فحص ما إذا كانت الصفحة قد ردت بالفعل على كومنت إنستجرام"""
+    if not comment_id or not page_access_token:
+        return False
+    url = f"https://graph.facebook.com/v21.0/{comment_id}/replies"
+    params = {"fields": "from", "access_token": page_access_token}
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code == 200:
+                replies = resp.json().get("data", [])
+                for r in replies:
+                    from_info = r.get("from", {})
+                    if isinstance(from_info, dict) and str(from_info.get("id")).strip() == str(page_id).strip():
+                        return True
+    except Exception as e:
+        print(f"Error checking previous IG replies for {comment_id}: {type(e).__name__}")
+    return False
 
 
 async def send_whatsapp_reply(to_phone: str, text: str, phone_number_id: str, access_token: str):
@@ -227,9 +391,9 @@ async def process_meta_event(data: dict):
             print(f"🤖 رد البوت: {reply}")
 
             # إرسال الرد للعميل
-            if page_token:
+            if page_token and reply and reply.strip():
                 await send_meta_reply(sender_id, reply, page_token)
-            else:
+            elif not page_token:
                 print(f"⚠️ التاجر «{tenant['name']}» مش عنده page_token مسجّل — استخدم /link_page في تليجرام")
 
         # ب) رسائل واتساب وتعليقات فيسبوك
@@ -242,16 +406,21 @@ async def process_meta_event(data: dict):
             if field == "feed" and value.get("item") == "comment" and value.get("verb") == "add":
                 comment_id = value.get("comment_id")
                 post_id = value.get("post_id")
-                sender_id = value.get("from", {}).get("id")
-                sender_name = value.get("from", {}).get("name", "يا فندم")
-                comment_text = value.get("message", "")
+                parent_id = value.get("parent_id")
+                sender_id = value.get("from", {}).get("id") if isinstance(value.get("from"), dict) else None
+                sender_name = value.get("from", {}).get("name", "يا فندم") if isinstance(value.get("from"), dict) else "يا فندم"
+                comment_text = (value.get("message") or "").strip()
                 page_id = str(entry.get("id") or "").strip()
 
                 if not page_id or not page_id.isdigit():
                     print(f"⚠️ تم تجاهل تعليق فيسبوك بسبب page_id غير صالح: {page_id}")
                     continue
 
-                if sender_id == page_id or not comment_text:
+                # شرط 1: تجاهل لو from.id فاضي، وتجاهل أي تعليق للصفحة نفسها
+                if not sender_id or str(sender_id).strip() == "" or str(sender_id).strip() == page_id:
+                    continue
+
+                if not comment_text and not value.get("attachment") and not value.get("photo"):
                     continue
 
                 # منع تكرار الرد على نفس تعليق فيسبوك
@@ -266,40 +435,136 @@ async def process_meta_event(data: dict):
                     .execute()
                     .data
                 )
-                if rows:
-                    tenant = rows[0]
-                    if not tenant.get("bot_enabled", True):
-                        print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل تعليق فيسبوك")
-                        continue
-                    page_token = tenant.get("facebook_page_token", "")
-                    print(f"💬 تعليق على بوست «{tenant['name']}» من {sender_name}: {comment_text}")
+                if not rows:
+                    continue
 
-                    # الـ AI بيولّد الرد بشكل غير معطل للـ Event Loop
-                    full_reply = await asyncio.to_thread(
+                tenant = rows[0]
+                if not tenant.get("bot_enabled", True):
+                    print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل تعليق فيسبوك")
+                    continue
+
+                page_token = tenant.get("facebook_page_token", "")
+                if not page_token:
+                    print(f"⚠️ التاجر «{tenant['name']}» مش عنده page_token — استخدم /link_page")
+                    continue
+
+                # شرط 1: تجاهل التعليق لو parent_id مختلف عن post_id (رد على تعليق)، إلا لو التعليق الأب كاتبه page_id
+                if parent_id and post_id and str(parent_id).strip() != str(post_id).strip():
+                    is_page_parent = await is_parent_comment_from_page(str(parent_id).strip(), page_id, page_token)
+                    if not is_page_parent:
+                        print(f"⏩ تم تجاهل رد عميل على تعليق عميل آخر (parent_id: {parent_id})")
+                        continue
+
+                # شرط 6: سقف يومي منفصل للتعليقات
+                is_allowed, _ = RATE_LIMITER.check_comment_rate_limit(tenant["id"], sender_id)
+                if not is_allowed:
+                    print(f"⏸️ تم تخطي التعليق بسبب بلوغ السقف اليومي لردود التعليقات للتاجر «{tenant['name']}»")
+                    continue
+
+                # شرط 7: قبل الرد، افحص إن مفيش رد من الصفحة على نفس التعليق (Graph API)
+                if await has_page_already_replied(comment_id, page_id, page_token):
+                    print(f"⏩ تم تخطي التعليق: الصفحة ردت عليه مسبقاً ({comment_id})")
+                    continue
+
+                # شرط 4: جلب نص البوست وصورة التعليق إن وجدت
+                post_text = await fetch_post_text(post_id, page_token)
+                img_bytes, img_mime = await fetch_comment_image(value, comment_id, page_token)
+
+                # شرط 2: classify_comment(text, post_text)
+                category = await asyncio.to_thread(classify_comment, comment_text, post_text)
+                print(f"💬 تعليق فيسبوك على «{tenant['name']}» من {sender_name}: [{category}] - {comment_text}")
+
+                # شرط 3: تطبيق سياسة الرد حسب التصنيف
+                if category == "skip":
+                    print(f"⏩ تم تجاهل التعليق المصنف skip: {comment_text}")
+                    continue
+
+                elif category == "complaint":
+                    # complaint = إشعار التاجر على تليجرام بدون رد علني
+                    await asyncio.to_thread(
+                        send_complaint_notification,
+                        tenant["id"],
+                        customer_name=sender_name,
+                        comment_text=comment_text,
+                        post_text=post_text,
+                        comment_id=comment_id,
+                        platform="facebook",
+                    )
+                    print(f"🚨 تم إرسال إشعار شكوى للتاجر «{tenant['name']}» على تليجرام بدون رد علني.")
+                    continue
+
+                elif category == "praise":
+                    # praise = شكر + submit_customer_review
+                    praise_reply = f"شكراً لذوقك وكلامك الجميل يا {sender_name}! ❤️ تسعدنا خدمتك دايماً وسعداء جداً بوجودك معانا 🙏"
+                    await send_public_comment_reply(comment_id, praise_reply, page_token)
+                    await asyncio.to_thread(submit_praise_review, tenant["id"], sender_name, comment_text)
+                    continue
+
+                elif category == "order":
+                    # order = الخاص بس
+                    order_private_msg = (
+                        f"أهلاً بحضرتك يا فندم! 🌸 يسعدنا جداً تنفيذ طلبك.\n"
+                        f"علشان نسجل الأوردر ويوصلك في أسرع وقت، يرجى إرسال بياناتك هنا في الخاص:\n"
+                        f"• الاسم ثلاثي\n• رقم الموبايل\n• المحافظة والعنوان بالتفصيل\n"
+                        f"والدفع عند الاستلام مع إمكانية المعاينة قبل الاستلام 🙏"
+                    )
+                    await send_meta_reply(sender_id, order_private_msg, page_token, platform="messenger", comment_id=comment_id)
+                    continue
+
+                elif category in ("price", "availability"):
+                    # price/availability = رد علني قصير + دعوة للخاص (أو Private Reply لو متاح)
+                    public_teaser = f"أهلاً {sender_name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات لحضرتك في رسائل الصفحة على الخاص (شيك على الـ DM) 📩🙏"
+                    await send_public_comment_reply(comment_id, public_teaser, page_token)
+
+                    prompt_ctx = f"العميل علّق على بوست نصه: '{post_text}' وسأل في التعليق: '{comment_text}'. أجب على استفساره بخصوص السعر أو المقاسات والألوان المتاحة باختصار ولطف."
+                    detailed_reply = await asyncio.to_thread(
                         handle_customer_message,
                         tenant["id"], sender_id,
-                        f"أنا علقت على بوست وكتبت: {comment_text}",
-                        channel="messenger"
+                        prompt_ctx,
+                        image_bytes=img_bytes,
+                        image_mime_type=img_mime,
+                        channel="messenger",
+                        allow_orders=False,
+                        is_comment=True,
                     )
+                    if detailed_reply and detailed_reply.strip():
+                        await send_meta_reply(sender_id, detailed_reply.strip(), page_token, platform="messenger", comment_id=comment_id)
+                    continue
 
-                    if page_token:
-                        # 1️⃣ رد عام قصير تحت الكومنت مباشرة — يشجع يدخل الـ DM
-                        public_teaser = f"أهلاً {sender_name} ❤️ راجعنا على الرسائل الخاصة هنا في الصفحة وهنرد عليك فوراً 🙏"
-                        await send_public_comment_reply(comment_id, public_teaser, page_token)
-
-                        # 2️⃣ رد خاص (DM ماسنجر) بالإجابة الكاملة من الـ AI
-                        await send_meta_reply(sender_id, full_reply, page_token)
-                    else:
-                        print(f"⚠️ التاجر «{tenant['name']}» مش عنده page_token — استخدم /link_page")
+                elif category in ("location", "hours", "shipping", "offer"):
+                    # location/hours/shipping/offer = رد علني بالإجابة
+                    prompt_ctx = f"العميل علّق على بوست نصه: '{post_text}' وسأل في التعليق: '{comment_text}'. أجب مباشرة وبشكل علني على استفساره بدقة ولطف من بيانات وسياسات المتجر."
+                    public_answer = await asyncio.to_thread(
+                        handle_customer_message,
+                        tenant["id"], sender_id,
+                        prompt_ctx,
+                        image_bytes=img_bytes,
+                        image_mime_type=img_mime,
+                        channel="messenger",
+                        allow_orders=False,
+                        is_comment=True,
+                    )
+                    if public_answer and public_answer.strip():
+                        await send_public_comment_reply(comment_id, public_answer.strip(), page_token)
+                    continue
 
             # 1b. تعليقات إنستجرام
             elif field == "comments" and value.get("verb") == "add":
                 comment_id = value.get("id")
-                sender_id = value.get("from", {}).get("id")
-                sender_name = value.get("from", {}).get("name", "يا فندم")
-                comment_text = value.get("text", "")
+                sender_id = value.get("from", {}).get("id") if isinstance(value.get("from"), dict) else None
+                sender_name = value.get("from", {}).get("name", "يا فندم") if isinstance(value.get("from"), dict) else "يا فندم"
+                comment_text = (value.get("text") or "").strip()
                 ig_media_id = value.get("media", {}).get("id", "")
+                parent_id = value.get("parent_id")
                 page_id = str(entry.get("id") or "").strip()
+
+                if not page_id or not page_id.isdigit():
+                    print(f"⚠️ تم تجاهل تعليق إنستجرام بسبب page_id غير صالح: {page_id}")
+                    continue
+
+                # شرط 1: تجاهل لو from.id فاضي أو تعليق للصفحة نفسها
+                if not sender_id or str(sender_id).strip() == "" or str(sender_id).strip() == page_id:
+                    continue
 
                 if not comment_text or not comment_id:
                     continue
@@ -309,10 +574,6 @@ async def process_meta_event(data: dict):
                     print(f"⏩ تم تجاهل كومنت إنستجرام مكرر (id: {comment_id})")
                     continue
 
-                if not page_id or not page_id.isdigit():
-                    print(f"⚠️ تم تجاهل تعليق إنستجرام بسبب page_id غير صالح: {page_id}")
-                    continue
-
                 rows = (
                     supabase.table("tenants")
                     .select("id, name, bot_enabled, facebook_page_token")
@@ -320,27 +581,92 @@ async def process_meta_event(data: dict):
                     .execute()
                     .data
                 )
-                if rows:
-                    tenant = rows[0]
-                    if not tenant.get("bot_enabled", True):
-                        print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل تعليق إنستجرام")
-                        continue
-                    page_token = tenant.get("facebook_page_token", "")
-                    print(f"📸 كومنت إنستجرام على «{tenant['name']}» من {sender_name}: {comment_text}")
+                if not rows:
+                    continue
 
-                    # الـ AI بيولّد الرد بشكل غير معطل للـ Event Loop
-                    full_reply = await asyncio.to_thread(
+                tenant = rows[0]
+                if not tenant.get("bot_enabled", True):
+                    print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل تعليق إنستجرام")
+                    continue
+
+                page_token = tenant.get("facebook_page_token", "")
+                if not page_token:
+                    print(f"⚠️ التاجر «{tenant['name']}» مش عنده page_token")
+                    continue
+
+                # شرط 1: تجاهل لو parent_id رد عميل على عميل آخر
+                if parent_id and ig_media_id and str(parent_id).strip() != str(ig_media_id).strip():
+                    is_page_parent = await is_parent_comment_from_page(str(parent_id).strip(), page_id, page_token)
+                    if not is_page_parent:
+                        print(f"⏩ تم تجاهل رد عميل على تعليق عميل آخر في إنستجرام (parent_id: {parent_id})")
+                        continue
+
+                # شرط 6: سقف يومي منفصل للتعليقات
+                is_allowed, _ = RATE_LIMITER.check_comment_rate_limit(tenant["id"], sender_id)
+                if not is_allowed:
+                    print(f"⏸️ تم تخطي تعليق إنستجرام بسبب سقف التعليقات للتاجر «{tenant['name']}»")
+                    continue
+
+                # شرط 7: فحص إن مفيش رد من الصفحة مسبقاً
+                if await has_ig_already_replied(comment_id, page_id, page_token):
+                    print(f"⏩ تم تخطي تعليق إنستجرام: تم الرد عليه مسبقاً ({comment_id})")
+                    continue
+
+                # شرط 4: جلب كابشن المنشور
+                post_text = ""
+                if ig_media_id:
+                    post_text = await fetch_post_text(ig_media_id, page_token)
+
+                # شرط 2: classify_comment
+                category = await asyncio.to_thread(classify_comment, comment_text, post_text)
+                print(f"📸 كومنت إنستجرام على «{tenant['name']}» من {sender_name}: [{category}] - {comment_text}")
+
+                if category == "skip":
+                    print(f"⏩ تم تخطي كومنت إنستجرام المصنف skip: {comment_text}")
+                    continue
+
+                elif category == "complaint":
+                    await asyncio.to_thread(
+                        send_complaint_notification,
+                        tenant["id"],
+                        customer_name=sender_name,
+                        comment_text=comment_text,
+                        post_text=post_text,
+                        comment_id=comment_id,
+                        platform="instagram",
+                    )
+                    print(f"🚨 تم إرسال إشعار شكوى إنستجرام للتاجر «{tenant['name']}» بدون رد علني.")
+                    continue
+
+                elif category == "praise":
+                    praise_reply = f"شكراً لذوقك وكلامك الجميل يا {sender_name}! ❤️ تسعدنا خدمتك دايماً 🙏"
+                    await send_instagram_comment_reply(comment_id, praise_reply, page_token)
+                    await asyncio.to_thread(submit_praise_review, tenant["id"], sender_name, comment_text)
+                    continue
+
+                elif category == "order":
+                    order_reply = f"أهلاً {sender_name} ❤️ يسعدنا طلبك! يرجى إرسال بياناتك (الاسم، العنوان، الموبايل) في الرسائل الخاصة (DM) لتأكيد الأوردر فوراً 📩"
+                    await send_instagram_comment_reply(comment_id, order_reply, page_token)
+                    continue
+
+                elif category in ("price", "availability"):
+                    dm_teaser = f"أهلاً {sender_name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات لحضرتك في الـ DM، شيك على الرسائل الخاصة 📩🙏"
+                    await send_instagram_comment_reply(comment_id, dm_teaser, page_token)
+                    continue
+
+                elif category in ("location", "hours", "shipping", "offer"):
+                    prompt_ctx = f"العميل علّق على منشور إنستجرام نصه: '{post_text}' وسأل في التعليق: '{comment_text}'. أجب مباشرة وبشكل علني على استفساره بدقة ولطف من بيانات وسياسات المتجر."
+                    public_reply = await asyncio.to_thread(
                         handle_customer_message,
                         tenant["id"], sender_id,
-                        f"علّقت على بوست وكتبت: {comment_text}",
-                        channel="instagram"
+                        prompt_ctx,
+                        channel="instagram",
+                        allow_orders=False,
+                        is_comment=True,
                     )
-
-                    if page_token:
-                        # رد مباشر تحت الكومنت على إنستجرام
-                        await send_instagram_comment_reply(comment_id, full_reply, page_token)
-                    else:
-                        print(f"⚠️ التاجر «{tenant['name']}» مش عنده page_token")
+                    if public_reply and public_reply.strip():
+                        await send_instagram_comment_reply(comment_id, public_reply.strip(), page_token)
+                    continue
 
 
 
@@ -352,10 +678,14 @@ async def process_meta_event(data: dict):
                     continue
                 messages = value.get("messages", [])
                 for msg in messages:
-                    if msg.get("type") == "text":
-                        wa_mid = msg.get("id")
-                        wa_from = msg.get("from")
+                    msg_type = msg.get("type")
+                    wa_mid = msg.get("id")
+                    wa_from = msg.get("from")
+
+                    if msg_type == "text":
                         wa_text = msg.get("text", {}).get("body")
+                        if not wa_text:
+                            continue
 
                         # منع تكرار معالجة رسائل واتساب المكررة
                         if wa_mid and DEDUPLICATOR.is_duplicate(f"wa_msg:{wa_mid}"):
@@ -378,10 +708,39 @@ async def process_meta_event(data: dict):
                             # تشغيل الـ AI بشكل غير معطل للـ Event Loop
                             reply = await asyncio.to_thread(handle_customer_message, tenant["id"], wa_from, wa_text, channel="whatsapp")
                             print(f"🟢 واتساب «{tenant['name']}» -> رد للعميل {wa_from}: {reply}")
-                            if wa_token and phone_number_id:
+                            if wa_token and phone_number_id and reply and reply.strip():
                                 await send_whatsapp_reply(wa_from, reply, phone_number_id, wa_token)
-                            else:
+                            elif not wa_token:
                                 print(f"⚠️ التاجر «{tenant['name']}» مش عنده wa_token — استخدم /link_page wa_token=...")
+
+                    elif msg_type in ("audio", "voice", "image"):
+                        # منع تكرار معالجة رسائل الصوت أو الصور
+                        if wa_mid and DEDUPLICATOR.is_duplicate(f"wa_media:{wa_mid}"):
+                            continue
+
+                        rows = (
+                            supabase.table("tenants")
+                            .select("id, name, bot_enabled, whatsapp_phone_number_id, whatsapp_access_token")
+                            .eq("whatsapp_phone_number_id", phone_number_id)
+                            .execute()
+                            .data
+                        )
+                        if rows:
+                            tenant = rows[0]
+                            if not tenant.get("bot_enabled", True):
+                                continue
+                            wa_token = tenant.get("whatsapp_access_token", "")
+                            if wa_token and phone_number_id and wa_from:
+                                # تطبيق حد المعدل على ردود وسائط الواتساب (رد مرة واحدة كل دقيقة ثم تجاهل)
+                                is_allowed, rate_msg = RATE_LIMITER.check_rate_limit(tenant["id"], wa_from)
+                                if is_allowed:
+                                    reply = "ابعتلي رسالتك كتابة لو سمحت 🙏"
+                                else:
+                                    reply = rate_msg
+
+                                if reply and reply.strip():
+                                    print(f"🟢 واتساب «{tenant['name']}» ({msg_type}) -> رد للعميل {wa_from}: {reply}")
+                                    await send_whatsapp_reply(wa_from, reply, phone_number_id, wa_token)
 
 
 
@@ -493,21 +852,65 @@ async def process_tiktok_event(data: dict):
             print(f"⏩ تم تجاهل كومنت تيك توك مكرر (id: {comment_id})")
             return
 
+        # فحص سقف التعليقات اليومي المنفصل
+        is_allowed, _ = RATE_LIMITER.check_comment_rate_limit(tenant["id"], user_id)
+        if not is_allowed:
+            print(f"⏸️ تم تخطي كومنت تيك توك بسبب بلوغ سقف التعليقات للتاجر «{tenant['name']}»")
+            return
+
         tiktok_token = tenant.get("tiktok_access_token", "")
         print(f"🎵 كومنت على «{tenant['name']}» من {display_name}: {comment_text}")
 
-        # الـ AI بيولّد الرد بشكل غير معطل للـ Event Loop
-        full_reply = await asyncio.to_thread(
-            handle_customer_message,
-            tenant["id"], user_id,
-            f"علّقت على فيديو تيك توك وكتبت: {comment_text}",
-            channel="messenger"
-        )
+        # تصنيف التعليق
+        category = await asyncio.to_thread(classify_comment, comment_text, "")
+        if category == "skip":
+            print(f"⏩ تم تخطي كومنت تيك توك المصنف skip: {comment_text}")
+            return
 
-        if tiktok_token and video_id and comment_id:
-            await send_tiktok_comment_reply(video_id, comment_id, full_reply, tiktok_token)
-        else:
-            print(f"⚠️ التاجر «{tenant['name']}» مش عنده tiktok_token — استخدم /link_page")
+        elif category == "complaint":
+            await asyncio.to_thread(
+                send_complaint_notification,
+                tenant["id"],
+                customer_name=display_name,
+                comment_text=comment_text,
+                comment_id=comment_id,
+                platform="tiktok",
+            )
+            print(f"🚨 تم إرسال إشعار شكوى تيك توك للتاجر «{tenant['name']}» بدون رد علني.")
+            return
+
+        elif category == "praise":
+            praise_msg = f"شكراً لذوقك وكلامك الجميل يا {display_name}! ❤️ تسعدنا خدمتك دايماً 🙏"
+            if tiktok_token and video_id and comment_id:
+                await send_tiktok_comment_reply(video_id, comment_id, praise_msg, tiktok_token)
+            await asyncio.to_thread(submit_praise_review, tenant["id"], display_name, comment_text)
+            return
+
+        elif category == "order":
+            order_reply = f"أهلاً {display_name} ❤️ يسعدنا طلبك! يرجى التواصل معنا عبر الرسائل الخاصة (DM) لتأكيد الأوردر وبيانات الشحن فوراً 📩"
+            if tiktok_token and video_id and comment_id:
+                await send_tiktok_comment_reply(video_id, comment_id, order_reply, tiktok_token)
+            return
+
+        elif category in ("price", "availability"):
+            teaser = f"أهلاً {display_name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات في الرسائل الخاصة، شيك على الخاص 📩🙏"
+            if tiktok_token and video_id and comment_id:
+                await send_tiktok_comment_reply(video_id, comment_id, teaser, tiktok_token)
+            return
+
+        elif category in ("location", "hours", "shipping", "offer"):
+            full_reply = await asyncio.to_thread(
+                handle_customer_message,
+                tenant["id"], user_id,
+                f"علّقت على فيديو تيك توك وكتبت: {comment_text}",
+                channel="tiktok",
+                allow_orders=False,
+                is_comment=True,
+            )
+            if tiktok_token and video_id and comment_id and full_reply and full_reply.strip():
+                await send_tiktok_comment_reply(video_id, comment_id, full_reply.strip(), tiktok_token)
+            elif not tiktok_token:
+                print(f"⚠️ التاجر «{tenant['name']}» مش عنده tiktok_token — استخدم /link_page")
 
     # ───── رسائل DM تيك توك ─────
     elif event_type == "direct_message.create":
@@ -544,11 +947,11 @@ async def process_tiktok_event(data: dict):
         tiktok_token = tenant.get("tiktok_access_token", "")
         print(f"🎵 DM تيك توك لـ «{tenant['name']}» من {display_name}: {message_text}")
 
-        reply = await asyncio.to_thread(handle_customer_message, tenant["id"], sender_id, message_text, channel="messenger")
+        reply = await asyncio.to_thread(handle_customer_message, tenant["id"], sender_id, message_text, channel="tiktok")
 
-        if tiktok_token:
-            await send_tiktok_dm(sender_id, reply, tiktok_token)
-        else:
+        if tiktok_token and reply and reply.strip():
+            await send_tiktok_dm(sender_id, reply.strip(), tiktok_token)
+        elif not tiktok_token:
             print(f"⚠️ التاجر «{tenant['name']}» مش عنده tiktok_token")
 
 
@@ -583,6 +986,273 @@ async def receive_tiktok_webhook(request: Request, background_tasks: BackgroundT
 
     background_tasks.add_task(process_tiktok_event, payload)
     return {"status": "received"}
+
+
+# ===============================================================
+# 🌐 Merchant Dashboard & Telegram Web App Endpoints
+# ===============================================================
+
+DASHBOARD_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
+
+
+class MerchantSettingsPayload(BaseModel):
+    bot_enabled: Optional[bool] = None
+    facebook_page_id: Optional[str] = None
+    facebook_page_token: Optional[str] = None
+    google_sheets_url: Optional[str] = None
+
+
+class ToggleBotPayload(BaseModel):
+    bot_enabled: Optional[bool] = None
+
+
+def resolve_tenant_for_dashboard(identifier: str):
+    """البحث عن التاجر بالـ UUID أو بادئة الـ ID (8 حروف سداسية عشرية فأكثر) أو الاسم"""
+    if not identifier:
+        return None
+    ident = str(identifier).strip()
+
+    # 1. فحص UUID كامل
+    if re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", ident):
+        try:
+            res = supabase.table("tenants").select("*").eq("id", ident).execute()
+            if res.data:
+                return res.data[0]
+        except Exception:
+            pass
+
+    # 2. فحص بادئة 8 حروف سداسية عشرية
+    clean_hex = ident.replace("-", "").lower()
+    if len(clean_hex) >= 8 and re.fullmatch(r"[0-9a-f]+", clean_hex):
+        try:
+            res = supabase.table("tenants").select("*").execute()
+            matches = [t for t in (res.data or []) if t.get("id", "").replace("-", "").lower().startswith(clean_hex)]
+            if len(matches) == 1:
+                return matches[0]
+        except Exception:
+            pass
+
+    # 3. فحص الاسم المباشر
+    try:
+        res = supabase.table("tenants").select("*").eq("name", ident).execute()
+        if res.data:
+            return res.data[0]
+    except Exception:
+        pass
+
+    # 4. محاولة البحث بجدول merchants كاحتياطي إن وجد
+    try:
+        res = supabase.table("merchants").select("*").eq("id", ident).execute()
+        if res.data:
+            return res.data[0]
+    except Exception:
+        pass
+
+    return None
+
+
+def get_tenant_dashboard_stats(tenant_id: str, tenant_row: dict = None) -> dict:
+    """جلب إحصائيات سريعة للتاجر: حالة البوت، عدد الرسائل، المنتجات، والطلبات"""
+    bot_enabled = bool(tenant_row.get("bot_enabled", True)) if tenant_row else True
+    products_count = 0
+    orders_count = 0
+    messages_count = 0
+
+    try:
+        p_res = supabase.table("products").select("id", count="exact").eq("tenant_id", tenant_id).execute()
+        products_count = p_res.count if p_res.count is not None else len(p_res.data or [])
+    except Exception:
+        pass
+
+    try:
+        o_res = supabase.table("orders").select("id", count="exact").eq("tenant_id", tenant_id).execute()
+        orders_count = o_res.count if o_res.count is not None else len(o_res.data or [])
+    except Exception:
+        pass
+
+    try:
+        conv_res = supabase.table("conversations").select("id").eq("tenant_id", tenant_id).execute()
+        conv_ids = [c["id"] for c in (conv_res.data or [])]
+        if conv_ids:
+            m_res = supabase.table("messages").select("id", count="exact").in_("conversation_id", conv_ids[:100]).execute()
+            messages_count = m_res.count if m_res.count is not None else len(m_res.data or [])
+    except Exception:
+        pass
+
+    return {
+        "bot_enabled": bot_enabled,
+        "products_count": products_count,
+        "orders_count": orders_count,
+        "messages_count": messages_count,
+    }
+
+
+def format_tenant_dashboard_data(tenant_row: dict) -> dict:
+    tid = str(tenant_row.get("id"))
+    stats = get_tenant_dashboard_stats(tid, tenant_row)
+
+    # قراءة رابط Google Sheets
+    sheets_url = tenant_row.get("google_sheets_url") or ""
+    if not sheets_url:
+        sheets_url = load_merchant_settings(tid).get("google_sheets_url", "")
+
+    return {
+        "id": tenant_row.get("id"),
+        "name": tenant_row.get("name"),
+        "bot_enabled": bool(tenant_row.get("bot_enabled", True)),
+        "facebook_page_id": tenant_row.get("facebook_page_id") or "",
+        "facebook_page_token": tenant_row.get("facebook_page_token") or "",
+        "google_sheets_url": sheets_url,
+        "stats": stats,
+    }
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/dashboard/{tenant_id}", response_class=HTMLResponse)
+async def serve_merchant_dashboard(tenant_id: Optional[str] = None):
+    """عرض صفحة لوحة التحكم المتوافقة مع المتصفح و Telegram Web App"""
+    if os.path.exists(DASHBOARD_TEMPLATE_PATH):
+        try:
+            with open(DASHBOARD_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read())
+        except Exception as e:
+            return HTMLResponse(f"<h3>خطأ أثناء قراءة القالب: {e}</h3>", status_code=500)
+    return HTMLResponse("<h3>قالب لوحة التحكم غير موجود</h3>", status_code=404)
+
+
+@app.get("/api/dashboard/{identifier}")
+@app.get("/api/merchant/{identifier}")
+@app.get("/api/merchants/{identifier}")
+async def get_merchant_data_api(identifier: str):
+    """جلب بيانات وإحصائيات التاجر عبر معرّفه"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+    data = format_tenant_dashboard_data(tenant)
+    return {"status": "success", "data": data}
+
+
+@app.post("/api/dashboard/{identifier}")
+@app.post("/api/merchant/{identifier}")
+@app.post("/api/merchants/{identifier}")
+async def update_merchant_data_api(identifier: str, payload: MerchantSettingsPayload):
+    """تحديث بيانات التاجر في جدول merchants/tenants في Supabase وتخزين إعدادات الشيت بأمان"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+
+    tid = tenant["id"]
+    updates = {}
+    if payload.bot_enabled is not None:
+        updates["bot_enabled"] = payload.bot_enabled
+    if payload.facebook_page_id is not None:
+        updates["facebook_page_id"] = payload.facebook_page_id.strip() or None
+    if payload.facebook_page_token is not None:
+        updates["facebook_page_token"] = payload.facebook_page_token.strip() or None
+
+    # 1. تحديث جدول التجار في Supabase
+    if updates:
+        updated_db = False
+        try:
+            supabase.table("tenants").update(updates).eq("id", tid).execute()
+            updated_db = True
+        except Exception:
+            pass
+
+        if not updated_db:
+            try:
+                supabase.table("merchants").update(updates).eq("id", tid).execute()
+                updated_db = True
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"فشل تحديث البيانات في قاعدة البيانات: {e}")
+
+    # 2. حفظ رابط Google Sheets
+    if payload.google_sheets_url is not None:
+        sheets_val = payload.google_sheets_url.strip()
+        try:
+            supabase.table("tenants").update({"google_sheets_url": sheets_val or None}).eq("id", tid).execute()
+        except Exception:
+            try:
+                supabase.table("merchants").update({"google_sheets_url": sheets_val or None}).eq("id", tid).execute()
+            except Exception:
+                pass
+        save_merchant_settings(tid, {"google_sheets_url": sheets_val})
+
+    updated_tenant = resolve_tenant_for_dashboard(tid) or tenant
+    data = format_tenant_dashboard_data(updated_tenant)
+    return {
+        "status": "success",
+        "message": "تم حفظ الإعدادات بنجاح",
+        "data": data,
+    }
+
+
+@app.post("/api/dashboard/{identifier}/toggle-bot")
+@app.post("/api/merchant/{identifier}/toggle-bot")
+async def toggle_merchant_bot_api(identifier: str, payload: Optional[ToggleBotPayload] = None):
+    """تشغيل أو إيقاف الرد التلقائي للبوت مؤقتاً"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+
+    tid = tenant["id"]
+    current_status = bool(tenant.get("bot_enabled", True))
+    new_status = not current_status if (payload is None or payload.bot_enabled is None) else bool(payload.bot_enabled)
+
+    updated_db = False
+    try:
+        supabase.table("tenants").update({"bot_enabled": new_status}).eq("id", tid).execute()
+        updated_db = True
+    except Exception:
+        pass
+
+    if not updated_db:
+        try:
+            supabase.table("merchants").update({"bot_enabled": new_status}).eq("id", tid).execute()
+            updated_db = True
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"فشل تعديل حالة البوت: {e}")
+
+    return {
+        "status": "success",
+        "bot_enabled": new_status,
+        "message": f"تم {'تفعيل' if new_status else 'إيقاف'} الرد التلقائي بنجاح",
+    }
+
+
+@app.get("/api/dashboard/by-telegram/{chat_id}")
+@app.get("/api/merchant/by-telegram/{chat_id}")
+async def get_merchant_by_telegram_chat_id(chat_id: str):
+    """التحقق التلقائي من التاجر عبر معرّف Telegram Web App"""
+    cid = str(chat_id).strip()
+    try:
+        res = supabase.table("tenants").select("*").eq("telegram_chat_id", cid).execute()
+        if res.data:
+            data = format_tenant_dashboard_data(res.data[0])
+            return {"status": "success", "data": data}
+    except Exception:
+        pass
+
+    try:
+        if cid.isdigit():
+            res = supabase.table("tenants").select("*").eq("telegram_chat_id", int(cid)).execute()
+            if res.data:
+                data = format_tenant_dashboard_data(res.data[0])
+                return {"status": "success", "data": data}
+    except Exception:
+        pass
+
+    raise HTTPException(status_code=404, detail="لم يتم العثور على متجر مرتبط برقم التيليجرام هذا")
+
+
+@app.get("/api/merchants")
+async def list_merchants_summary_api():
+    """قائمة سريعة بأسماء ومعرّفات المتاجر للاختيار"""
+    try:
+        res = supabase.table("tenants").select("id, name, bot_enabled").order("name").execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e:
+        return {"status": "error", "data": [], "detail": str(e)}
 
 
 if __name__ == "__main__":

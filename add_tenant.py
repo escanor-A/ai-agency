@@ -1,17 +1,16 @@
 import argparse
 import secrets
 import sys
+import time
 
 from check_stock import supabase
+from subscriptions import add_or_renew_subscription
 
 sys.stdout.reconfigure(encoding="utf-8")
 
 
-import time
-
-
-def add_tenant(name: str, telegram_bot_token: str = None, owner_phone: str = None):
-    """إضافة تاجر جديد في الداتابيز وتوليد كود ربط قوي لتليجرام (16 حرف وصلاحية 24 ساعة)"""
+def add_tenant(name: str, telegram_bot_token: str = None, owner_phone: str = None, months: int = 1):
+    """إضافة تاجر جديد في الداتابيز وتوليد كود ربط قوي لتليجرام (16 حرف وصلاحية 24 ساعة) وتفعيل اشتراكه"""
     raw_code = secrets.token_hex(8).upper()
     expiry_ts = int(time.time() + 24 * 3600)
     link_code = f"{raw_code}_{expiry_ts}"
@@ -32,13 +31,19 @@ def add_tenant(name: str, telegram_bot_token: str = None, owner_phone: str = Non
         return None
 
     tenant = res.data[0]
+
+    # تفعيل الاشتراك تلقائياً زي أمر /new_tenant
+    sub = add_or_renew_subscription(tenant["id"], months=months)
+    ends_str = sub["ends_at"].strftime("%Y-%m-%d") if hasattr(sub.get("ends_at"), "strftime") else str(sub.get("ends_at"))
+
     print("\n" + "=" * 50)
     print("✅ تم إنشاء حساب التاجر بنجاح في قاعدة البيانات!")
     print(f"🏢 اسم المحل: {tenant['name']}")
     print(f"🆔 كود التاجر (Tenant ID): {tenant['id']}")
     print(f"🔑 كود الربط على تليجرام: {tenant['telegram_link_code']}")
+    print(f"📅 مدة الاشتراك: {months} شهر (ساري حتى: {ends_str})")
     if tenant.get("telegram_bot_token"):
-        print(f"🤖 توكن البوت: {tenant['telegram_bot_token'][:15]}...")
+        print("🤖 تم تسجيل توكن البوت بنجاح")
     print("=" * 50)
     print(f"\nلربط البوت بصاحب المحل، خليه يدخل على البوت ويكتب:")
     print(f"👉 /start {tenant['telegram_link_code']}\n")
@@ -50,6 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--name", required=True, help="اسم المحل أو البراند")
     parser.add_argument("--token", required=False, help="توكن بوت التليجرام الخاص بالتاجر (من BotFather)")
     parser.add_argument("--phone", required=False, help="رقم موبايل صاحب المحل")
+    parser.add_argument("--months", type=int, default=1, help="مدة الاشتراك بالشهور (الافتراضي 1)")
 
     args = parser.parse_args()
-    add_tenant(args.name, args.token, args.phone)
+    add_tenant(args.name, args.token, args.phone, months=args.months)

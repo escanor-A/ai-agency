@@ -94,4 +94,37 @@ def send_order_update_notification(tenant_id, order_number, changes_desc):
         f"📋 التعديل الجديد:\n{changes_desc}"
     )
     return send_telegram(tenant_id, text)
+
+
+def send_complaint_notification(tenant_id, customer_name, comment_text, post_text="", comment_id="", platform="facebook"):
+    """إرسال إشعار فوري للتاجر على تليجرام عند رصد شكوى عميل في التعليقات بدون رد علني"""
+    post_info = f"\n📌 على منشور: {post_text[:100]}..." if post_text else ""
+    cid_info = f"\n🆔 معرّف التعليق: `{comment_id}`" if comment_id else ""
+    platform_label = "فيسبوك" if platform == "facebook" else ("إنستجرام" if platform == "instagram" else "تيك توك")
+    text = (
+        f"🚨 *تنبيه شكوى عميل على {platform_label}!* 🚨\n\n"
+        f"👤 العميل: {customer_name}\n"
+        f"💬 نص التعليق: \"{comment_text}\""
+        f"{post_info}"
+        f"{cid_info}\n\n"
+        f"⚠️ تم حجب الرد الآلي حمايةً لسمعة البراند، يرجى مراجعة العميل والتواصل معه فوراً لحل المشكلة! 📞"
+    )
+    return send_telegram(tenant_id, text)
+
+
+def submit_praise_review(tenant_id: str, customer_name: str, feedback: str, rating: int = 5):
+    """تسجيل ريفيو إيجابي في قاعدة البيانات وإشعار التاجر به"""
+    try:
+        supabase.table("reviews").insert({
+            "tenant_id": tenant_id,
+            "customer_name": customer_name,
+            "rating": rating,
+            "feedback": feedback,
+        }).execute()
+    except Exception as e:
+        print(f"Error inserting review into DB: {e}")
+    try:
+        send_review_notification(tenant_id, customer_name, feedback, rating=rating)
+    except Exception as e:
+        print(f"Error sending review notification: {e}")
 

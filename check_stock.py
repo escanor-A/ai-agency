@@ -106,19 +106,57 @@ def get_search_aliases(name: str) -> list:
     return result
 
 
+def escape_like(s: str) -> str:
+    """تهريب علامات الـ LIKE الخاصة (\\ و % و _) وإزالة * لأن PostgREST يحوله لـ % لمنع حقن الأنماط"""
+    if not s:
+        return ""
+    return (
+        str(s)
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        .replace("*", "")
+    )
+
+
+def _norm_ar(text: str) -> str:
+    """توحيد الهمزات والتاء المربوطة والألف المقصورة وحذف المسافات وتحويل الحروف لحروف صغيرة"""
+    if not text:
+        return ""
+    text = str(text).strip().lower()
+    for a, b in (("أ", "ا"), ("إ", "ا"), ("آ", "ا"), ("ة", "ه"), ("ى", "ي")):
+        text = text.replace(a, b)
+    return text
+
+
+def _format_variant_item(r: dict, reveal_qty: bool = False) -> dict:
+    item = dict(r)
+    avail = int(item.get("available") or 0)
+    if not reveal_qty:
+        item.pop("available", None)
+        item["in_stock"] = avail > 0
+        item["low_stock"] = avail <= 2
+    else:
+        item["available"] = avail
+        item["in_stock"] = avail > 0
+        item["low_stock"] = avail <= 2
+    return item
+
+
 def _query_variants(tenant_id, search_term):
+    escaped = escape_like(search_term)
     return (
         supabase.table("variants")
         .select("sku,size,color,available,image_url,products!inner(name,price,image_url)")
         .eq("tenant_id", tenant_id)
         .eq("active", True)
-        .ilike("products.name", f"%{search_term}%")
+        .ilike("products.name", f"%{escaped}%")
         .execute()
         .data
     )
 
 
-def check_stock(tenant_id, product_name, size=None, color=None):
+def check_stock(tenant_id, product_name, size=None, color=None, reveal_qty=False):
     clean_name = product_name.strip()
 
     # تطبيع المقاس لو موجود
@@ -171,18 +209,25 @@ def check_stock(tenant_id, product_name, size=None, color=None):
         }
 
     # فلترة بالمقاس واللون لو محددين
+    norm_color = _norm_ar(color) if color else None
     wanted = [
         r for r in rows
         if (size is None or r["size"] == size)
-        and (color is None or r["color"] == color)
+        and (norm_color is None or _norm_ar(r["color"]) == norm_color)
     ]
     in_stock = [r for r in wanted if r["available"] > 0]
 
     if in_stock:
-        return {"status": "available", "items": in_stock}
+        return {
+            "status": "available",
+            "items": [_format_variant_item(r, reveal_qty=reveal_qty) for r in in_stock],
+        }
 
     alternatives = [r for r in rows if r["available"] > 0]
-    return {"status": "out_of_stock", "alternatives": alternatives}
+    return {
+        "status": "out_of_stock",
+        "alternatives": [_format_variant_item(r, reveal_qty=reveal_qty) for r in alternatives],
+    }
 
 
 def show(result):

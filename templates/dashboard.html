@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>لوحة تحكم التاجر | AI Agency</title>
+  
+  <!-- Telegram Web App JS -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
+  <!-- Google Fonts: Cairo -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Cairo', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Cairo', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* Telegram theme integration */
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --text-color: #f8fafc;
+      --accent-color: #4f46e5;
+    }
+    .tg-theme-enabled {
+      background-color: var(--tg-theme-bg-color, var(--bg-color));
+      color: var(--tg-theme-text-color, var(--text-color));
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .pulse-glow-green {
+      box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+    }
+    .pulse-glow-amber {
+      box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- Floating Toast Notification -->
+  <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform -translate-y-20 opacity-0 pointer-events-none flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold border backdrop-blur-md">
+    <span id="toastIcon" class="text-xl"></span>
+    <span id="toastMsg"></span>
+  </div>
+
+  <!-- Store Switcher / Login Modal (if no tenant loaded) -->
+  <div id="loginModal" class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center">
+      <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">
+        🏬
+      </div>
+      <h2 class="text-2xl font-bold mb-2">تسجيل الدخول للوحة التحكم</h2>
+      <p class="text-slate-400 text-sm mb-6">أدخل معرّف المتجر (Tenant ID) أو اختر متجرك للمتابعة</p>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-right text-xs font-semibold text-slate-300 mb-2">معرّف المتجر أو الاسم</label>
+          <input type="text" id="manualTenantInput" placeholder="مثال: e0ec2505 أو اسم المحل" 
+                 class="w-full px-4 py-3 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-slate-100 placeholder-slate-500 transition text-sm">
+        </div>
+        <button onclick="submitManualTenant()" class="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition transform active:scale-95 text-sm flex items-center justify-center gap-2">
+          <span>دخول اللوحة</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex-1 flex flex-col gap-6">
+
+    <!-- Top Navigation Header -->
+    <header class="glass-card rounded-3xl p-4 sm:p-6 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-2xl">
+          🚀
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 id="merchantName" class="text-xl sm:text-2xl font-extrabold text-white tracking-wide">جاري التحميل...</h1>
+            <span id="botStatusBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
+              <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+              فحص...
+            </span>
+          </div>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-xs text-slate-400">المعرّف:</span>
+            <code id="merchantId" class="text-xs font-mono bg-slate-800/80 text-indigo-300 px-2 py-0.5 rounded-lg border border-slate-700/60 select-all cursor-pointer" onclick="copyId()" title="اضغط للنسخ">--</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="loadDashboardData()" title="تحديث البيانات" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95 border border-slate-700/60">
+          <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+        <button onclick="openChangeStoreModal()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition border border-slate-700/60 flex items-center gap-1.5">
+          <span>تبديل المتجر</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Quick Stats Grid -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      
+      <!-- Card 1: Bot Status -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-slate-400">حالة الرد الآلي</span>
+          <span class="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl text-lg">🤖</span>
+        </div>
+        <div>
+          <div id="statBotStatus" class="text-lg sm:text-xl font-black text-white">--</div>
+          <span id="statBotSub" class="text-[11px] text-slate-400">الذكاء الاصطناعي</span>
+        </div>
+      </div>
+
+      <!-- Card 2: Messages -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-slate-400">عدد الرسائل</span>
+          <span class="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl text-lg">💬</span>
+        </div>
+        <div>
+          <div id="statMessages" class="text-2xl font-black text-white">0</div>
+          <span class="text-[11px] text-slate-400">إجمالي المحادثات</span>
+        </div>
+      </div>
+
+      <!-- Card 3: Products -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-slate-400">المنتجات بالمخزن</span>
+          <span class="p-2 bg-blue-500/10 text-blue-400 rounded-xl text-lg">📦</span>
+        </div>
+        <div>
+          <div id="statProducts" class="text-2xl font-black text-white">0</div>
+          <span class="text-[11px] text-slate-400">صنف مسجّل</span>
+        </div>
+      </div>
+
+      <!-- Card 4: Orders -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-slate-400">إجمالي الطلبات</span>
+          <span class="p-2 bg-purple-500/10 text-purple-400 rounded-xl text-lg">🛒</span>
+        </div>
+        <div>
+          <div id="statOrders" class="text-2xl font-black text-white">0</div>
+          <span class="text-[11px] text-slate-400">طلب مؤكد</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Main Controls Area -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Left Column: Bot Control Card (1 col) -->
+      <div class="lg:col-span-1 space-y-6">
+        
+        <!-- Bot Pause / Resume Card -->
+        <div class="glass-card rounded-3xl p-5 sm:p-6 border-slate-800 flex flex-col justify-between gap-5 shadow-lg">
+          <div>
+            <div class="flex items-center gap-2.5 mb-2">
+              <span class="text-xl">⚡</span>
+              <h3 class="text-base font-bold text-white">التحكم في تشغيل البوت</h3>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              يمكنك إيقاف ردود الذكاء الاصطناعي مؤقتاً عند الحاجة للرد اليدوي أو أثناء الجرد، ثم إعادة تفعيله في أي وقت.
+            </p>
+          </div>
+
+          <div class="bg-slate-900/80 rounded-2xl p-4 border border-slate-800 flex items-center justify-between gap-4">
+            <div>
+              <div class="text-xs font-bold text-slate-300">الرد التلقائي</div>
+              <div id="toggleStatusLabel" class="text-xs text-emerald-400 font-semibold mt-0.5">مفعّل وجاهز</div>
+            </div>
+
+            <!-- Modern Toggle Switch -->
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="botEnabledToggle" onchange="toggleBotSwitch()" class="sr-only peer">
+              <div class="w-14 h-8 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:right-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-600 peer-checked:after:-translate-x-6"></div>
+            </label>
+          </div>
+
+          <button id="quickToggleBtn" onclick="toggleBotSwitchClick()" class="w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200">
+            <span>تبديل حالة البوت</span>
+          </button>
+        </div>
+
+        <!-- Quick Help Card -->
+        <div class="glass-card rounded-3xl p-5 border-slate-800 text-xs text-slate-400 space-y-2">
+          <div class="font-bold text-slate-300 flex items-center gap-1.5">
+            <span>💡</span>
+            <span>نصائح سريعة</span>
+          </div>
+          <p>• التعديلات في رابط الشيت وحساب فيسبوك تُحفظ مباشرة في النظام.</p>
+          <p>• تأكد أن شيت جوجل متاح بصلاحية «Anyone with the link can view» لتسهيل القراءة.</p>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Settings Forms (2 cols) -->
+      <div class="lg:col-span-2 space-y-6">
+
+        <!-- Section 1: Google Sheets Inventory -->
+        <div class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl">
+          <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xl">
+                📊
+              </div>
+              <div>
+                <h3 class="text-base font-bold text-white">رابط شيت المخزن (Google Sheets)</h3>
+                <p class="text-xs text-slate-400">مزامنة المنتجات والأسعار والكميات المتاحة</p>
+              </div>
+            </div>
+            
+            <a id="openSheetBtn" href="#" target="_blank" class="hidden text-xs text-emerald-400 hover:text-emerald-300 font-bold px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 items-center gap-1 transition">
+              <span>فتح الشيت</span>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+          </div>
+
+          <form id="sheetsForm" onsubmit="saveSheetsUrl(event)" class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-2">رابط جدول Google Sheets</label>
+              <div class="relative">
+                <input type="url" id="sheetsUrlInput" placeholder="https://docs.google.com/spreadsheets/d/..." 
+                       class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
+                <button type="button" onclick="pasteToInput('sheetsUrlInput')" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition">
+                  لصق
+                </button>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-1.5">
+                الصق الرابط الكامل للملف من شريط المتصفح أو رابط المشاركة المباشر.
+              </p>
+            </div>
+
+            <div class="flex justify-end">
+              <button type="submit" id="saveSheetsBtn" class="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-emerald-600/20 transition transform active:scale-95 flex items-center gap-2">
+                <span id="saveSheetsSpinner" class="hidden animate-spin">⏳</span>
+                <span>حفظ رابط الشيت</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Section 2: Facebook Integration -->
+        <div class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl">
+          <div class="flex items-center gap-3 mb-4 pb-3 border-b border-slate-800">
+            <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xl">
+              📘
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-white">إعدادات صفحة فيسبوك (Facebook Page)</h3>
+              <p class="text-xs text-slate-400">ربط صفحة المتجر بالبوت للرد على الرسائل والكومنتات</p>
+            </div>
+          </div>
+
+          <form id="facebookForm" onsubmit="saveFacebookSettings(event)" class="space-y-4">
+            
+            <!-- Facebook Page ID -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-2">معرّف الصفحة (Page ID)</label>
+              <input type="text" id="facebookPageIdInput" placeholder="مثال: 109876543210987" 
+                     class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
+              <p class="text-[11px] text-slate-500 mt-1.5">
+                تجد معرّف الصفحة في إعدادات صفحتك على فيسبوك (About -> Page ID).
+              </p>
+            </div>
+
+            <!-- Facebook Page Access Token -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-2">توكن الوصول للصفحة (Page Access Token)</label>
+              <div class="relative">
+                <input type="password" id="facebookTokenInput" placeholder="EAAB..." 
+                       class="w-full px-4 py-3 pl-20 rounded-xl bg-slate-900 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
+                <div class="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <button type="button" onclick="toggleTokenVisibility()" class="text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition" id="toggleTokenBtn">
+                    إظهار
+                  </button>
+                  <button type="button" onclick="pasteToInput('facebookTokenInput')" class="text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition">
+                    لصق
+                  </button>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-1.5">
+                التوكن الدائم (Never-expiring Page Access Token) لتفويض البوت بإرسال الردود.
+              </p>
+            </div>
+
+            <div class="flex justify-end pt-2">
+              <button type="submit" id="saveFacebookBtn" class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-blue-600/20 transition transform active:scale-95 flex items-center gap-2">
+                <span id="saveFacebookSpinner" class="hidden animate-spin">⏳</span>
+                <span>حفظ إعدادات فيسبوك</span>
+              </button>
+            </div>
+
+          </form>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-8 text-center text-xs text-slate-500 pb-6">
+      نظام AI Agency لإدارة التجارة الذكية • متوافق مع تيليجرام والمتصفح
+    </footer>
+
+  </div>
+
+  <!-- JavaScript Logic -->
+  <script>
+    // Global State
+    let currentTenantId = null;
+    let currentTenantData = null;
+
+    // Telegram Web App SDK Initialization
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      try {
+        tg.expand();
+      } catch (e) {}
+
+      // Apply Telegram theme colors if available
+      if (tg.themeParams) {
+        document.body.classList.add('tg-theme-enabled');
+      }
+    }
+
+    // Helper: Toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const msg = document.getElementById('toastMsg');
+      const icon = document.getElementById('toastIcon');
+
+      msg.innerText = message;
+      if (type === 'success') {
+        icon.innerText = '✅';
+        toast.className = 'fixed top-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform translate-y-0 opacity-100 flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold border backdrop-blur-md bg-emerald-950/90 text-emerald-200 border-emerald-800';
+      } else {
+        icon.innerText = '❌';
+        toast.className = 'fixed top-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform translate-y-0 opacity-100 flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold border backdrop-blur-md bg-rose-950/90 text-rose-200 border-rose-800';
+      }
+
+      // Haptic feedback for Telegram
+      if (tg?.HapticFeedback) {
+        tg.HapticFeedback.notificationOccurred(type === 'success' ? 'success' : 'error');
+      }
+
+      setTimeout(() => {
+        toast.className = toast.className.replace('translate-y-0 opacity-100', '-translate-y-20 opacity-0 pointer-events-none');
+      }, 3500);
+    }
+
+    // Copy Tenant ID
+    function copyId() {
+      if (!currentTenantId) return;
+      navigator.clipboard.writeText(currentTenantId).then(() => {
+        showToast('تم نسخ معرّف التاجر!', 'success');
+      });
+    }
+
+    // Paste to input
+    async function pasteToInput(inputId) {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          document.getElementById(inputId).value = text.trim();
+        }
+      } catch (err) {
+        console.warn('Clipboard read failed:', err);
+      }
+    }
+
+    // Toggle password visibility
+    function toggleTokenVisibility() {
+      const input = document.getElementById('facebookTokenInput');
+      const btn = document.getElementById('toggleTokenBtn');
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.innerText = 'إخفاء';
+      } else {
+        input.type = 'password';
+        btn.innerText = 'إظهار';
+      }
+    }
+
+    // Tenant Resolution Logic
+    async function resolveInitialTenant() {
+      // 1. Check URL query params: ?tenant_id=... or ?id=...
+      const params = new URLSearchParams(window.location.search);
+      let tid = params.get('tenant_id') || params.get('id');
+      
+      // 2. Check path parameter: /dashboard/{tenant_id}
+      if (!tid) {
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        if (pathParts.length >= 2 && pathParts[0] === 'dashboard') {
+          tid = pathParts[1];
+        }
+      }
+
+      // 3. Check Telegram WebApp initData
+      if (!tid && tg?.initDataUnsafe) {
+        if (tg.initDataUnsafe.start_param) {
+          tid = tg.initDataUnsafe.start_param;
+        } else if (tg.initDataUnsafe.user?.id) {
+          // Attempt lookup by Telegram user ID
+          const chatTid = await lookupByTelegramId(tg.initDataUnsafe.user.id);
+          if (chatTid) {
+            tid = chatTid;
+          }
+        }
+      }
+
+      // 4. Check LocalStorage fallback
+      if (!tid) {
+        tid = localStorage.getItem('agy_dashboard_tenant_id');
+      }
+
+      if (tid) {
+        currentTenantId = tid;
+        loadDashboardData();
+      } else {
+        openChangeStoreModal();
+      }
+    }
+
+    async function lookupByTelegramId(chatId) {
+      try {
+        const res = await fetch(`/api/dashboard/by-telegram/${chatId}`);
+        if (res.ok) {
+          const json = await res.json();
+          return json?.data?.id || null;
+        }
+      } catch (e) {
+        console.error('Telegram lookup error:', e);
+      }
+      return null;
+    }
+
+    function openChangeStoreModal() {
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+
+    function closeChangeStoreModal() {
+      document.getElementById('loginModal').classList.add('hidden');
+    }
+
+    function submitManualTenant() {
+      const input = document.getElementById('manualTenantInput').value.trim();
+      if (!input) {
+        showToast('يرجى كتابة معرّف المتجر', 'error');
+        return;
+      }
+      currentTenantId = input;
+      localStorage.setItem('agy_dashboard_tenant_id', input);
+      closeChangeStoreModal();
+      loadDashboardData();
+    }
+
+    // Load Merchant Data and Stats from Backend
+    async function loadDashboardData() {
+      if (!currentTenantId) {
+        openChangeStoreModal();
+        return;
+      }
+
+      const refreshIcon = document.getElementById('refreshIcon');
+      refreshIcon.classList.add('animate-spin');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`);
+        const json = await res.json();
+
+        if (!res.ok || json.status !== 'success') {
+          showToast(json.detail || json.message || 'لم يتم العثور على المتجر', 'error');
+          openChangeStoreModal();
+          return;
+        }
+
+        const data = json.data;
+        currentTenantData = data;
+        currentTenantId = data.id; // Normalize to full UUID
+        localStorage.setItem('agy_dashboard_tenant_id', data.id);
+
+        // Update Header
+        document.getElementById('merchantName').innerText = data.name || 'متجر غير معرّف';
+        document.getElementById('merchantId').innerText = (data.id || '').substring(0, 8) + '...';
+        document.getElementById('merchantId').setAttribute('title', data.id);
+
+        // Update Bot Status & Toggle
+        const isBotEnabled = Boolean(data.bot_enabled);
+        updateBotStatusUI(isBotEnabled);
+
+        // Update Stats
+        const stats = data.stats || {};
+        document.getElementById('statMessages').innerText = Number(stats.messages_count || 0).toLocaleString('ar-EG');
+        document.getElementById('statProducts').innerText = Number(stats.products_count || 0).toLocaleString('ar-EG');
+        document.getElementById('statOrders').innerText = Number(stats.orders_count || 0).toLocaleString('ar-EG');
+
+        // Update Inputs
+        document.getElementById('sheetsUrlInput').value = data.google_sheets_url || '';
+        updateSheetButton(data.google_sheets_url);
+
+        document.getElementById('facebookPageIdInput').value = data.facebook_page_id || '';
+        document.getElementById('facebookTokenInput').value = data.facebook_page_token || '';
+
+      } catch (err) {
+        console.error('Error loading dashboard data:', err);
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        refreshIcon.classList.remove('animate-spin');
+      }
+    }
+
+    function updateBotStatusUI(enabled) {
+      const badge = document.getElementById('botStatusBadge');
+      const toggle = document.getElementById('botEnabledToggle');
+      const label = document.getElementById('toggleStatusLabel');
+      const statText = document.getElementById('statBotStatus');
+      const quickBtn = document.getElementById('quickToggleBtn');
+
+      toggle.checked = enabled;
+
+      if (enabled) {
+        badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 pulse-glow-green';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> رد آلي نشط';
+        label.innerText = 'مفعّل وشغال تمام';
+        label.className = 'text-xs text-emerald-400 font-semibold mt-0.5';
+        statText.innerText = '🟢 نشط';
+        statText.className = 'text-lg sm:text-xl font-black text-emerald-400';
+        quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/40';
+        quickBtn.innerHTML = '<span>⏸️ إيقاف البوت مؤقتاً</span>';
+      } else {
+        badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-950/80 text-rose-400 border border-rose-800/80';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span> متوقف مؤقتاً';
+        label.innerText = 'متوقف مؤقتاً';
+        label.className = 'text-xs text-rose-400 font-semibold mt-0.5';
+        statText.innerText = '⏸️ متوقف';
+        statText.className = 'text-lg sm:text-xl font-black text-amber-400';
+        quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30';
+        quickBtn.innerHTML = '<span>▶️ تفعيل الرد الآلي الآن</span>';
+      }
+    }
+
+    function updateSheetButton(url) {
+      const openBtn = document.getElementById('openSheetBtn');
+      if (url && url.startsWith('http')) {
+        openBtn.href = url;
+        openBtn.classList.remove('hidden');
+        openBtn.classList.add('inline-flex');
+      } else {
+        openBtn.classList.add('hidden');
+        openBtn.classList.remove('inline-flex');
+      }
+    }
+
+    // Toggle Bot State
+    async function toggleBotSwitch() {
+      const toggle = document.getElementById('botEnabledToggle');
+      await executeToggleBot(toggle.checked);
+    }
+
+    async function toggleBotSwitchClick() {
+      const toggle = document.getElementById('botEnabledToggle');
+      toggle.checked = !toggle.checked;
+      await executeToggleBot(toggle.checked);
+    }
+
+    async function executeToggleBot(newState) {
+      if (!currentTenantId) return;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-bot`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bot_enabled: newState })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          updateBotStatusUI(json.bot_enabled);
+          showToast(json.bot_enabled ? 'تم تفعيل رد البوت بنجاح! 🚀' : 'تم إيقاف رد البوت مؤقتاً ⏸️', 'success');
+        } else {
+          showToast(json.detail || 'حدث خطأ أثناء تعديل حالة البوت', 'error');
+          // Revert toggle
+          document.getElementById('botEnabledToggle').checked = !newState;
+        }
+      } catch (e) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+        document.getElementById('botEnabledToggle').checked = !newState;
+      }
+    }
+
+    // Save Google Sheets URL
+    async function saveSheetsUrl(event) {
+      event.preventDefault();
+      if (!currentTenantId) return;
+
+      const input = document.getElementById('sheetsUrlInput');
+      const btn = document.getElementById('saveSheetsBtn');
+      const spinner = document.getElementById('saveSheetsSpinner');
+      const url = input.value.trim();
+
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ google_sheets_url: url })
+        });
+        const json = await res.json();
+
+        if (res.ok && json.status === 'success') {
+          showToast('تم حفظ رابط شيت المخزن بنجاح! 📊', 'success');
+          updateSheetButton(url);
+        } else {
+          showToast(json.detail || 'فشل حفظ رابط الشيت', 'error');
+        }
+      } catch (err) {
+        showToast('خطأ في الاتصال أثناء حفظ الشيت', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    // Save Facebook Settings
+    async function saveFacebookSettings(event) {
+      event.preventDefault();
+      if (!currentTenantId) return;
+
+      const pageIdInput = document.getElementById('facebookPageIdInput');
+      const tokenInput = document.getElementById('facebookTokenInput');
+      const btn = document.getElementById('saveFacebookBtn');
+      const spinner = document.getElementById('saveFacebookSpinner');
+
+      const pageId = pageIdInput.value.trim();
+      const token = tokenInput.value.trim();
+
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            facebook_page_id: pageId,
+            facebook_page_token: token
+          })
+        });
+        const json = await res.json();
+
+        if (res.ok && json.status === 'success') {
+          showToast('تم تحديث بيانات صفحة فيسبوك بنجاح! 📘', 'success');
+        } else {
+          showToast(json.detail || 'فشل تحديث بيانات فيسبوك', 'error');
+        }
+      } catch (err) {
+        showToast('خطأ في الاتصال أثناء حفظ إعدادات فيسبوك', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', resolveInitialTenant);
+  </script>
+</body>
+</html>

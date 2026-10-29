@@ -1,7 +1,12 @@
 import asyncio
+import io
 import logging
 import os
+import re
+import secrets
+import string
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -9,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -19,8 +24,9 @@ from telegram.ext import (
     filters,
 )
 
+from check_stock import _norm_ar
 from check_stock import check_stock as db_check_stock
-from check_stock import supabase
+from check_stock import escape_like, supabase
 from orders import cancel_order, update_order_shipping, update_order_status
 from subscriptions import (
     add_or_renew_subscription,
@@ -31,14 +37,14 @@ from subscriptions import (
 sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 load_dotenv()
 
-# مهم: مكتبات الشبكة ممكن تطبع رابط فيه التوكن لو المستوى INFO، فبنقفلها
+# حماية التوكنات في سجلات التطبيق
 logging.basicConfig(level=logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 MODEL = "gemini-3.5-flash-lite"
- # غيّره لو الاسم اتغير في Google AI Studio
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "ORIK_1_bot").lstrip("@")
 
 if "SUPER_ADMIN_CHAT_ID" not in os.environ or not os.environ["SUPER_ADMIN_CHAT_ID"].strip():
     raise ValueError("⚠️ المتغير SUPER_ADMIN_CHAT_ID إجباري ويجب ضبطه في ملف .env لحماية النظام!")
@@ -59,12 +65,18 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
 10. لو صاحب المحل طلب إضافة فرع أو عنوان للمحل (مثلاً: فرع مدينة نصر، شارع كذا، لوكيشن ماب كذا)، استخرج البيانات ونادِ propose_new_branch.
 11. لو صاحب المحل طلب عمل كود خصم أو عرض ترويجي (مثلاً: كود EID20 خصم 20%، أو عرض شحن مجاني لأي حد يطلب قطعتين أو أكتر)، استخرج البيانات ونادِ propose_new_promo.
-12. لو صاحب المحل طلب إلغاء أوردر (مثلاً: الغي أوردر 5)، أو تعديل عنوان/موبايل أوردر، أو تحديث حالته (مثلاً: أوردر 5 تم الشحن / اتسلم): استدعِ أداة cancel_order_direct أو update_order_direct فوراً.
+12. اتفاقية حتمية: أي عملية بتغيّر أوردر أو مخزون لازم تعدي على أزرار التأكيد وماتتنفذش فوراً! لو صاحب المحل طلب إلغاء أوردر أو تعديل عنوان/موبايل/حالة أوردر، استدعِ propose_cancel_order أو propose_update_order لتجهيزها، والأزرار هي اللي هتأكد.
 
 معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها (لارج = L، ميديم = M، إكس لارج = XL). الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج، أحمر، أصفر، بنفسجي، أخضر.
 """
 
 NOT_OWNER_MESSAGE = "البوت ده خاص بصاحب المحل. لو إنت صاحب المحل، افتح رابط الربط اللي وصلك."
+
+
+def generate_sku() -> str:
+    """توليد كود صنف بحروف لاتينية فقط (P + 6 حروف عشوائية)"""
+    letters = "".join(secrets.choice(string.ascii_uppercase) for _ in range(6))
+    return f"P{letters}"
 
 
 def get_owner_tenant(chat_id):
@@ -79,11 +91,24 @@ def get_owner_tenant(chat_id):
     return rows[0] if rows else None
 
 
-# سجل مؤقت لمحاولات الربط لحظر التخمين (Rate Limiting)
-# {chat_id: {"failures": int, "blocked_until": float}}
+# سجل محاولات الربط مع سقف أقصى لمنع استهلاك الذاكرة
 LINK_CODE_ATTEMPTS = {}
+MAX_LINK_CODE_ATTEMPTS_ENTRIES = 1000
 MAX_FAILED_LINK_ATTEMPTS = 5
 LINK_LOCKOUT_SECONDS = 15 * 60  # 15 دقيقة حظر بعد 5 محاولات فاشلة
+LINK_CODE_RE = re.compile(r"^[A-F0-9]{16}_[0-9]{9,11}$")
+
+
+def get_or_create_link_attempt(chat_id: int):
+    now = time.time()
+    if len(LINK_CODE_ATTEMPTS) > MAX_LINK_CODE_ATTEMPTS_ENTRIES:
+        expired = [k for k, v in LINK_CODE_ATTEMPTS.items() if now > v.get("blocked_until", 0) and v.get("failures", 0) == 0]
+        for k in expired:
+            LINK_CODE_ATTEMPTS.pop(k, None)
+        if len(LINK_CODE_ATTEMPTS) > MAX_LINK_CODE_ATTEMPTS_ENTRIES:
+            for k in list(LINK_CODE_ATTEMPTS.keys())[:MAX_LINK_CODE_ATTEMPTS_ENTRIES // 4]:
+                LINK_CODE_ATTEMPTS.pop(k, None)
+    return LINK_CODE_ATTEMPTS.setdefault(chat_id, {"failures": 0, "blocked_until": 0})
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,9 +118,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if code:
         now = time.time()
-        rate_info = LINK_CODE_ATTEMPTS.setdefault(chat_id, {"failures": 0, "blocked_until": 0})
-        
-        # 1. فحص إذا كان المستخدم محظوراً مؤقتاً بسبب تكرار المحاولات
+        rate_info = get_or_create_link_attempt(chat_id)
+
+        # 1. فحص الحظر المؤقت
         if rate_info["blocked_until"] > now:
             remaining_mins = int((rate_info["blocked_until"] - now) // 60) + 1
             await msg.reply_text(f"⛔ تم حظر المحاولات مؤقتاً لتكرار إدخال أكواد خاطئة. جرّب بعد {remaining_mins} دقيقة.")
@@ -111,18 +136,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 remaining = MAX_FAILED_LINK_ATTEMPTS - rate_info["failures"]
                 return f"{reason_text}\nباقي لك {remaining} محاولات قبل الحظر المؤقت."
 
-        # 2. البحث عن الكود في كل التجار
+        # فحص تطابق نمط الكود قبل البحث
+        if not LINK_CODE_RE.fullmatch(code):
+            await msg.reply_text(handle_failure())
+            return
+
+        # 2. البحث عن الكود
         rows = (
             supabase.table("tenants")
             .select("id,name,telegram_link_code,created_at")
-            .or_(f"telegram_link_code.eq.{code},telegram_link_code.ilike.{code}_%")
+            .eq("telegram_link_code", code)
             .execute()
             .data
         )
         if not rows:
             await msg.reply_text(handle_failure())
             return
-        
+
         target_tenant = rows[0]
         stored_code = target_tenant.get("telegram_link_code") or ""
 
@@ -149,7 +179,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text(handle_failure("⛔ كود الربط انتهت صلاحيته (الصلاحية 24 ساعة فقط). اطلب من الأدمن توليد كود جديد."))
             return
 
-        # الربط ناجح: مسح كود الربط وتصفير عداد المحاولات الفاشلة
+        # الربط ناجح
         LINK_CODE_ATTEMPTS.pop(chat_id, None)
         supabase.table("tenants").update(
             {"telegram_chat_id": chat_id, "telegram_link_code": None}
@@ -184,30 +214,62 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👑 *لوحة تحكم مدير النظام (Super Admin):*\n"
             "• `/new_tenant <اسم المحل> [الموبايل] [1m|3m]` — إنشاء تاجر جديد وتحديد مدة اشتراكه\n"
             "• `/tenants` — عرض قائمة التجار وحالة اشتراكاتهم\n"
-            "• `/renew <الرقم> [1m|3m|6m|1y]` — تجديد اشتراك تاجر وتفعيل البوت\n"
-            "• `/pause_bot <الرقم>` — إيقاف بوت تاجر مؤقتاً (لو مدفعش الاشتراك)\n"
-            "• `/resume_bot <الرقم>` — إعادة تشغيل بوت تاجر بعد ما يدفع\n"
-            "• `/delete_tenant <الرقم>` — حذف تاجر وبياناته نهائياً\n"
+            "• `/renew <الرقم أو الاسم> [1m|3m|6m|1y]` — تجديد اشتراك تاجر وتفعيل البوت\n"
+            "• `/pause_bot <الرقم>` — إيقاف بوت تاجر مؤقتاً\n"
+            "• `/resume_bot <الرقم>` — إعادة تشغيل بوت تاجر\n"
+            "• `/delete_tenant <id8> [confirm]` — حذف تاجر بأول 8 حروف من معرّفه نهائياً\n"
             "• `/link_page <الرقم> fb=<id> token=<token>` — ربط قنوات السوشيال ميديا\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
         )
 
     text += (
         "📦 *إدارة المخزن والمبيعات:*\n"
-        "تقدر تكلمني بالعامية المصرية عادي جداً، مثلاً:\n"
+        "تقدر تكلمني بالعامية المصرية عادي جداً (كتابة أو فويس)، مثلاً:\n"
         "• *بعت 2 تيشيرت أسود L*\n"
         "• *وصل 20 هودي رمادي L*\n"
         "• *المتاح إيه من التيشيرت الأبيض؟*\n"
+        "• *الغي أوردر 5*\n"
+        "• *عدل عنوان أوردر 5 لمصر الجديدة وموبايل 01012345678*\n"
         "• *ضيف فرع جديد في مدينة نصر...*\n"
         "• *اعمل كود خصم EID20 خصم 20%*\n\n"
         "📊 *الأوامر السريعة:*\n"
+        "• `/dashboard` — فتح لوحة تحكم التاجر وإعدادات الشيت وفيسبوك (Web App)\n"
         "• `/orders` — آخر 5 أوردرات وتفاصيلها\n"
         "• `/today` — تقرير ملخص مبيعات اليوم\n"
         "• `/cancel <رقم_الأوردر>` — إلغاء أوردر وإرجاع بضاعته للمخزن\n\n"
         "📁 *تحديث المخزن دفعة واحدة:*\n"
-        "ابعت أي ملف Excel (.xlsx) أو CSV فيه بضاعتك، وهقرأه وأحدث المخزن فوراً!"
+        "ابعت أي ملف Excel (.xlsx) أو CSV فيه بضاعتك (حتى 2 ميجا و500 صف)، وهقرأه وأحدث المخزن فوراً!"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def dashboard_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    tenant = get_owner_tenant(chat_id)
+    if not tenant:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    base_url = os.environ.get("DASHBOARD_URL") or os.environ.get("BASE_URL") or "http://localhost:8000"
+    base_url = base_url.rstrip("/")
+    dashboard_url = f"{base_url}/dashboard?tenant_id={tenant['id']}"
+
+    if dashboard_url.startswith("https://"):
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📊 فتح لوحة التحكم (Web App)", web_app=WebAppInfo(url=dashboard_url))
+        ]])
+    else:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📊 فتح لوحة التحكم", url=dashboard_url)
+        ]])
+
+    await update.message.reply_text(
+        f"📊 *لوحة تحكم التاجر — «{tenant['name']}»*\n\n"
+        "تقدر تشوف إحصائيات المحل، وتعدّل رابط شيت المخزن، وتدير صفحة الفيسبوك، وتوقف أو تشغل البوت من اللوحة:\n"
+        f"{dashboard_url}",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
 
 
 async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -228,7 +290,6 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """أمر خاص بالـ Super Admin فقط لإنشاء تاجر جديد وتوليد كود ربط فوري"""
     chat_id = update.effective_chat.id
     if chat_id != SUPER_ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ عذراً، الأمر ده مخصص للـ Super Admin فقط.")
@@ -244,11 +305,8 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # استخراج الاسم والموبايل ومدة الاشتراك إن وجدت
-    import re
     full_text = " ".join(context.args)
 
-    # استخراج مدة الاشتراك: 1m, 3m, 6m, 1y (الافتراضي 1m = شهر)
     months = 1
     dur_match = re.search(r"\b(1m|3m|6m|12m|1y|شهرين|سنة)\b", full_text, re.IGNORECASE)
     if dur_match:
@@ -263,11 +321,9 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             months = 2
         full_text = re.sub(r"\b(1m|3m|6m|12m|1y|شهرين|سنة)\b", "", full_text, flags=re.IGNORECASE).strip()
 
-    # البحث عن رقم موبايل مصري أو دولي في النص
     phone_match = re.search(r"(\+?20\d{10}|01[0125]\d{8})", full_text.replace(" ", ""))
     if phone_match:
         phone = phone_match.group(0)
-        # مسح الرقم من النص للحصول على الاسم فقط
         name = re.sub(r"(\+?20[\s\d]{10,}|01[0125][\s\d]{8,})", "", full_text).strip()
     else:
         phone = None
@@ -278,17 +334,15 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("لازم تكتب اسم المحل!")
         return
 
-    import secrets
-    raw_code = secrets.token_hex(8).upper()  # 16 حرف عشوائي آمن
-    expiry_ts = int(time.time() + 24 * 3600)  # صلاحية 24 ساعة
+    raw_code = secrets.token_hex(8).upper()
+    expiry_ts = int(time.time() + 24 * 3600)
     link_code = f"{raw_code}_{expiry_ts}"
 
-    # فحص إذا كان المتجر مسجل بالفعل لمنع التكرار
     try:
         existing = (
             supabase.table("tenants")
             .select("id, name, telegram_chat_id, telegram_link_code")
-            .ilike("name", name)
+            .ilike("name", escape_like(name))
             .execute()
             .data
         )
@@ -304,14 +358,16 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 code = link_code
                 supabase.table("tenants").update({"telegram_link_code": link_code}).eq("id", ex["id"]).execute()
+                deep_link = f"https://t.me/{BOT_USERNAME}?start={code}"
                 await msg.reply_text(
                     f"ℹ️ *المحل «{name}» متسجل مسبقاً وبانتظار التفعيل:*\n\n"
                     f"🔑 *كود الربط:* `{code}`\n\n"
                     f"انسخ الرسالة دي وابعتها للتاجر:\n"
                     f"👇👇👇\n"
                     f"أهلاً بحضرتك في سيستم إدارة المبيعات والمخزن 🚀\n"
-                    f"ادخل على البوت: @ORIK_1_bot\n"
-                    f"واكتب الكود ده لتفعيل حسابك:\n"
+                    f"اضغط على الرابط التالي لتفعيل حسابك فوراً:\n"
+                    f"{deep_link}\n\n"
+                    f"أو ادخل على البوت `@{BOT_USERNAME}` واكتب:\n"
                     f"`/start {code}`",
                     parse_mode="Markdown"
                 )
@@ -334,10 +390,10 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         t = res.data[0]
-        # تفعيل مدة الاشتراك في نظام الاشتراكات
         sub = add_or_renew_subscription(t["id"], months=months)
         ends_str = sub["ends_at"].strftime("%Y-%m-%d")
 
+        deep_link = f"https://t.me/{BOT_USERNAME}?start={link_code}"
         await msg.reply_text(
             f"🎉 *تم إنشاء حساب التاجر بنجاح!*\n\n"
             f"🏢 *المحل:* `{t['name']}`\n"
@@ -346,8 +402,9 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"انسخ الرسالة دي وابعتها للتاجر:\n"
             f"👇👇👇\n"
             f"أهلاً بحضرتك في سيستم إدارة المبيعات والمخزن 🚀\n"
-            f"ادخل على البوت: @ORIK_1_bot\n"
-            f"واكتب الكود ده لتفعيل حسابك:\n"
+            f"اضغط على الرابط التالي لتفعيل حسابك فوراً:\n"
+            f"{deep_link}\n\n"
+            f"أو ادخل على البوت `@{BOT_USERNAME}` واكتب:\n"
             f"`/start {link_code}`",
             parse_mode="Markdown"
         )
@@ -356,16 +413,6 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    أمر خاص بالـ Super Admin لربط حسابات السوشيال ميديا بتاجر معين.
-    الاستخدام:
-      /link_page <tenant_id> fb=<page_id> token=<access_token>
-      /link_page <tenant_id> ig=<instagram_account_id>
-      /link_page <tenant_id> wa=<whatsapp_phone_number_id> wa_token=<token>
-      /link_page <tenant_id> fb=<page_id> ig=<ig_id> wa=<wa_id>
-    مثال:
-      /link_page 3 fb=112233445566 token=EAABxx...
-    """
     chat_id = update.effective_chat.id
     if chat_id != SUPER_ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
@@ -382,22 +429,25 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/link_page <tenant_id> wa_token=<wa_access_token>`\n"
             "`/link_page <tenant_id> tt_token=<tiktok_access_token>`\n\n"
             "ممكن تجمعهم في أمر واحد:\n"
-            "`/link_page 3 fb=112233 ig=998877 wa=556644 tiktok=778899 token=EAABxx... tt_token=TKxx...`\n\n"
-            "📌 *تعرف الـ tenant_id ازاي?*\n"
-            "ابعت: `/tenants` تشوف كل التجار وأرقامهم.",
+            "`/link_page 3 fb=112233 ig=998877 wa=556644 token=EAABxx...`",
             parse_mode="Markdown"
         )
         return
 
     tenant_id_str = context.args[0].strip()
-    tenant = resolve_tenant(tenant_id_str)
-    if not tenant:
-        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{tenant_id_str}`\nاستخدم /tenants تشوف الأرقام الصح.", parse_mode="Markdown")
-        return
+    target_clean = tenant_id_str.lower().replace("-", "")
+    if len(target_clean) >= 8 and re.fullmatch(r"[0-9a-f\-]+", tenant_id_str.lower()):
+        tenant, err = resolve_tenant_strict(tenant_id_str)
+        if not tenant:
+            await update.message.reply_text(err, parse_mode="Markdown")
+            return
+    else:
+        tenant = resolve_tenant(tenant_id_str)
+        if not tenant:
+            await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{tenant_id_str}`\nاستخدم /tenants تشوف الأرقام الصح.", parse_mode="Markdown")
+            return
 
     updates = {}
-
-    # تحليل المعاملات
     for arg in context.args[1:]:
         if "=" not in arg:
             continue
@@ -431,7 +481,6 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ فشل التحديث: {e}")
         return
 
-    # بناء رسالة التأكيد
     lines = [f"✅ *تم ربط حسابات «{tenant['name']}» بنجاح!*\n"]
     field_names = {
         "facebook_page_id": "📘 فيسبوك Page ID",
@@ -445,26 +494,20 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for field, label in field_names.items():
         if field in updates:
             val = updates[field]
-            # إخفاء معظم التوكن للأمان
-            if "token" in field.lower() and len(val) > 10:
-                display = val[:6] + "..." + val[-4:]
-            else:
-                display = val
+            display = "•••••••• (تم الحفظ بأمان)" if "token" in field.lower() else val
             lines.append(f"{label}: `{display}`")
 
-    lines.append(
-        f"\n🔗 *دلوقتي أي رسالة جاية للـ Page/Account ده هتروح لـ AI بتاع «{tenant['name']}» تلقائياً!*"
-    )
+    lines.append(f"\n🔗 *دلوقتي أي رسالة جاية للـ Page/Account ده هتروح لـ AI بتاع «{tenant['name']}» تلقائياً!*")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
 
 
 def resolve_tenant(identifier: str):
-    """
-    بيبحث عن التاجر:
-    1. بالرقم الترتيبي السهل (1, 2, 3...) حسب ترتيب /tenants
-    2. بالـ UUID المباشر
-    3. بالاسم أو جزء من الاسم
-    """
+    """بحث مرن للتاجر بالرقم الترتيبي أو الاسم أو المعرّف (أو بادئة UUID فريدة 8+ حروف هيكس)."""
     rows = (
         supabase.table("tenants")
         .select("id, name, bot_enabled, telegram_chat_id, facebook_page_id, instagram_account_id, whatsapp_phone_number_id, tiktok_account_id")
@@ -481,12 +524,23 @@ def resolve_tenant(identifier: str):
         if 0 <= idx < len(rows):
             return rows[idx]
 
-    # مطابقة UUID كامل
+    # 1. مطابقة UUID كامل
     for r in rows:
         if str(r.get("id", "")).lower() == clean.lower():
             return r
 
-    # مطابقة الاسم
+    # 2. مطابقة بادئة UUID فريدة (8+ حروف هيكس)
+    clean_no_hyphens = clean.lower().replace("-", "")
+    if len(clean_no_hyphens) >= 8 and re.fullmatch(r"[0-9a-f\-]+", clean.lower()):
+        prefix_matches = [
+            r for r in rows
+            if str(r.get("id", "")).lower().startswith(clean.lower())
+            or str(r.get("id", "")).lower().replace("-", "").startswith(clean_no_hyphens)
+        ]
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+
+    # 3. مطابقة الاسم الجزئي
     for r in rows:
         if clean.lower() in str(r.get("name", "")).lower():
             return r
@@ -494,8 +548,50 @@ def resolve_tenant(identifier: str):
     return None
 
 
+def resolve_tenant_strict(identifier: str):
+    """
+    مطابقة صارمة للتاجر (خاصة بعملية الحذف الحساسة):
+    - تقبل UUID كامل أو بادئة لا تقل عن 8 خانات هيكس/UUID فريدة فقط.
+    - ترفض الأسماء أو الأرقام الترتيبية أو البادئات الأقل من 8 خانات.
+    - لو أكثر من تاجر يطابق نفس البادئة، ترفض العملية وتطلب تحديد المعرف بدقة.
+    ترجع: (tenant_dict, error_message)
+    """
+    clean = (identifier or "").strip().lower()
+    if not clean:
+        return None, "يرجى كتابة معرّف التاجر (UUID كامل أو أول 8 حروف فريدة منه على الأقل)."
+
+    clean_no_hyphens = clean.replace("-", "")
+    if len(clean_no_hyphens) < 8 or not re.fullmatch(r"[0-9a-f\-]+", clean):
+        return None, "❌ المعرّف غير صالح! يجب إدخال UUID كامل أو أول 8 حروف هيكس على الأقل (بدون أسماء أو أرقام ترتيبية)."
+
+    rows = (
+        supabase.table("tenants")
+        .select("id, name, bot_enabled, telegram_chat_id")
+        .execute()
+        .data or []
+    )
+    if not rows:
+        return None, "لا يوجد تجار مسجلين في السيستم."
+
+    exact_matches = [r for r in rows if str(r.get("id", "")).lower() == clean]
+    if len(exact_matches) == 1:
+        return exact_matches[0], None
+
+    prefix_matches = [
+        r for r in rows
+        if str(r.get("id", "")).lower().startswith(clean)
+        or str(r.get("id", "")).lower().replace("-", "").startswith(clean_no_hyphens)
+    ]
+    if len(prefix_matches) == 1:
+        return prefix_matches[0], None
+    elif len(prefix_matches) > 1:
+        matched_names = ", ".join(f"«{r['name']}» ({r['id'][:8]})" for r in prefix_matches)
+        return None, f"⚠️ يوجد أكثر من تاجر يطابق هذا المعرّف ({matched_names}). يرجى كتابة معرّف أطول أو كامل لمنع الحذف بالخطأ."
+    else:
+        return None, f"❌ لم يتم العثور على أي تاجر بالمعرّف: `{clean}`."
+
+
 async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """أمر للـ Super Admin يشوف كل التجار وأرقامهم وحالتهم."""
     chat_id = update.effective_chat.id
     if chat_id != SUPER_ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
@@ -520,10 +616,7 @@ async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sub = get_tenant_subscription(t["id"])
         if sub["has_subscription"]:
             if sub["is_active"]:
-                if sub["days_left"] <= 3:
-                    sub_str = f"🟡 باقي {sub['days_left']} يوم ({sub['ends_at_str']})"
-                else:
-                    sub_str = f"⏳ باقي {sub['days_left']} يوم ({sub['ends_at_str']})"
+                sub_str = f"🟡 باقي {sub['days_left']} يوم ({sub['ends_at_str']})" if sub['days_left'] <= 3 else f"⏳ باقي {sub['days_left']} يوم ({sub['ends_at_str']})"
             else:
                 sub_str = f"🔴 منتهي من {abs(sub['days_left'])} يوم"
         else:
@@ -547,46 +640,47 @@ async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*{i}.* *«{t['name']}»* — {status_badge}\n"
             f"   📅 الاشتراك: {sub_str}\n"
             f"   🔗 القنوات: {ch_str}\n"
-            f"   🆔 كود: `{t['id'][:8]}...`\n"
+            f"   🆔 كود: `{t['id'][:8]}`\n"
         )
 
     lines.append("━━━━━━━━━━━━━━━━━━━━")
     lines.append("⚡ *التحكم السريع في التجار:*")
-    lines.append("• تجديد اشتراك: `/renew <الرقم> [1m|3m|6m|1y]` (مثال: `/renew 1 3m`)")
-    lines.append("• إيقاف مؤقت: `/pause_bot <الرقم>` (مثلاً: `/pause_bot 1`)")
-    lines.append("• إعادة تشغيل: `/resume_bot <الرقم>` (مثلاً: `/resume_bot 1`)")
-    lines.append("• حذف تاجر: `/delete_tenant <الرقم>` (مثلاً: `/delete_tenant 1`)")
+    lines.append("• تجديد اشتراك: `/renew <الرقم أو الاسم> [1m|3m|6m|1y]`")
+    lines.append("• إيقاف مؤقت: `/pause_bot <الرقم>`")
+    lines.append("• إعادة تشغيل: `/resume_bot <الرقم>`")
+    lines.append("• حذف تاجر نهائياً: `/delete_tenant <id8>`")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
 async def pause_bot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إيقاف البوت مؤقتاً للتاجر (لو مدفعش الاشتراك)"""
     chat_id = update.effective_chat.id
     if chat_id != SUPER_ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "⚠️ اكتب رقم التاجر من قائمة /tenants أو اسمه:\n"
-            "مثال: `/pause_bot 1` أو `/pause_bot عمهم`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("⚠️ اكتب رقم التاجر من قائمة /tenants أو اسمه:\nمثال: `/pause_bot 1`", parse_mode="Markdown")
         return
 
     target = " ".join(context.args).strip()
-    tenant = resolve_tenant(target)
-    if not tenant:
-        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants لمعرفة الأرقام.", parse_mode="Markdown")
-        return
+    target_clean = target.lower().replace("-", "")
+    if len(target_clean) >= 8 and re.fullmatch(r"[0-9a-f\-]+", target.lower()):
+        tenant, err = resolve_tenant_strict(target)
+        if not tenant:
+            await update.message.reply_text(err, parse_mode="Markdown")
+            return
+    else:
+        tenant = resolve_tenant(target)
+        if not tenant:
+            await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`", parse_mode="Markdown")
+            return
 
     try:
         supabase.table("tenants").update({"bot_enabled": False}).eq("id", tenant["id"]).execute()
         await update.message.reply_text(
             f"⏸️ *تم إيقاف البوت للتاجر «{tenant['name']}» مؤقتاً!* 🔴\n\n"
-            "السيستم دلوقتي مش هيرد على أي رسايل أو كومنتات على صفحاته حتى يدفع الاشتراك.\n\n"
-            f"لإعادة تشغيله بعد الدفع:\n`/resume_bot {tenant['name']}`",
+            f"لإعادة تشغيله: `/resume_bot {tenant['name']}`",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -594,39 +688,81 @@ async def pause_bot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def resume_bot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إعادة تشغيل البوت للتاجر بعد ما يدفع"""
     chat_id = update.effective_chat.id
     if chat_id != SUPER_ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "⚠️ اكتب رقم التاجر من قائمة /tenants أو اسمه:\n"
-            "مثال: `/resume_bot 1` أو `/resume_bot عمهم`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("⚠️ اكتب رقم التاجر من قائمة /tenants أو اسمه:\nمثال: `/resume_bot 1`", parse_mode="Markdown")
         return
 
     target = " ".join(context.args).strip()
-    tenant = resolve_tenant(target)
-    if not tenant:
-        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants لمعرفة الأرقام.", parse_mode="Markdown")
-        return
+    target_clean = target.lower().replace("-", "")
+    if len(target_clean) >= 8 and re.fullmatch(r"[0-9a-f\-]+", target.lower()):
+        tenant, err = resolve_tenant_strict(target)
+        if not tenant:
+            await update.message.reply_text(err, parse_mode="Markdown")
+            return
+    else:
+        tenant = resolve_tenant(target)
+        if not tenant:
+            await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`", parse_mode="Markdown")
+            return
 
     try:
         supabase.table("tenants").update({"bot_enabled": True}).eq("id", tenant["id"]).execute()
         await update.message.reply_text(
-            f"▶️ *تم إعادة تشغيل البوت للتاجر «{tenant['name']}» بنجاح!* 🟢\n\n"
-            "البوت هيرجع يرد فوراً على كل الرسائل والكومنتات في كل القنوات المربوطة.",
+            f"▶️ *تم إعادة تشغيل البوت للتاجر «{tenant['name']}» بنجاح!* 🟢",
             parse_mode="Markdown"
         )
     except Exception as e:
         await update.message.reply_text(f"❌ فشل تشغيل البوت: {e}")
 
 
+def purge_tenant_data(tid: str):
+    """حذف جميع بيانات التاجر بالترتيب الصحيح لتفادي أخطاء قيود المفاتيح الأجنبية (Foreign Key Constraints)"""
+    # 1. جلب معرفات الأوردرات لحذف عناصرها
+    order_rows = supabase.table("orders").select("id").eq("tenant_id", tid).execute().data or []
+    order_ids = [r["id"] for r in order_rows]
+    if order_ids:
+        supabase.table("order_items").delete().in_("order_id", order_ids).execute()
+
+    # 2. جلب معرفات الأصناف تحسباً لأي عناصر أوردرات تشير إليها
+    variant_rows = supabase.table("variants").select("id").eq("tenant_id", tid).execute().data or []
+    variant_ids = [r["id"] for r in variant_rows]
+    if variant_ids:
+        supabase.table("order_items").delete().in_("variant_id", variant_ids).execute()
+
+    # 3. حذف حركات المخزون والأوردرات
+    supabase.table("stock_movements").delete().eq("tenant_id", tid).execute()
+    supabase.table("orders").delete().eq("tenant_id", tid).execute()
+
+    # 4. حذف الرسائل والمحادثات
+    conv_rows = supabase.table("conversations").select("id").eq("tenant_id", tid).execute().data or []
+    conv_ids = [r["id"] for r in conv_rows]
+    if conv_ids:
+        supabase.table("messages").delete().in_("conversation_id", conv_ids).execute()
+    supabase.table("conversations").delete().eq("tenant_id", tid).execute()
+
+    # 5. حذف الجداول المساعدة (تقييمات، فروع، عروض، شحن، اشتراكات)
+    for tbl in ["reviews", "branches", "promotions", "shipping_rates", "subscriptions"]:
+        try:
+            supabase.table(tbl).delete().eq("tenant_id", tid).execute()
+        except Exception:
+            pass
+
+    # 6. حذف الأصناف ثم المنتجات ثم العملاء
+    supabase.table("variants").delete().eq("tenant_id", tid).execute()
+    supabase.table("products").delete().eq("tenant_id", tid).execute()
+    supabase.table("customers").delete().eq("tenant_id", tid).execute()
+
+    # 7. حذف التاجر نفسه نهائياً
+    supabase.table("tenants").delete().eq("id", tid).execute()
+
+
 async def delete_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """حذف التاجر وبياناته من السيستم"""
+    """حذف التاجر وبياناته نهائياً بالتحقق الصارم من أول 8 حروف للـ UUID"""
     chat_id = update.effective_chat.id
     if chat_id != SUPER_ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
@@ -634,8 +770,8 @@ async def delete_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "⚠️ اكتب رقم التاجر من قائمة /tenants أو اسمه:\n"
-            "مثال: `/delete_tenant 1` أو `/delete_tenant عمهم`",
+            "⚠️ اكتب أول 8 حروف من معرّف التاجر (UUID) من قائمة /tenants:\n"
+            "مثال: `/delete_tenant a1b2c3d4`",
             parse_mode="Markdown"
         )
         return
@@ -648,51 +784,49 @@ async def delete_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         target = " ".join(args).strip()
 
-    tenant = resolve_tenant(target)
+    tenant, err = resolve_tenant_strict(target)
     if not tenant:
-        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants", parse_mode="Markdown")
+        await update.message.reply_text(err, parse_mode="Markdown")
         return
 
+    tid = tenant["id"]
+    tid8 = tid[:8]
+
     if not is_confirmed:
+        orders_count = 0
+        try:
+            ord_res = supabase.table("orders").select("id", count="exact").eq("tenant_id", tid).execute()
+            orders_count = ord_res.count if ord_res.count is not None else len(ord_res.data or [])
+        except Exception:
+            pass
+
         await update.message.reply_text(
-            f"⚠️ *تحذير: هل أنت متأكد من حذف التاجر «{tenant['name']}» نهائياً؟*\n"
-            f"ده هيحذف كل منتجاته ومخزنه وسجل أوردراته بالكامل ولا يمكن التراجع!\n\n"
+            f"⚠️ *تحذير: هل أنت متأكد من حذف التاجر «{tenant['name']}» (المعرّف: `{tid}`) نهائياً؟*\n"
+            f"ده هيحذف كل منتجاته ومخزنه وسجل أوردراته ({orders_count} أوردر) بالكامل ولا يمكن التراجع!\n\n"
             f"للتأكيد، اكتب:\n"
-            f"`/delete_tenant {target} confirm`",
+            f"`/delete_tenant {tid8} confirm`",
             parse_mode="Markdown"
         )
         return
 
-    tid = tenant["id"]
     try:
-        for table in ["order_items", "orders", "variants", "products", "branches", "tenant_promos"]:
-            try:
-                supabase.table(table).delete().eq("tenant_id", tid).execute()
-            except Exception:
-                pass
-        supabase.table("tenants").delete().eq("id", tid).execute()
-        await update.message.reply_text(f"🗑️ *تم حذف التاجر «{tenant['name']}» وبياناته من السيستم نهائياً.* ✅", parse_mode="Markdown")
+        await asyncio.to_thread(purge_tenant_data, tid)
+        await update.message.reply_text(
+            f"🗑️ *تم حذف التاجر «{tenant['name']}» (المعرّف: `{tid}`) وبياناته من السيستم نهائياً.* ✅",
+            parse_mode="Markdown"
+        )
     except Exception as e:
         await update.message.reply_text(f"❌ فشل الحذف: {e}")
 
 
 async def renew_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تجديد اشتراك تاجر: /renew <الرقم أو الاسم> [1m | 3m | 6m | 1y]"""
     chat_id = update.effective_chat.id
     if chat_id != SUPER_ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ الأمر ده للـ Super Admin بس.")
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "📋 *طريقة تجديد الاشتراك:*\n"
-            "`/renew <رقم أو اسم التاجر> [المدة]`\n\n"
-            "أمثلة:\n"
-            "• `/renew 1 1m` — تجديد شهر للتاجر رقم 1\n"
-            "• `/renew 1 3m` — تجديد 3 شهور للتاجر رقم 1\n"
-            "• `/renew عمهم 3m` — تجديد 3 شهور لـ عمهم",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("📋 طريقة التجديد:\n`/renew <رقم أو اسم أو كود التاجر> [المدة]`\nمثال: `/renew 1 3m`", parse_mode="Markdown")
         return
 
     target = context.args[0].strip()
@@ -708,10 +842,17 @@ async def renew_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif "شهرين" in m_str:
             months = 2
 
-    tenant = resolve_tenant(target)
-    if not tenant:
-        await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants", parse_mode="Markdown")
-        return
+    target_clean = target.lower().replace("-", "")
+    if len(target_clean) >= 8 and re.fullmatch(r"[0-9a-f\-]+", target.lower()):
+        tenant, err = resolve_tenant_strict(target)
+        if not tenant:
+            await update.message.reply_text(err, parse_mode="Markdown")
+            return
+    else:
+        tenant = resolve_tenant(target)
+        if not tenant:
+            await update.message.reply_text(f"❌ لم أجد تاجر بهذا الرقم أو الاسم: `{target}`\nاستخدم /tenants", parse_mode="Markdown")
+            return
 
     tid = tenant["id"]
     res = add_or_renew_subscription(tid, months=months)
@@ -732,22 +873,20 @@ async def renew_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=tg_chat,
                 text=(
-                    f"🎉 *مبروك! تم تجديد اشتراك متجرك «{tenant['name']}» بنجاح!*\n\n"
-                    f"📅 *مدة التجديد:* {months} شهر\n"
-                    f"⏳ *ساري حتى:* `{ends_str}`\n\n"
+                    f"🎉 مبروك! تم تجديد اشتراك متجرك «{tenant['name']}» بنجاح!\n\n"
+                    f"📅 مدة التجديد: {months} شهر\n"
+                    f"⏳ ساري حتى: {ends_str}\n\n"
                     "خدمة الرد التلقائي وإدارة الأوردرات والمخزن تعمل بكامل طاقتها 🚀"
-                ),
-                parse_mode="Markdown"
+                )
             )
         except Exception as e:
             print(f"Failed to notify tenant {tenant['name']} of renewal:", e)
 
 
 async def check_subscriptions_and_notify(app):
-    """فحص دوري لكل اشتراكات التجار وإرسال التنبيهات للأدمن والتاجر"""
+    """فحص دوري لاشتراكات التجار وإرسال التنبيهات بنص عادي خالٍ من الرموز لتفادي أخطاء parse_mode"""
     alerts = check_and_update_subscriptions()
 
-    # 1. تنبيهات اقتراب الانتهاء (3 أيام أو أقل)
     for w in alerts.get("warnings", []):
         tid = w["tenant_id"]
         rows = supabase.table("tenants").select("id, name, telegram_chat_id").eq("id", tid).execute().data
@@ -761,13 +900,12 @@ async def check_subscriptions_and_notify(app):
             await app.bot.send_message(
                 chat_id=SUPER_ADMIN_CHAT_ID,
                 text=(
-                    f"🔔 *تنبيه تجديد اشتراك:* ⏳\n\n"
-                    f"المحل: *«{tenant['name']}»*\n"
-                    f"متبقي على انتهاء الاشتراك: *{days} أيام* (ينتهي في: `{ends_str}`)\n"
+                    f"🔔 تنبيه تجديد اشتراك: ⏳\n\n"
+                    f"المحل: «{tenant['name']}»\n"
+                    f"متبقي على انتهاء الاشتراك: {days} أيام (ينتهي في: {ends_str})\n"
                     f"تواصل مع التاجر لتجديد الاشتراك.\n\n"
-                    f"للتجديد السريع:\n`/renew {tenant['name']} 1m` أو `3m`"
-                ),
-                parse_mode="Markdown"
+                    f"للتجديد السريع:\n/renew {tenant['id'][:8]} 1m أو 3m"
+                )
             )
         except Exception as e:
             print("Failed to alert admin:", e)
@@ -777,16 +915,14 @@ async def check_subscriptions_and_notify(app):
                 await app.bot.send_message(
                     chat_id=tenant["telegram_chat_id"],
                     text=(
-                        f"⚠️ *تنبيه هام بخصوص اشتراكك:*\n\n"
-                        f"عزيزي صاحب متجر «{tenant['name']}»، متبقي *{days} أيام فقط* على انتهاء فترة اشتراكك في السيستم (ينتهي في: `{ends_str}`).\n\n"
+                        f"⚠️ تنبيه هام بخصوص اشتراكك:\n\n"
+                        f"عزيزي صاحب متجر «{tenant['name']}»، متبقي {days} أيام فقط على انتهاء فترة اشتراكك في السيستم (ينتهي في: {ends_str}).\n\n"
                         "يرجى التواصل مع إدارة السيستم لتجديد الاشتراك وتجنب توقف خدمة الرد التلقائي على العملاء 🙏"
-                    ),
-                    parse_mode="Markdown"
+                    )
                 )
             except Exception as e:
                 print("Failed to alert tenant:", e)
 
-    # 2. انتهاء الاشتراك الفعلي (إيقاف البوت فوراً)
     for exp in alerts.get("expirations", []):
         tid = exp["tenant_id"]
         rows = supabase.table("tenants").select("id, name, telegram_chat_id").eq("id", tid).execute().data
@@ -801,13 +937,11 @@ async def check_subscriptions_and_notify(app):
             await app.bot.send_message(
                 chat_id=SUPER_ADMIN_CHAT_ID,
                 text=(
-                    f"🔴 *انتهاء اشتراك وإيقاف البوت:* ⏸️\n\n"
-                    f"المحل: *«{tenant['name']}»*\n"
-                    f"انتهى الاشتراك بتاريخ `{ends_str}` وتم إيقاف الرد الآلي للتاجر تلقائياً.\n\n"
-                    f"أول ما التاجر يدفع ويجدد، اكتب:\n"
-                    f"`/renew {tenant['name']} 1m` أو `3m`"
-                ),
-                parse_mode="Markdown"
+                    f"🔴 انتهاء اشتراك وإيقاف البوت: ⏸️\n\n"
+                    f"المحل: «{tenant['name']}»\n"
+                    f"انتهى الاشتراك بتاريخ {ends_str} وتم إيقاف الرد الآلي للتاجر تلقائياً.\n\n"
+                    f"للتجديد بعد الدفع:\n/renew {tenant['id'][:8]} 1m"
+                )
             )
         except Exception as e:
             print("Failed to alert admin on expiration:", e)
@@ -817,11 +951,10 @@ async def check_subscriptions_and_notify(app):
                 await app.bot.send_message(
                     chat_id=tenant["telegram_chat_id"],
                     text=(
-                        f"🔴 *تنبيه: انتهت فترة اشتراك متجرك «{tenant['name']}»!*\n\n"
+                        f"🔴 تنبيه: انتهت فترة اشتراك متجرك «{tenant['name']}»!\n\n"
                         "تم إيقاف خدمة الرد التلقائي وإدارة المبيعات مؤقتاً.\n"
                         "يرجى التواصل مع الإدارة وسداد الاشتراك لإعادة تفعيل الخدمة فوراً 🚀"
-                    ),
-                    parse_mode="Markdown"
+                    )
                 )
             except Exception as e:
                 print("Failed to alert tenant on expiration:", e)
@@ -872,38 +1005,56 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# جلسات محادثات التليجرام لحفظ الذاكرة وسياق الكلام
+# جلسات المحادثة وإدارة الذاكرة مع قفل أمان
 MERCHANT_SESSIONS = {}
+MERCHANT_SESSIONS_LOCK = threading.Lock()
 MAX_MERCHANT_SESSIONS = 200
-MERCHANT_SESSION_TTL = 4 * 3600  # 4 ساعات صلاحية الجلسة بالرام
+MERCHANT_SESSION_TTL = 4 * 3600  # 4 ساعات
 
 
 def run_llm(chat_id: int, content, tools: list):
-    """بيشغّل الموديل مع الأدوات وسياق المحادثة المحفوظ مع إدارة الذاكرة ومنع تسريب الرام"""
+    """
+    تشغيل نموذج الذكاء الاصطناعي مع الأدوات وسياق المحادثة المحفوظ.
+    يتم إنشاء Chat جديد لكل رسالة بناءً على السجل السابق (history)
+    دون تعديل الخصائص الداخلية الخاصة مثل _config.
+    """
     now = time.time()
     config = types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=tools)
 
-    # تنظيف الجلسات القديمة لمنع تضخم الرام (LRU / TTL)
-    if len(MERCHANT_SESSIONS) > MAX_MERCHANT_SESSIONS:
-        expired = [cid for cid, sess in MERCHANT_SESSIONS.items() if now - sess.get("last_active", 0) > MERCHANT_SESSION_TTL]
-        for cid in expired:
-            MERCHANT_SESSIONS.pop(cid, None)
+    with MERCHANT_SESSIONS_LOCK:
         if len(MERCHANT_SESSIONS) > MAX_MERCHANT_SESSIONS:
-            sorted_s = sorted(MERCHANT_SESSIONS.keys(), key=lambda k: MERCHANT_SESSIONS[k].get("last_active", 0))
-            for k in sorted_s[:MAX_MERCHANT_SESSIONS // 5]:
-                MERCHANT_SESSIONS.pop(k, None)
+            expired = [cid for cid, sess in MERCHANT_SESSIONS.items() if now - sess.get("last_active", 0) > MERCHANT_SESSION_TTL]
+            for cid in expired:
+                MERCHANT_SESSIONS.pop(cid, None)
+            if len(MERCHANT_SESSIONS) > MAX_MERCHANT_SESSIONS:
+                sorted_s = sorted(MERCHANT_SESSIONS.keys(), key=lambda k: MERCHANT_SESSIONS[k].get("last_active", 0))
+                for k in sorted_s[:MAX_MERCHANT_SESSIONS // 5]:
+                    MERCHANT_SESSIONS.pop(k, None)
 
-    if chat_id not in MERCHANT_SESSIONS:
-        chat = client.chats.create(model=MODEL, config=config)
-        MERCHANT_SESSIONS[chat_id] = {"chat": chat, "last_active": now}
-    else:
-        MERCHANT_SESSIONS[chat_id]["last_active"] = now
-        chat = MERCHANT_SESSIONS[chat_id]["chat"]
-        chat._config = config
+        session = MERCHANT_SESSIONS.get(chat_id)
+        history = list(session["history"]) if session and "history" in session else None
+
+    # إنشاء chat جديد بسياق موثق
+    chat = client.chats.create(model=MODEL, config=config, history=history)
 
     for attempt in range(3):
         try:
-            return chat.send_message(content).text or "تمام، أقدر أساعدك في إيه تاني؟"
+            resp = chat.send_message(content)
+            raw_history = chat.get_history(curated=True)
+            trimmed_history = raw_history[-20:] if raw_history else []
+            clean_history = []
+            for msg in trimmed_history:
+                parts = [p for p in getattr(msg, "parts", []) if not getattr(p, "inline_data", None)]
+                if parts:
+                    msg.parts = parts
+                    clean_history.append(msg)
+
+            with MERCHANT_SESSIONS_LOCK:
+                MERCHANT_SESSIONS[chat_id] = {
+                    "history": clean_history,
+                    "last_active": time.time(),
+                }
+            return resp.text or "تمام، أقدر أساعدك في إيه تاني؟"
         except Exception as e:
             msg = str(e)
             if "429" in msg:
@@ -913,11 +1064,13 @@ def run_llm(chat_id: int, content, tools: list):
                 time.sleep(3 * (attempt + 1))
                 continue
             print("خطأ من الموديل:", type(e).__name__, msg[:300])
-            MERCHANT_SESSIONS.pop(chat_id, None)
+            with MERCHANT_SESSIONS_LOCK:
+                MERCHANT_SESSIONS.pop(chat_id, None)
             return "حصلت مشكلة مؤقتة، جرّب تاني بعد شوية."
 
+
 MAX_PENDING_OPERATIONS = 500
-PENDING_OPERATION_TTL = 7200  # ساعتان كحد أقصى لتأكيد العملية في الرام
+PENDING_OPERATION_TTL = 7200  # ساعتان
 
 
 def _get_bot_data(context):
@@ -931,7 +1084,6 @@ def _get_bot_data(context):
 
 
 def store_pending_operation(context, pid: str, data: dict):
-    """حفظ عملية معلقة في الذاكرة مع وقت إنشاء وتنظيف العمليات القديمة لمنع تضخم الرام"""
     now = time.time()
     bot_data = _get_bot_data(context)
     pending = bot_data.setdefault("pending", {})
@@ -948,7 +1100,6 @@ def store_pending_operation(context, pid: str, data: dict):
 
 
 def pop_pending_operation(context, pid: str) -> dict:
-    """استرجاع العملية المعلقة وحذفها مع فحص انتهاء صلاحيتها (ساعتان)"""
     bot_data = _get_bot_data(context)
     pending = bot_data.get("pending", {}).pop(pid, None)
     if not pending:
@@ -958,16 +1109,12 @@ def pop_pending_operation(context, pid: str) -> dict:
     return pending
 
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    tenant = get_owner_tenant(chat_id)
-    if not tenant:
-        await update.message.reply_text(NOT_OWNER_MESSAGE)
-        return
-
-    tenant_id = tenant["id"]
-    proposals = []  # العمليات اللي الموديل جهّزها وتستنى التأكيد
-
+def build_tools(tenant_id: str, proposals: list) -> list:
+    """
+    تجهيز قائمة أدوات Gemini التفاعلية لتاجر معين مع docstrings كاملة ومفصلة.
+    تُستخدم في handle_text و handle_voice دون تكرار كود.
+    أي عملية تعدل المخزون أو الأوردرات لا تنفذ مباشرة بل تُضاف إلى proposals بانتظار التأكيد.
+    """
     def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
         """بتكشف المخزون لمنتج بمقاس ولون معين، وبترجّع كود الصنف (sku) والكمية المتاحة.
 
@@ -977,11 +1124,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             color: اللون بالعربي (فاضي لو ماتحددش)
         """
         return db_check_stock(
-            tenant_id, product_name, size=size or None, color=color or None
+            tenant_id, product_name, size=size or None, color=color or None, reveal_qty=True
         )
 
     def propose_stock_change(sku: str, qty: int, kind: str) -> dict:
-        """بتجهّز تعديل على المخزون وتستنى تأكيد صاحب المحل بالأزرار. مابتنفذش حاجة.
+        """بتجهّز تعديل على المخزون (بيع، بضاعة، مرتجع) وتستنى تأكيد صاحب المحل بالأزرار. مابتنفذش حاجة مباشرة.
 
         Args:
             sku: كود الصنف اللي جاي من check_stock
@@ -1013,8 +1160,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return {"status": "waiting_confirmation", "item": label, "change": change}
 
     def propose_new_product(name: str, price: float, size: str, color: str, qty: int = 1) -> dict:
-        """بتجهّز إضافة منتج أو صنف جديد خالص في المخزن وتستنى تأكيد صاحب المحل.
-        
+        """بتجهّز إضافة منتج أو صنف جديد خالص في المخزن وتستنى تأكيد صاحب المحل بالأزرار.
+
         Args:
             name: اسم المنتج (مثلاً: جاكيت جينز، سويت شيرت)
             price: سعر البيع بالجنيه
@@ -1026,7 +1173,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return {"status": "error", "reason": "السعر لازم يكون أكبر من صفر"}
         if qty <= 0:
             return {"status": "error", "reason": "الكمية لازم تكون أكبر من صفر"}
-        
+
         proposals.append({
             "type": "new_product",
             "name": name.strip(),
@@ -1038,8 +1185,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return {"status": "waiting_confirmation", "product": name, "price": price}
 
     def propose_new_branch(name: str, governorate: str, address: str, google_maps_url: str = "", working_hours: str = "من 12 ظهراً لـ 11 مساءً") -> dict:
-        """بتجهّز إضافة فرع أو عنوان للمحل وتستنى تأكيد صاحب المحل.
-        
+        """بتجهّز إضافة فرع أو عنوان للمحل وتستنى تأكيد صاحب المحل بالأزرار.
+
         Args:
             name: اسم الفرع (مثلاً: فرع مدينة نصر، فرع الدقي)
             governorate: المحافظة (القاهرة، الجيزة، الإسكندرية...)
@@ -1058,8 +1205,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return {"status": "waiting_confirmation", "branch": name}
 
     def propose_new_promo(code: str = "", promo_type: str = "percentage", discount_value: float = 0.0, description: str = "", min_order_items: int = 1) -> dict:
-        """بتجهّز إضافة كود خصم أو عرض ترويجي للمحل (شحن مجاني، نسبة خصم، أو خصم بالجنيه) وتستنى تأكيد التاجر.
-        
+        """بتجهّز إضافة كود خصم أو عرض ترويجي للمحل (شحن مجاني، نسبة خصم، أو خصم بالجنيه) وتستنى تأكيد التاجر بالأزرار.
+
         Args:
             code: كود الخصم (زي EID20 أو SUMMER10) أو اتركه فارغاً لو عرض عام تلقائي (زي شحن مجاني لأي حد يطلب قطعتين)
             promo_type: نوع الخصم (percentage = نسبة مئوية، fixed = خصم بالجنيه، free_shipping = شحن مجاني)
@@ -1077,26 +1224,100 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         return {"status": "waiting_confirmation", "promo": description}
 
-    def cancel_order_direct(order_number: int, reason: str = "") -> dict:
-        """إلغاء أوردر فوراً وإرجاع بضاعته للمخزن."""
-        return cancel_order(tenant_id, order_number, reason=reason)
+    def propose_cancel_order(order_number: int, reason: str = "") -> dict:
+        """بتجهّز إلغاء أوردر وإرجاع بضاعته للمخزن وتستنى تأكيد صاحب المحل بالأزرار. مابتنفذش حاجة مباشرة.
 
-    def update_order_direct(order_number: int, phone: str = "", address: str = "", status: str = "") -> dict:
-        """تحديث عنوان، رقم موبايل، أو حالة أوردر (shipped / delivered)."""
-        res = {}
-        if phone or address:
-            res["shipping"] = update_order_shipping(tenant_id, order_number, phone=phone, address=address)
-        if status:
-            res["status"] = update_order_status(tenant_id, order_number, new_status=status)
-        return res or {"status": "ok"}
+        Args:
+            order_number: رقم الأوردر المطلوب إلغاؤه (مثلاً 5)
+            reason: سبب الإلغاء (اختياري)
+        """
+        proposals.append({
+            "type": "cancel_order",
+            "order_number": int(order_number),
+            "reason": reason.strip(),
+        })
+        return {"status": "waiting_confirmation", "order_number": order_number}
+
+    def propose_update_order(order_number: int, phone: str = "", address: str = "", status: str = "") -> dict:
+        """بتجهّز تعديل بيانات أوردر (العنوان، الموبايل، أو الحالة) وتستنى تأكيد صاحب المحل بالأزرار. مابتنفذش حاجة مباشرة.
+
+        Args:
+            order_number: رقم الأوردر المراد تعديله
+            phone: رقم الموبايل الجديد (إن وجد)
+            address: العنوان الجديد (إن وجد)
+            status: الحالة الجديدة (confirmed, shipped, delivered) إن وجدت
+        """
+        clean_status = status.strip().lower()
+        if clean_status and clean_status not in ("confirmed", "shipped", "delivered"):
+            return {
+                "status": "error",
+                "reason": "الحالة غير صالحة. الحالات المسموح بها هي: confirmed, shipped, delivered"
+            }
+
+        proposals.append({
+            "type": "update_order",
+            "order_number": int(order_number),
+            "phone": phone.strip(),
+            "address": address.strip(),
+            "status": clean_status,
+        })
+        return {"status": "waiting_confirmation", "order_number": order_number}
+
+    return [
+        check_stock,
+        propose_stock_change,
+        propose_new_product,
+        propose_new_branch,
+        propose_new_promo,
+        propose_cancel_order,
+        propose_update_order,
+    ]
+
+
+def build_proposals_summary(proposals: list) -> str:
+    """بناء نص ملخص العمليات المعروضة في رسالة طلب التأكيد"""
+    kinds = {"sale": "خصم (بيع من المحل)", "restock": "إضافة بضاعة", "return": "مرتجع"}
+    summary_lines = []
+    for p in proposals:
+        ptype = p.get("type")
+        if ptype == "new_product":
+            summary_lines.append(f"✨ إضافة صنف: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f}ج | الكمية: {p['qty']}")
+        elif ptype == "new_branch":
+            summary_lines.append(f"📍 إضافة فرع: {p['name']} ({p['governorate']} - {p['address']})")
+        elif ptype == "new_promo":
+            code_txt = f" (كود: {p['code']})" if p.get('code') else ""
+            summary_lines.append(f"🎁 إضافة عرض/خصم: {p['description']}{code_txt}")
+        elif ptype == "cancel_order":
+            reason_txt = f" (السبب: {p['reason']})" if p.get("reason") else ""
+            summary_lines.append(f"❌ إلغاء الأوردر #{p['order_number']}{reason_txt} وإرجاع بضاعته للمخزن")
+        elif ptype == "update_order":
+            ch = []
+            if p.get("phone"):
+                ch.append(f"موبايل: {p['phone']}")
+            if p.get("address"):
+                ch.append(f"عنوان: {p['address']}")
+            if p.get("status"):
+                ch.append(f"حالة: {p['status']}")
+            ch_str = " | ".join(ch) if ch else "تحديث بيانات"
+            summary_lines.append(f"📝 تعديل الأوردر #{p['order_number']} ({ch_str})")
+        else:
+            summary_lines.append(f"• {kinds.get(p.get('kind'), 'تعديل')}: {abs(p.get('change', 0))} × {p.get('label', '')}")
+    return "\n".join(summary_lines)
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    tenant = get_owner_tenant(chat_id)
+    if not tenant:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    tenant_id = tenant["id"]
+    proposals = []
+    tools = build_tools(tenant_id, proposals)
 
     content_to_send = update.message.text
-    reply = await asyncio.to_thread(
-        run_llm, chat_id, content_to_send, [
-            check_stock, propose_stock_change, propose_new_product,
-            propose_new_branch, propose_new_promo, cancel_order_direct, update_order_direct
-        ]
-    )
+    reply = await asyncio.to_thread(run_llm, chat_id, content_to_send, tools)
 
     if not proposals:
         await update.message.reply_text(reply)
@@ -1108,21 +1329,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "tenant_id": tenant_id,
         "items": proposals,
     })
-    kinds = {"sale": "خصم (بيع من المحل)", "restock": "إضافة بضاعة", "return": "مرتجع"}
-    
-    summary_lines = []
-    for p in proposals:
-        if p.get("type") == "new_product":
-            summary_lines.append(f"✨ إضافة منتج جديد: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f} جنيه | الكمية: {p['qty']}")
-        elif p.get("type") == "new_branch":
-            summary_lines.append(f"📍 إضافة فرع جديد: {p['name']} ({p['governorate']} - {p['address']})")
-        elif p.get("type") == "new_promo":
-            code_txt = f" (كود: {p['code']})" if p.get('code') else ""
-            summary_lines.append(f"🎁 إضافة عرض/خصم: {p['description']}{code_txt}")
-        else:
-            summary_lines.append(f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}")
 
-    summary = "\n".join(summary_lines)
+    summary = build_proposals_summary(proposals)
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -1137,7 +1345,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """استقبال وتحليل الفويسات الصوتية مباشرة بـ Gemini Multimodal"""
+    """استقبال وتحليل الفويسات الصوتية مع حد 60 ثانية واستخدام mime_type الديناميكي"""
     chat_id = update.effective_chat.id
     tenant = get_owner_tenant(chat_id)
     if not tenant:
@@ -1149,101 +1357,27 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not voice:
         return
 
+    # حد أقصى 60 ثانية للفويس
+    MAX_VOICE_DURATION_SECONDS = 60
+    if getattr(voice, "duration", 0) and voice.duration > MAX_VOICE_DURATION_SECONDS:
+        await update.message.reply_text(
+            f"⏱️ مدة التسجيل الصوتي ({voice.duration} ثانية) تتجاوز الحد الأقصى المسموح به (60 ثانية). يرجى إرسال تسجيل أقصر."
+        )
+        return
+
     status_msg = await update.message.reply_text("🎙️ جاري الاستماع للفويس وتحليله...")
 
-    # تحميل ملف الصوت من تليجرام في الذاكرة
     voice_file = await context.bot.get_file(voice.file_id)
     audio_bytes = await voice_file.download_as_bytearray()
 
     proposals = []
+    tools = build_tools(tenant_id, proposals)
 
-    def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
-        return db_check_stock(tenant_id, product_name, size=size or None, color=color or None)
-
-    def propose_stock_change(sku: str, qty: int, kind: str) -> dict:
-        if qty <= 0:
-            return {"status": "error", "reason": "الكمية لازم تكون أكبر من صفر"}
-        if kind not in ("sale", "restock", "return"):
-            return {"status": "error", "reason": "نوع العملية غلط"}
-        rows = (
-            supabase.table("variants")
-            .select("id,sku,size,color,available,products!inner(name)")
-            .eq("tenant_id", tenant_id)
-            .eq("sku", sku)
-            .execute()
-            .data
-        )
-        if not rows:
-            return {"status": "error", "reason": f"الكود {sku} مش موجود"}
-        v = rows[0]
-        if kind == "sale" and v["available"] < qty:
-            return {"status": "error", "reason": f"المتاح {v['available']} بس"}
-        label = f"{v['products']['name']} {v['color']} {v['size']}"
-        change = -qty if kind == "sale" else qty
-        proposals.append(
-            {"type": "movement", "variant_id": v["id"], "label": label, "change": change, "kind": kind}
-        )
-        return {"status": "waiting_confirmation", "item": label, "change": change}
-
-    def propose_new_product(name: str, price: float, size: str, color: str, qty: int = 1) -> dict:
-        if price <= 0 or qty <= 0:
-            return {"status": "error", "reason": "السعر والكمية لازم يكونوا أكبر من صفر"}
-        proposals.append({
-            "type": "new_product",
-            "name": name.strip(),
-            "price": float(price),
-            "size": size.strip().upper(),
-            "color": color.strip(),
-            "qty": int(qty),
-        })
-        return {"status": "waiting_confirmation", "product": name, "price": price}
-
-    def propose_new_branch(name: str, governorate: str, address: str, google_maps_url: str = "", working_hours: str = "من 12 ظهراً لـ 11 مساءً") -> dict:
-        proposals.append({
-            "type": "new_branch",
-            "name": name.strip(),
-            "governorate": governorate.strip(),
-            "address": address.strip(),
-            "google_maps_url": google_maps_url.strip(),
-            "working_hours": working_hours.strip(),
-        })
-        return {"status": "waiting_confirmation", "branch": name}
-
-    def propose_new_promo(code: str = "", promo_type: str = "percentage", discount_value: float = 0.0, description: str = "", min_order_items: int = 1) -> dict:
-        proposals.append({
-            "type": "new_promo",
-            "code": code.strip().upper(),
-            "promo_type": promo_type.strip(),
-            "discount_value": float(discount_value),
-            "description": description.strip() or f"عرض {code}",
-            "min_order_items": int(min_order_items),
-        })
-        return {"status": "waiting_confirmation", "promo": description}
-
-    def cancel_order_direct(order_number: int, reason: str = "") -> dict:
-        """إلغاء أوردر فوراً وإرجاع بضاعته للمخزن."""
-        return cancel_order(tenant_id, order_number, reason=reason)
-
-    def update_order_direct(order_number: int, phone: str = "", address: str = "", status: str = "") -> dict:
-        """تحديث عنوان، رقم موبايل، أو حالة أوردر (shipped / delivered)."""
-        res = {}
-        if phone or address:
-            res["shipping"] = update_order_shipping(tenant_id, order_number, phone=phone, address=address)
-        if status:
-            res["status"] = update_order_status(tenant_id, order_number, new_status=status)
-        return res or {"status": "ok"}
-
-    # تمرير الصوت كـ Part إلى Gemini
-    audio_part = types.Part.from_bytes(data=bytes(audio_bytes), mime_type="audio/ogg")
+    mime_type = getattr(voice, "mime_type", None) or "audio/ogg"
+    audio_part = types.Part.from_bytes(data=bytes(audio_bytes), mime_type=mime_type)
     content_list = [audio_part, "استمع للريكورد ده من صاحب المحل ونفّذ المطلوب واستدعِ الأدوات المناسبة."]
 
-    reply = await asyncio.to_thread(
-        run_llm, chat_id, content_list, [
-            check_stock, propose_stock_change, propose_new_product,
-            propose_new_branch, propose_new_promo, cancel_order_direct, update_order_direct
-        ]
-    )
-
+    reply = await asyncio.to_thread(run_llm, chat_id, content_list, tools)
     await status_msg.delete()
 
     if not proposals:
@@ -1256,20 +1390,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "tenant_id": tenant_id,
         "items": proposals,
     })
-    kinds = {"sale": "خصم (بيع من المحل)", "restock": "إضافة بضاعة", "return": "مرتجع"}
-    summary_lines = []
-    for p in proposals:
-        if p.get("type") == "new_product":
-            summary_lines.append(f"✨ إضافة منتج جديد: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f} جنيه | الكمية: {p['qty']}")
-        elif p.get("type") == "new_branch":
-            summary_lines.append(f"📍 إضافة فرع جديد: {p['name']} ({p['governorate']} - {p['address']})")
-        elif p.get("type") == "new_promo":
-            code_txt = f" (كود: {p['code']})" if p.get('code') else ""
-            summary_lines.append(f"🎁 إضافة عرض/خصم: {p['description']}{code_txt}")
-        else:
-            summary_lines.append(f"• {kinds[p['kind']]}: {abs(p['change'])} × {p['label']}")
 
-    summary = "\n".join(summary_lines)
+    summary = build_proposals_summary(proposals)
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -1283,31 +1405,25 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    action, _, pid = query.data.partition(":")
-    chat_id = query.message.chat.id
-
-    tenant = get_owner_tenant(chat_id)
-    # pop = العملية تتنفذ مرة واحدة بس حتى لو الزرار اتداس مرتين، مع التحقق من انتهاء الصلاحية
-    pending = pop_pending_operation(context, pid)
-    if not pending or pending["chat_id"] != chat_id or not tenant:
-        await query.edit_message_text("العملية دي انتهت صلاحيتها أو اتنفذت قبل كده.")
-        return
-
-    tenant_id = pending.get("tenant_id") or tenant["id"]
-
-    if action == "no":
-        await query.edit_message_text("اتلغت ❌")
-        return
-
+def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
+    """
+    تنفيذ العمليات بعد تأكيد صاحب المحل:
+    - البحث عن الصنف بـ (product_id, size, _norm_ar(color)).
+    - لو موجود: تزويد كميته بـ apply_stock_movement (restock).
+    - لو غير موجود: إنشاؤه بـ stock=0 وكود لاتيني P[A-Z]{6} ثم apply_stock_movement بالكمية.
+    - لو السعر مختلف: تنبيه التاجر مع الإبقاء على السعر الأساسي للمنتج.
+    - تنفيذ cancel_order و update_order.
+    - إرجاع تقرير رقمي مفصل بالأعداد الناجحة والفاشلة.
+    """
+    successes = []
     failures = []
-    success_new_products = []
-    success_branches = []
-    success_promos = []
-    for i, item in enumerate(pending["items"]):
-        if item.get("type") == "new_promo":
+    warnings = []
+
+    for i, item in enumerate(items):
+        itype = item.get("type")
+        ref_code = f"tg-{pid}-{i}"
+
+        if itype == "new_promo":
             try:
                 supabase.table("promotions").insert({
                     "tenant_id": tenant_id,
@@ -1318,11 +1434,12 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "description": item["description"],
                     "is_active": True,
                 }).execute()
-                success_promos.append(item["description"])
+                successes.append(f"عرض ترويجي: {item['description']}")
             except Exception as e:
                 print("فشل إضافة العرض:", e)
-                failures.append(item["description"])
-        elif item.get("type") == "new_branch":
+                failures.append(f"عرض ترويجي: {item['description']} ({e})")
+
+        elif itype == "new_branch":
             try:
                 supabase.table("branches").insert({
                     "tenant_id": tenant_id,
@@ -1332,23 +1449,69 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "google_maps_url": item.get("google_maps_url"),
                     "working_hours": item.get("working_hours", "من 12 ظهراً لـ 11 مساءً"),
                 }).execute()
-                success_branches.append(f"{item['name']} ({item['address']})")
+                successes.append(f"فرع جديد: {item['name']} ({item['address']})")
             except Exception as e:
                 print("فشل إضافة الفرع:", e)
-                failures.append(item["name"])
-        elif item.get("type") == "new_product":
+                failures.append(f"فرع: {item['name']} ({e})")
+
+        elif itype == "cancel_order":
             try:
-                # 1. فحص هل المنتج نفسه موجود، لو مش موجود ننشئه
+                res = cancel_order(tenant_id, item["order_number"], reason=item.get("reason", ""))
+                if res.get("status") == "ok":
+                    successes.append(f"إلغاء الأوردر #{item['order_number']}")
+                else:
+                    failures.append(f"إلغاء الأوردر #{item['order_number']}: {res.get('reason', 'فشل الإلغاء')}")
+            except Exception as e:
+                failures.append(f"إلغاء الأوردر #{item['order_number']}: {e}")
+
+        elif itype == "update_order":
+            up_errs = []
+            if item.get("phone") or item.get("address"):
+                try:
+                    res_sh = update_order_shipping(
+                        tenant_id, item["order_number"], phone=item.get("phone", ""), address=item.get("address", "")
+                    )
+                    if res_sh.get("status") != "ok":
+                        up_errs.append(res_sh.get("reason", "فشل تحديث الشحن"))
+                except Exception as e:
+                    up_errs.append(str(e))
+            if item.get("status"):
+                try:
+                    res_st = update_order_status(tenant_id, item["order_number"], new_status=item["status"])
+                    if res_st.get("status") != "ok":
+                        up_errs.append(res_st.get("reason", "فشل تحديث الحالة"))
+                except Exception as e:
+                    up_errs.append(str(e))
+
+            if up_errs:
+                failures.append(f"تعديل الأوردر #{item['order_number']}: {', '.join(up_errs)}")
+            else:
+                successes.append(f"تعديل بيانات الأوردر #{item['order_number']}")
+
+        elif itype == "new_product":
+            try:
+                # 1. فحص المنتج بالاسم ومقارنته بـ _norm_ar
                 prod_rows = (
                     supabase.table("products")
-                    .select("id")
+                    .select("id, name, price")
                     .eq("tenant_id", tenant_id)
-                    .ilike("name", item["name"])
                     .execute()
-                    .data
+                    .data or []
                 )
-                if prod_rows:
-                    product_id = prod_rows[0]["id"]
+                target_prod_norm = _norm_ar(item["name"])
+                matched_prod = None
+                for pr in prod_rows:
+                    if _norm_ar(pr.get("name", "")) == target_prod_norm:
+                        matched_prod = pr
+                        break
+
+                if matched_prod:
+                    product_id = matched_prod["id"]
+                    existing_price = float(matched_prod.get("price") or 0)
+                    if abs(existing_price - float(item["price"])) > 0.01:
+                        warnings.append(
+                            f"تنبيه: منتج «{item['name']}» مسجل مسبقاً بسعر {existing_price:.0f}ج وسعرك المدخل {item['price']:.0f}ج. تم الإبقاء على السعر الأصلي للمنتج."
+                        )
                 else:
                     new_p = (
                         supabase.table("products")
@@ -1361,28 +1524,83 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         .execute()
                         .data
                     )
+                    if not new_p:
+                        raise RuntimeError(f"فشل إنشاء المنتج {item['name']}")
                     product_id = new_p[0]["id"]
 
-                # 2. توليد sku للصنف
-                sku_clean = "".join(w[0] for w in item["name"].split()[:2]).upper()
-                sku = f"{sku_clean}-{item['size']}-{uuid.uuid4().hex[:4].upper()}"
+                # 2. فحص هل الصنف variant موجود بنفس (product_id, size, _norm_ar(color))
+                var_rows = (
+                    supabase.table("variants")
+                    .select("id, sku, size, color, stock")
+                    .eq("tenant_id", tenant_id)
+                    .eq("product_id", product_id)
+                    .execute()
+                    .data or []
+                )
+                target_size = item["size"].strip().upper()
+                target_color_norm = _norm_ar(item["color"])
+                matched_var = None
+                for vr in var_rows:
+                    if vr.get("size", "").strip().upper() == target_size and _norm_ar(vr.get("color", "")) == target_color_norm:
+                        matched_var = vr
+                        break
 
-                # 3. إنشاء الصنف variant
-                supabase.table("variants").insert({
-                    "tenant_id": tenant_id,
-                    "product_id": product_id,
-                    "sku": sku,
-                    "size": item["size"],
-                    "color": item["color"],
-                    "stock": item["qty"],
-                    "reserved": 0,
-                    "active": True,
-                }).execute()
-                success_new_products.append(f"{item['name']} ({item['color']} {item['size']})")
+                if matched_var:
+                    # صنف موجود بالفعل -> زيادة رصيده بحركة restock
+                    var_id = matched_var["id"]
+                    supabase.rpc(
+                        "apply_stock_movement",
+                        {
+                            "p_tenant": tenant_id,
+                            "p_variant": var_id,
+                            "p_change": item["qty"],
+                            "p_reason": "restock",
+                            "p_source": "telegram",
+                            "p_ref": ref_code,
+                        },
+                    ).execute()
+                    successes.append(f"تزويد مخزون «{item['name']}» ({item['color']} {item['size']}): +{item['qty']}")
+                else:
+                    # صنف غير موجود -> إنشاؤه بـ stock=0 وكود لاتيني، ثم تزويد رصيده بحركة restock
+                    sku = generate_sku()
+                    new_v = (
+                        supabase.table("variants")
+                        .insert({
+                            "tenant_id": tenant_id,
+                            "product_id": product_id,
+                            "sku": sku,
+                            "size": target_size,
+                            "color": item["color"].strip(),
+                            "stock": 0,
+                            "reserved": 0,
+                            "active": True,
+                        })
+                        .execute()
+                        .data
+                    )
+                    if not new_v:
+                        raise RuntimeError(f"فشل إنشاء الصنف {item['name']} {sku}")
+                    var_id = new_v[0]["id"]
+
+                    supabase.rpc(
+                        "apply_stock_movement",
+                        {
+                            "p_tenant": tenant_id,
+                            "p_variant": var_id,
+                            "p_change": item["qty"],
+                            "p_reason": "restock",
+                            "p_source": "telegram",
+                            "p_ref": ref_code,
+                        },
+                    ).execute()
+                    successes.append(f"صنف جديد «{item['name']}» ({item['color']} {item['size']}) بكود {sku}: كمية {item['qty']}")
+
             except Exception as e:
-                print("فشل إضافة المنتج الجديد:", e)
-                failures.append(item["name"])
+                print("فشل إضافة/تحديث الصنف:", e)
+                failures.append(f"صنف «{item.get('name', '')}» ({e})")
+
         else:
+            # حركة تعديل مخزون عادية (sale / restock / return)
             try:
                 supabase.rpc(
                     "apply_stock_movement",
@@ -1392,28 +1610,79 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "p_change": item["change"],
                         "p_reason": item["kind"],
                         "p_source": "telegram",
-                        "p_ref": f"tg-{pid}-{i}",
+                        "p_ref": ref_code,
                     },
                 ).execute()
+                successes.append(item.get("label", "تعديل مخزون"))
             except Exception as e:
                 print("فشل تعديل المخزون:", type(e).__name__)
-                failures.append(item["label"])
+                failures.append(f"{item.get('label', 'صنف')}: {e}")
 
-    if failures:
-        await query.edit_message_text("حصلت مشكلة في: " + "، ".join(failures))
-    elif success_promos:
-        await query.edit_message_text(f"تم تفعيل العرض بنجاح 🎁✅:\n" + "\n".join(f"• {p}" for p in success_promos))
-    elif success_branches:
-        await query.edit_message_text(f"تم إضافة الفرع بنجاح 📍✅:\n" + "\n".join(f"• {b}" for b in success_branches))
-    elif success_new_products:
-        await query.edit_message_text(f"تم إضافة المنتج بنجاح ✅:\n" + "\n".join(f"• {p}" for p in success_new_products))
-    else:
-        await query.edit_message_text("تم ✅ المخزون اتحدّث.")
+    return {
+        "success_count": len(successes),
+        "failure_count": len(failures),
+        "successes": successes,
+        "failures": failures,
+        "warnings": warnings,
+    }
+
+
+async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    action, _, pid = query.data.partition(":")
+    chat_id = query.message.chat.id
+
+    tenant = get_owner_tenant(chat_id)
+    pending = pop_pending_operation(context, pid)
+    if not pending or pending["chat_id"] != chat_id or not tenant:
+        await query.edit_message_text("العملية دي انتهت صلاحيتها أو اتنفذت قبل كده.")
+        return
+
+    if action == "no":
+        await query.edit_message_text("اتلغت العملية ❌")
+        return
+
+    tenant_id = pending.get("tenant_id") or tenant["id"]
+
+    # تنفيذ الاستدعاءات المتزامنة داخل thread لعدم حظر الـ Event Loop
+    report = await asyncio.to_thread(
+        process_confirmed_proposals, tenant_id, pid, pending["items"]
+    )
+
+    # طباعة التفاصيل الكاملة للأخطاء في السجلات/الـ console فقط
+    if report.get("failures"):
+        print(f"⚠️ [on_button failures] pid={pid} tenant={tenant_id}: {report['failures']}")
+
+    lines = ["📊 تقرير تنفيذ العمليات:"]
+    lines.append(f"✅ الناجح: {report['success_count']} عملية")
+    lines.append(f"❌ الفاشل: {report['failure_count']} عملية\n")
+
+    if report["successes"]:
+        lines.append("📌 تم بنجاح:")
+        for s in report["successes"][:12]:
+            lines.append(f"• {s}")
+        if len(report["successes"]) > 12:
+            lines.append(f"... والمزيد ({len(report['successes']) - 12} عملية أخرى)")
+
+    if report["failure_count"] > 0:
+        lines.append("\n⚠️ تعذر تنفيذ بعض العمليات، يرجى مراجعة البيانات والمحاولة لاحقاً.")
+
+    if report.get("warnings"):
+        lines.append("\n🔔 تنبيهات:")
+        for w in report["warnings"][:5]:
+            lines.append(f"• {w}")
+
+    # التقرير بنص عادي بدون parse_mode لتفادي أخطاء التنسيق
+    await query.edit_message_text("\n".join(lines))
+
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    استقبال ملف Excel أو CSV من التاجر وتحليله وإضافة المنتجات تلقائياً.
-    الأعمدة المتوقعة: اسم المنتج | السعر | المقاس | اللون | الكمية
+    استقبال ملف Excel أو CSV من التاجر:
+    - الحد الأقصى للحجم: 2 ميجابايت
+    - الحد الأقصى للصفوف: 100 صف في الدفعة الواحدة
+    - الامتدادات المقبولة: .xlsx و .csv فقط (تم حذف .xls)
     """
     chat_id = update.effective_chat.id
     tenant = get_owner_tenant(chat_id)
@@ -1425,10 +1694,16 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not doc:
         return
 
+    # فحص حجم الملف (حد 2 ميجا)
+    MAX_DOC_SIZE_BYTES = 2 * 1024 * 1024
+    if doc.file_size and doc.file_size > MAX_DOC_SIZE_BYTES:
+        await update.message.reply_text("❌ حجم الملف كبير جداً! الحد الأقصى المسموح به هو 2 ميجابايت.")
+        return
+
     fname = (doc.file_name or "").lower()
-    if not (fname.endswith(".xlsx") or fname.endswith(".xls") or fname.endswith(".csv")):
+    if not (fname.endswith(".xlsx") or fname.endswith(".csv")):
         await update.message.reply_text(
-            "📋 ابعتلي ملف Excel (.xlsx) أو CSV (.csv)\n"
+            "📋 ابعتلي ملف Excel بصيغة (.xlsx) أو CSV بصيغة (.csv) فقط (حتى 2 ميجا و100 صف في الدفعة).\n"
             "الأعمدة المطلوبة:\n"
             "*اسم المنتج | السعر | المقاس | اللون | الكمية*",
             parse_mode="Markdown"
@@ -1437,7 +1712,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_msg = await update.message.reply_text("📊 جاري قراءة الشيت...")
 
-    # تحميل الملف
     file = await context.bot.get_file(doc.file_id)
     file_bytes = await file.download_as_bytearray()
 
@@ -1446,23 +1720,35 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         if fname.endswith(".csv"):
-            import csv, io
+            import csv
             text = file_bytes.decode("utf-8-sig", errors="replace")
             reader = csv.DictReader(io.StringIO(text))
             raw_rows = list(reader)
         else:
-            import openpyxl, io
-            wb = openpyxl.load_workbook(io.BytesIO(bytes(file_bytes)), data_only=True)
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(bytes(file_bytes)), data_only=True, read_only=True)
             ws = wb.active
-            headers = [str(c.value or "").strip() for c in next(ws.iter_rows(min_row=1, max_row=1))]
+            header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+            if not header_row:
+                await status_msg.edit_text("❌ الملف فاضي!")
+                return
+            headers = [str(c or "").strip() for c in header_row]
             raw_rows = []
-            for row in ws.iter_rows(min_row=2, values_only=True):
+            for row in ws.iter_rows(min_row=2, max_row=502, values_only=True):
                 raw_rows.append(dict(zip(headers, [str(v or "").strip() for v in row])))
     except Exception as e:
         await status_msg.edit_text(f"❌ فشل قراءة الملف: {type(e).__name__}")
         return
 
-    # تطبيع أسماء الأعمدة (بيقبل عربي وإنجليزي)
+    # حد 100 صف في الدفعة الواحدة
+    MAX_DOC_ROWS = 100
+    if len(raw_rows) > MAX_DOC_ROWS:
+        await status_msg.edit_text(
+            f"❌ الملف يحتوي على {len(raw_rows)} صف! الحد الأقصى المسموح به في الدفعة الواحدة هو {MAX_DOC_ROWS} صف."
+        )
+        return
+        return
+
     COL_MAP = {
         "name":  ["اسم المنتج", "المنتج", "الاسم", "name", "product"],
         "price": ["السعر", "سعر البيع", "price"],
@@ -1514,7 +1800,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             price = float(price_raw or 0)
             qty   = int(float(qty_raw or 1))
         except ValueError:
-            errors.append(f"سطر {i} ({name}): سعر أو كمية غلط")
+            errors.append(f"سطر {i} ({name}): سعر أو كمية غير صالحة")
             continue
 
         if price <= 0:
@@ -1535,7 +1821,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"❌ مفيش صفوف صالحة في الشيت!\n{err_text}")
         return
 
-    # عرض ملخص للتأكيد
     pid = uuid.uuid4().hex[:12]
     store_pending_operation(context, pid, {
         "chat_id": chat_id,
@@ -1544,13 +1829,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     })
 
     preview_lines = [f"📊 *لقيت {len(rows_parsed)} صنف في الشيت:*\n"]
-    for p in rows_parsed[:15]:  # بنعرض أول 15 بس
+    for p in rows_parsed[:12]:
         preview_lines.append(f"• {p['name']} | {p['color']} {p['size']} | {p['price']:.0f}ج | كمية: {p['qty']}")
-    if len(rows_parsed) > 15:
-        preview_lines.append(f"... و{len(rows_parsed) - 15} صنف تاني")
+    if len(rows_parsed) > 12:
+        preview_lines.append(f"... و{len(rows_parsed) - 12} صنف تاني")
 
     if errors:
-        preview_lines.append(f"\n⚠️ *{len(errors)} سطر اتتخطى:*")
+        preview_lines.append(f"\n⚠️ *{len(errors)} سطر تم تخطيه:*")
         for e in errors[:3]:
             preview_lines.append(f"  - {e}")
 
@@ -1564,8 +1849,17 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text("\n".join(preview_lines), reply_markup=keyboard, parse_mode="Markdown")
 
 
+async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """معالج عام للأخطاء يسجل نوع الخطأ ويحمي التوكنات والبيانات الحساسة"""
+    err = context.error
+    err_type = type(err).__name__
+    err_msg = str(err)
+    if BOT_TOKEN and BOT_TOKEN in err_msg:
+        err_msg = err_msg.replace(BOT_TOKEN, "[PROTECTED_TOKEN]")
+    logging.error("Telegram Bot Error: %s: %s", err_type, err_msg)
+
+
 def main():
-    # لازم على بايثون 3.14 علشان مايحصلش خطأ في الـ event loop
     asyncio.set_event_loop(asyncio.new_event_loop())
 
     async def post_init(application):
@@ -1581,10 +1875,15 @@ def main():
         asyncio.create_task(check_subscriptions_and_notify(application))
 
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+
+    # تسجيل معالج الأخطاء لحماية الأمان
+    app.add_error_handler(telegram_error_handler)
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("orders", orders_cmd))
     app.add_handler(CommandHandler("today", today_cmd))
+    app.add_handler(CommandHandler("dashboard", dashboard_cmd))
     app.add_handler(CommandHandler("cancel", cancel_cmd))
     app.add_handler(CommandHandler("new_tenant", new_tenant_cmd))
     app.add_handler(CommandHandler("link_page", link_page_cmd))
@@ -1597,6 +1896,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+
     print("بوت التاجر شغال... (Ctrl+C للإيقاف)", flush=True)
     app.run_polling()
 

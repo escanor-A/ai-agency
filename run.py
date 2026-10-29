@@ -4,8 +4,8 @@ import sys
 import time
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
     print("🚀 بدء تشغيل نظام AI Agency (السيرفر + بوت تليجرام)...")
-    sys.stdout.reconfigure(encoding="utf-8")
 
     # 1. إطلاق بوت تليجرام في عملية منفصلة في الخلفية
     bot_process = subprocess.Popen([sys.executable, "telegram_bot.py"])

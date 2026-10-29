@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from check_stock import supabase
 
@@ -10,20 +11,27 @@ SUBSCRIPTIONS_FILE = os.path.join(os.path.dirname(__file__), "subscriptions.json
 
 # فحص إذا كان جدول subscriptions متاحاً في قاعدة البيانات
 _DB_TABLE_AVAILABLE = None
+_DB_CHECKED_AT = 0.0
 
 
 def is_db_table_available() -> bool:
-    """فحص الاتصال بجدول subscriptions في قاعدة البيانات Supabase"""
-    global _DB_TABLE_AVAILABLE
-    if _DB_TABLE_AVAILABLE is not None:
-        return _DB_TABLE_AVAILABLE
+    """فحص الاتصال بجدول subscriptions في قاعدة البيانات Supabase مع إعادة الفحص بعد 300 ثانية لو كان غير متاح"""
+    global _DB_TABLE_AVAILABLE, _DB_CHECKED_AT
+    now = time.time()
+    if _DB_TABLE_AVAILABLE is True:
+        return True
+    if _DB_TABLE_AVAILABLE is False and (now - _DB_CHECKED_AT < 300):
+        return False
+
     try:
         supabase.table("subscriptions").select("id").limit(1).execute()
         _DB_TABLE_AVAILABLE = True
+        _DB_CHECKED_AT = now
         # محاولة ترحيل البيانات القديمة من JSON إلى الداتابيز تلقائياً
         migrate_local_json_to_db()
     except Exception as e:
         _DB_TABLE_AVAILABLE = False
+        _DB_CHECKED_AT = now
         print("⚠️ جدول subscriptions غير موجود في Supabase حالياً، سيتم استخدام ملف subscriptions.json كاحتياطي مؤقت.")
         print("💡 لتفعيل الداتابيز، نفذ ملف docs/subscriptions_table.sql في Supabase SQL Editor.")
     return _DB_TABLE_AVAILABLE

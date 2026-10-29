@@ -1,9 +1,96 @@
 import re
+import threading
+import time
+import uuid
 import notify
 
 from check_stock import supabase
 
 ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
+# تتبع عروض الأسعار الناجحة (Quote Verification) لكل جلسة خلال 15 دقيقة
+# {session_id: [{"quote_id": str, "items": tuple, "governorate": str, "applied_code": str, "total": float, "timestamp": float}]}
+SESSION_QUOTES = {}
+SESSION_QUOTES_LOCK = threading.Lock()
+QUOTE_TTL_SECONDS = 15 * 60  # 15 دقيقة
+
+
+def cleanup_expired_session_quotes(now: float = None):
+    """تنظيف دوري للجلسات وعروض الأسعار المنتهية الصلاحية من الذاكرة (يجب استدعاؤها تحت SESSION_QUOTES_LOCK)"""
+    if now is None:
+        now = time.time()
+    expired_sessions = []
+    for sid, quotes in list(SESSION_QUOTES.items()):
+        valid = [q for q in quotes if now - q.get("timestamp", 0) <= QUOTE_TTL_SECONDS]
+        if valid:
+            SESSION_QUOTES[sid] = valid
+        else:
+            expired_sessions.append(sid)
+    for sid in expired_sessions:
+        SESSION_QUOTES.pop(sid, None)
+
+
+def normalize_items_key(items) -> tuple:
+    """توحيد الأصناف لمقارنتها بدقة بغض النظر عن الترتيب أو المسافات أو حالة الأحرف"""
+    if not items:
+        return ()
+    counts = {}
+    for raw in items:
+        sku, _, qty_text = str(raw).partition(":")
+        sku = sku.strip().upper()
+        try:
+            qty = int(qty_text.strip() or 1)
+        except (ValueError, TypeError):
+            qty = 1
+        if sku and qty > 0:
+            counts[sku] = counts.get(sku, 0) + qty
+    return tuple(sorted(counts.items()))
+
+
+def record_successful_quote(session_id: str, items: list, governorate: str, applied_code: str = None, total: float = 0.0, quote_id: str = None) -> str:
+    """تسجيل حساب أوردر ناجح في الجلسة مع حفظ quote_id و applied_code و total لاستخدامه في التحقق عند place_order"""
+    qid = quote_id or str(uuid.uuid4())
+    if not session_id:
+        return qid
+    now = time.time()
+    norm_items = normalize_items_key(items)
+    norm_gov = normalize_text(governorate).lower()
+
+    with SESSION_QUOTES_LOCK:
+        cleanup_expired_session_quotes(now)
+        quotes = SESSION_QUOTES.setdefault(str(session_id), [])
+        quotes.append({
+            "quote_id": qid,
+            "items": norm_items,
+            "governorate": norm_gov,
+            "applied_code": applied_code,
+            "total": round(float(total), 2),
+            "timestamp": now,
+        })
+    return qid
+
+
+def get_valid_quote(session_id: str, items: list, governorate: str) -> dict | None:
+    """استرجاع آخر quote_order صالح ومطابق في نفس الجلسة بنفس الأصناف والمحافظة خلال 15 دقيقة"""
+    if not session_id:
+        return None
+    now = time.time()
+    norm_items = normalize_items_key(items)
+    norm_gov = normalize_text(governorate).lower()
+
+    with SESSION_QUOTES_LOCK:
+        cleanup_expired_session_quotes(now)
+        quotes = SESSION_QUOTES.get(str(session_id), [])
+        for q in reversed(quotes):
+            if now - q.get("timestamp", 0) <= QUOTE_TTL_SECONDS:
+                if q["items"] == norm_items and q["governorate"] == norm_gov:
+                    return q
+    return None
+
+
+def has_valid_quote(session_id: str, items: list, governorate: str) -> bool:
+    """التحقق من وجود quote_order ناجح في نفس الجلسة بنفس الأصناف والمحافظة خلال 15 دقيقة"""
+    return get_valid_quote(session_id, items, governorate) is not None
 
 
 def normalize_text(text):
@@ -73,7 +160,7 @@ def load_items(tenant_id, items):
         if not r:
             return None, f"الكود {sku} مش موجود"
         if r["available"] < qty:
-            return None, f"{r['products']['name']} {r['color']} {r['size']}: المتاح {r['available']} بس"
+            return None, f"{r['products']['name']} {r['color']} {r['size']}: الكمية المطلوبة غير متوفرة حالياً"
         price = float(r["products"]["price"])
         lines.append(
             {
@@ -106,7 +193,7 @@ def get_active_promotions(tenant_id):
         return []
 
 
-def quote_order(tenant_id, items, governorate, promo_code=""):
+def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
     """حساب السعر والشحن مع تطبيق العروض التلقائية أو أكواد الخصم"""
     ship = find_shipping(tenant_id, governorate)
     if not ship:
@@ -120,6 +207,8 @@ def quote_order(tenant_id, items, governorate, promo_code=""):
 
     discount = 0.0
     discount_note = ""
+    applied_code = None
+    promo_error = ""
 
     # فحص العروض المسجلة للتاجر
     promos = get_active_promotions(tenant_id)
@@ -137,6 +226,7 @@ def quote_order(tenant_id, items, governorate, promo_code=""):
     if clean_code:
         matched = next((p for p in promos if (p.get("code") or "").upper() == clean_code), None)
         if matched:
+            applied_code = clean_code
             ptype = matched.get("promo_type")
             val = float(matched.get("discount_value") or 0)
             if ptype == "percentage":
@@ -149,12 +239,14 @@ def quote_order(tenant_id, items, governorate, promo_code=""):
                 fee = 0.0
                 discount_note = f"كود خصم {clean_code} (شحن مجاني)"
         else:
-            discount_note = f"كود الخصم '{promo_code}' غير صالح أو منتهي"
+            promo_error = f"كود الخصم '{promo_code}' غير صالح أو منتهي"
 
     total = max(0.0, subtotal - discount) + fee
+    quote_id = str(uuid.uuid4())
 
-    return {
+    res = {
         "status": "ok",
+        "quote_id": quote_id,
         "governorate": ship["governorate"],
         "lines": [
             {k: l[k] for k in ("name", "color", "size", "qty", "unit_price", "line_total")}
@@ -163,18 +255,28 @@ def quote_order(tenant_id, items, governorate, promo_code=""):
         "subtotal": subtotal,
         "discount": discount,
         "discount_note": discount_note,
+        "applied_code": applied_code,
+        "promo_error": promo_error,
         "shipping_fee": fee,
         "total": total,
         "payment": "الدفع عند الاستلام",
     }
+    if session_id:
+        record_successful_quote(
+            session_id, items, governorate,
+            applied_code=applied_code, total=total, quote_id=quote_id
+        )
+    return res
 
 
 def normalize_channel(ch):
-    """بيوحّد اسم القناة ليتوافق مع قيود قاعدة البيانات (whatsapp, instagram, messenger)"""
+    """بيوحّد اسم القناة ليتوافق مع قيود قاعدة البيانات (whatsapp, instagram, messenger, tiktok)"""
     ch = (ch or "").lower().strip()
-    if "wa" in ch or "whats" in ch:
+    if "tiktok" in ch:
+        return "tiktok"
+    if ch.startswith("wa") or "whats" in ch:
         return "whatsapp"
-    if "ig" in ch or "insta" in ch:
+    if ch.startswith("ig") or "insta" in ch:
         return "instagram"
     return "messenger"
 
@@ -182,7 +284,7 @@ def normalize_channel(ch):
 def get_or_create_customer(tenant_id, channel, channel_user_id, name="", phone=""):
     """
     تسجيل أو جلب هوية العميل في جدول customers
-    channel: 'whatsapp' | 'instagram' | 'messenger'
+    channel: 'whatsapp' | 'instagram' | 'messenger' | 'tiktok'
     channel_user_id: معرّف العميل على المنصة
     """
     if not tenant_id or not channel_user_id:
@@ -244,8 +346,11 @@ def get_or_create_customer(tenant_id, channel, channel_user_id, name="", phone="
     return None
 
 
-def place_order(tenant_id, customer_name, phone, governorate, address, items, channel="messenger", channel_user_id=None, promo_code=""):
-    """تسجيل الأوردر فعلياً وخصم المخزون وربطه بهوية العميل وتطبيق العروض وأكواد الخصم"""
+def place_order(
+    tenant_id, customer_name, phone, governorate, address, items,
+    channel="messenger", channel_user_id=None, promo_code="", session_id=None
+):
+    """تسجيل الأوردر فعلياً وخصم المخزون وربطه بهوية العميل وتطبيق العروض وأكواد الخصم بمفتاح idempotency"""
     if len(customer_name.strip()) < 2:
         return {"status": "error", "reason": "الاسم ناقص"}
     clean_phone = normalize_phone(phone)
@@ -254,10 +359,36 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items, ch
     if len(address.strip()) < 10:
         return {"status": "error", "reason": "العنوان ناقص، محتاج تفاصيل أكتر"}
 
-    # 1. حساب الفاتورة الحقيقية والعروض والشحن وكود الخصم أولاً
-    quote = quote_order(tenant_id, items, governorate, promo_code=promo_code)
+    # 1. التأكد من وجود quote_order ناجح في نفس الجلسة بنفس الأصناف والمحافظة خلال 15 دقيقة
+    effective_session_id = session_id or (f"{tenant_id}:{channel}:{channel_user_id}" if channel_user_id else None)
+    if not effective_session_id:
+        return {
+            "status": "error",
+            "reason": "يجب حساب تكلفة الأوردر بـ quote_order أولاً في نفس الجلسة بنفس الأصناف والمحافظة قبل تأكيد الطلب"
+        }
+
+    valid_quote = get_valid_quote(effective_session_id, items, governorate)
+    if not valid_quote:
+        return {
+            "status": "error",
+            "reason": "يجب حساب تكلفة الأوردر بـ quote_order أولاً في نفس الجلسة بنفس الأصناف والمحافظة قبل تأكيد الطلب"
+        }
+
+    quote_id = valid_quote["quote_id"]
+    stored_code = valid_quote.get("applied_code") or ""
+    stored_total = valid_quote.get("total", 0.0)
+
+    # 2. إعادة حساب الفاتورة بالكود المخزن (تجاهل أي كود مرره الموديل) والتحقق من تطابق الإجمالي
+    quote = quote_order(tenant_id, items, governorate, promo_code=stored_code, session_id=None)
     if quote.get("status") != "ok":
         return quote
+
+    if abs(float(quote["total"]) - float(stored_total)) > 0.01:
+        return {
+            "status": "error",
+            "reason": "order_total_mismatch",
+            "message": f"تغير إجمالي الأوردر المحسوب ({quote['total']}) عن المسعر سابقاً ({stored_total})، يرجى إعادة حساب الأوردر للعميل"
+        }
 
     ship = find_shipping(tenant_id, governorate)
     if not ship:
@@ -276,7 +407,7 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items, ch
 
     try:
         result = supabase.rpc(
-            "place_order",
+            "place_order_v3",
             {
                 "p_tenant": tenant_id,
                 "p_customer_name": customer_name.strip(),
@@ -284,6 +415,12 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items, ch
                 "p_governorate": ship["governorate"],
                 "p_address": address.strip(),
                 "p_items": [{"variant_id": l["variant_id"], "qty": l["qty"]} for l in lines],
+                "p_customer": cust_uuid,
+                "p_shipping_fee": quote["shipping_fee"],
+                "p_discount": quote.get("discount", 0.0),
+                "p_discount_note": quote.get("discount_note") or None,
+                "p_promo_code": quote.get("applied_code"),
+                "p_idempotency_key": quote_id,
             },
         ).execute()
     except Exception as e:
@@ -293,34 +430,13 @@ def place_order(tenant_id, customer_name, phone, governorate, address, items, ch
         return {"status": "error", "reason": "system_error"}
 
     order = {"status": "ok", **result.data}
+    if quote.get("promo_error"):
+        order["promo_error"] = quote["promo_error"]
 
-    # تحديث مصاريف الشحن والإجمالي والعميل في جدول orders
-    # لأن دالة الداتابيز place_order لا تأخذ العروض وأكواد الخصم في الحسبان
-    order_updates = {
-        "shipping_fee": quote["shipping_fee"],
-        "total": quote["total"],
-    }
-    if cust_uuid:
-        order_updates["customer_id"] = cust_uuid
-
-    order_id = order.get("id")
-    order_num = order.get("order_number")
-    if order_id or order_num:
-        try:
-            q = supabase.table("orders").update(order_updates).eq("tenant_id", tenant_id)
-            if order_id:
-                q = q.eq("id", order_id)
-            else:
-                q = q.eq("order_number", order_num)
-            q.execute()
-        except Exception as e:
-            print("خطأ في تحديث بيانات الأوردر وعروض الخصم:", e)
-
-    # تحديث كائن order المرجع ليعكس الخصم والشحن الفعلي
-    order["shipping_fee"] = quote["shipping_fee"]
-    order["total"] = quote["total"]
-    order["discount"] = quote.get("discount", 0.0)
-    order["discount_note"] = quote.get("discount_note", "")
+    # حماية التكرار (Idempotency): لو الأوردر مكرر بنفس مفتاح quote_id نرجعه دون إشعار تاجر
+    if result.data and result.data.get("duplicate") is True:
+        print(f"🔁 طلب مكرر (idempotent key: {quote_id}) — إرجاع نفس الأوردر دون إرسال إشعار تاجر جديد")
+        return order
 
     try:
         notify.send_order_notification(

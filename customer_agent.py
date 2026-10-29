@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import time
 from dotenv import load_dotenv
 from google import genai
@@ -8,7 +9,7 @@ from google.genai import types
 import orders
 import notify
 from check_stock import check_stock as db_check_stock
-from check_stock import supabase
+from check_stock import escape_like, supabase, _norm_ar
 
 sys.stdout.reconfigure(encoding="utf-8")
 load_dotenv()
@@ -50,8 +51,9 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
    - لو فيه عروض أو أكواد، وضّحها للعميل بحماس وشجعه يستفيد منها.
 2. أسلوب البيع وتعلية الأوردر (Up-selling):
    - لو التاجر عامل عرض (زي شحن مجاني على قطعتين أو أكتر)، والزبون بيطلب قطعة واحدة: اقترح عليه بلطف العرض علشان يكسب الشحن المجاني!
-3. عند حساب الأوردر (quote_order):
+3. عند حساب الأوردر (quote_order) أو تسجيله (place_order):
    - لو العميل معاه كود خصم، مرره في خانة promo_code علشان يتخصم في الفاتورة.
+   - لو رجع promo_error من الأداة: لازم تبلّغ العميل فوراً وبوضوح إن كود الخصم غير صالح أو منتهي بنص الخطأ (promo_error) واعرض عليه الفاتورة والإجمالي بدونه بذوق.
 
 خطوات تسجيل وتعديل وإلغاء الأوردر (الدفع عند الاستلام فقط):
 1. لما العميل يقرر يشتري، اجمع اللي ناقص بس: الاسم، رقم الموبايل، المحافظة، العنوان بالتفصيل.
@@ -67,7 +69,7 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
    - وضّح له أن الإلغاء متاح فقط للأوردرات الجديدة (new) أو المؤكدة (confirmed) قبل خروجها للشحن.
 7. لو العميل طلب تعديل عنوان الشحن أو رقم الموبايل لأوردر مسجل:
    - اطلب منه رقم الأوردر ورقم الموبايل الحالي المسجل به الأوردر لتأكيد هويته.
-   - استدعِ أداة update_order_address_or_phone بالبيانات الجديدة بعد التأكد من مطابقة رقم الموبايل المسجل.
+   - استدعِ أداة update_order_address_or_phone ممرراً رقم الأوردر (order_number) ورقم الموبايل الحالي في current_phone، مع العنوان الجديد في address و/أو رقم الموبايل الجديد في phone.
    - وضّح له أن التعديل متاح فقط للأوردرات الجديدة (new) أو المؤكدة (confirmed) قبل خروجها للشحن.
 
 قواعد فحص الصور والأخطاء الإملائية (Images & Typo Handling):
@@ -79,10 +81,142 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
    - افهم الكلمة المقصودة بذكاء من كتالوج المحل، ونادِ check_stock بالاسم الصحيح مباشرة.
 """
 
-# إدارة ذاكرة المحادثات في RAM بحد أقصى لمنع تسريب الذاكرة (Memory Leak Prevention)
+# إدارة ذاكرة المحادثات في RAM بحد أقصى لمنع تسريب الذاكرة وقفل للتزامن
 CUSTOMER_CHATS = {}
+CHATS_DICT_LOCK = threading.Lock()
 MAX_ACTIVE_CHATS = 500
 CHAT_INACTIVITY_TTL = 3600  # ساعة واحدة صلاحية الجلسة في الرام
+
+
+class RateLimiter:
+    """حد معدل: لكل (tenant, sender) 8 رسائل في الدقيقة، وسقف يومي منفصل للمحادثات والتعليقات"""
+    def __init__(self, per_minute_limit: int = 8):
+        self.lock = threading.RLock()
+        self.per_minute_limit = per_minute_limit
+        self.sender_timestamps = {}  # (tenant_id, sender_id) -> [timestamps]
+        self.tenant_daily_counts = {}  # tenant_id -> {"date": "YYYY-MM-DD", "count": int}
+        self.tenant_daily_comments = {}  # tenant_id -> {"date": "YYYY-MM-DD", "count": int}
+        self.last_warned = {}  # (tenant_id, sender_id) -> float
+        self.last_cleanup = time.time()
+
+    def check_rate_limit(self, tenant_id: str, sender_id: str) -> tuple[bool, str]:
+        with self.lock:
+            now = time.time()
+            self.maybe_cleanup(now)
+
+            key = (str(tenant_id), str(sender_id))
+
+            # 1. سقف يومي لكل تاجر من متغير بيئة
+            daily_cap_str = os.environ.get("TENANT_DAILY_MESSAGE_CAP") or os.environ.get("DAILY_TENANT_MSG_CAP") or "1000"
+            try:
+                daily_cap = int(daily_cap_str)
+            except ValueError:
+                daily_cap = 1000
+
+            from datetime import datetime, timezone
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            daily_info = self.tenant_daily_counts.get(tenant_id)
+            if not daily_info or daily_info.get("date") != today:
+                daily_info = {"date": today, "count": 0}
+                self.tenant_daily_counts[tenant_id] = daily_info
+
+            if daily_cap > 0 and daily_info["count"] >= daily_cap:
+                last_w = self.last_warned.get(key, 0.0)
+                if now - last_w >= 60.0:
+                    self.last_warned[key] = now
+                    return False, "يا فندم المتجر وصل للحد الأقصى اليومي للرسائل حالياً. هيتواصل مع حضرتك أحد ممثلي خدمة العملاء قريباً 🙏"
+                return False, ""
+
+            # 2. حد 8 رسائل في الدقيقة لكل (tenant, sender): رد مرة واحدة كل دقيقة ثم تجاهل
+            timestamps = self.sender_timestamps.get(key, [])
+            window_start = now - 60.0
+            timestamps = [ts for ts in timestamps if ts > window_start]
+
+            if len(timestamps) >= self.per_minute_limit:
+                self.sender_timestamps[key] = timestamps
+                last_w = self.last_warned.get(key, 0.0)
+                if now - last_w >= 60.0:
+                    self.last_warned[key] = now
+                    return False, "يا فندم فضلاً الانتظار لحظات بدون تكرار إرسال الرسائل علشان أقدر أرد على استفسارك بدقة 🙏"
+                return False, ""
+
+            timestamps.append(now)
+            self.sender_timestamps[key] = timestamps
+            daily_info["count"] += 1
+            return True, ""
+
+    def check_comment_rate_limit(self, tenant_id: str, sender_id: str) -> tuple[bool, str]:
+        """سقف يومي منفصل للتعليقات بحيث لا يستنفد سقف المحادثات DMs"""
+        with self.lock:
+            now = time.time()
+            self.maybe_cleanup(now)
+
+            # سقف التعليقات اليومي من متغير البيئة TENANT_DAILY_COMMENTS_CAP (افتراضي 1000)
+            daily_cap_str = os.environ.get("TENANT_DAILY_COMMENTS_CAP") or os.environ.get("DAILY_TENANT_COMMENTS_CAP") or "1000"
+            try:
+                daily_cap = int(daily_cap_str)
+            except ValueError:
+                daily_cap = 1000
+
+            from datetime import datetime, timezone
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            daily_info = self.tenant_daily_comments.get(tenant_id)
+            if not daily_info or daily_info.get("date") != today:
+                daily_info = {"date": today, "count": 0}
+                self.tenant_daily_comments[tenant_id] = daily_info
+
+            if daily_cap > 0 and daily_info["count"] >= daily_cap:
+                return False, "سقف التعليقات اليومي للمتجر مكتمل حالياً"
+
+            # حد الدقيقة لكل مستخدم في التعليقات
+            key = (str(tenant_id), str(sender_id))
+            timestamps = self.sender_timestamps.get(key, [])
+            window_start = now - 60.0
+            timestamps = [ts for ts in timestamps if ts > window_start]
+            if len(timestamps) >= self.per_minute_limit:
+                return False, "تجاوز حد التعليقات في الدقيقة"
+
+            timestamps.append(now)
+            self.sender_timestamps[key] = timestamps
+            daily_info["count"] += 1
+            return True, ""
+
+    def maybe_cleanup(self, now: float):
+        if now - self.last_cleanup >= 300:
+            self.cleanup(now)
+
+    def cleanup(self, now: float = None):
+        with self.lock:
+            if now is None:
+                now = time.time()
+            self.last_cleanup = now
+            window_start = now - 60.0
+            expired_keys = []
+            for key, ts_list in self.sender_timestamps.items():
+                valid_ts = [ts for ts in ts_list if ts > window_start]
+                if not valid_ts:
+                    expired_keys.append(key)
+                else:
+                    self.sender_timestamps[key] = valid_ts
+            for k in expired_keys:
+                self.sender_timestamps.pop(k, None)
+
+            from datetime import datetime, timezone
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            for tid in list(self.tenant_daily_counts.keys()):
+                if self.tenant_daily_counts[tid].get("date") != today:
+                    self.tenant_daily_counts.pop(tid, None)
+
+            for tid in list(self.tenant_daily_comments.keys()):
+                if self.tenant_daily_comments[tid].get("date") != today:
+                    self.tenant_daily_comments.pop(tid, None)
+
+            for k in list(self.last_warned.keys()):
+                if now - self.last_warned[k] > 60.0:
+                    self.last_warned.pop(k, None)
+
+
+RATE_LIMITER = RateLimiter()
 
 
 def cleanup_customer_chats():
@@ -194,9 +328,279 @@ def save_message_to_db(conversation_id: str, role: str, content: str):
         print("خطأ في حفظ الرسالة بالداتابيز:", e)
 
 
-def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", image_bytes: bytes = None, image_mime_type: str = "image/jpeg", channel: str = "messenger") -> str:
-    """معالجة رسالة عميل (نصية أو صورة) جاية من أي منصة (واتساب، ماسنجر، إنستا، تيك توك) وحفظ سياق الشات"""
-    
+def cancel_customer_order_handler(
+    tenant_id: str, channel: str, customer_id: str, order_number: int, phone: str = "", reason: str = ""
+) -> dict:
+    """إلغاء أوردر مسجل سابقاً بعد التحقق من الملكية ومطابقة البيانات (Fail-Closed)."""
+    customer_uuid = orders.get_or_create_customer(tenant_id, channel, customer_id)
+
+    rows = (
+        supabase.table("orders")
+        .select("id,status,customer_id,phone,customer_name")
+        .eq("tenant_id", tenant_id)
+        .eq("order_number", int(order_number))
+        .execute()
+        .data
+    )
+    if not rows:
+        return {"status": "error", "reason": f"الأوردر #{order_number} مش موجود"}
+
+    ord_data = rows[0]
+
+    # 1. السماح بالإلغاء في حالة new و confirmed بس
+    if ord_data["status"] not in ("new", "confirmed"):
+        if ord_data["status"] == "cancelled":
+            return {"status": "error", "reason": f"الأوردر #{order_number} ملغي بالفعل"}
+        return {"status": "error", "reason": f"لا يمكن إلغاء الأوردر #{order_number} لأن حالته الحالية ({ord_data['status']}) — مسموح بالإلغاء فقط قبل خروج الشحنة"}
+
+    # 2. التحقق من تطابق هوية العميل (Fail-closed)
+    if ord_data.get("customer_id"):
+        if not customer_uuid or ord_data["customer_id"] != customer_uuid:
+            return {"status": "error", "reason": "عذراً، الأوردر ده مش مسجل بنفس هذا الحساب ولا يمكن إلغاؤه"}
+    else:
+        # الأوردر من غير customer_id: لازم phone مطابق للموبايل المسجل
+        expected_phone = orders.normalize_phone(ord_data.get("phone") or "")
+        input_phone = orders.normalize_phone(phone) if phone else None
+        if not input_phone and channel == "whatsapp":
+            input_phone = orders.normalize_phone(customer_id)
+
+        if not input_phone:
+            return {"status": "error", "reason": "يرجى كتابة رقم الموبايل المسجل به الأوردر لتأكيد هويتك وإتمام الإلغاء"}
+
+        if expected_phone and input_phone != expected_phone:
+            return {"status": "error", "reason": "رقم الموبايل غير مطابق لبيانات الأوردر المسجلة"}
+
+    return orders.cancel_order(tenant_id, order_number, reason=reason)
+
+
+def update_order_address_or_phone_handler(
+    tenant_id: str, channel: str, customer_id: str, order_number: int, address: str = "", phone: str = "", current_phone: str = ""
+) -> dict:
+    """تعديل عنوان الشحن أو رقم الموبايل لأوردر قائم بعد التحقق من الملكية ومطابقة البيانات (Fail-Closed)."""
+    customer_uuid = orders.get_or_create_customer(tenant_id, channel, customer_id)
+
+    rows = (
+        supabase.table("orders")
+        .select("id,status,customer_id,phone,address,customer_name")
+        .eq("tenant_id", tenant_id)
+        .eq("order_number", int(order_number))
+        .execute()
+        .data
+    )
+    if not rows:
+        return {"status": "error", "reason": f"الأوردر #{order_number} مش موجود"}
+
+    ord_data = rows[0]
+
+    # 1. السماح بالتعديل في حالة new و confirmed بس
+    if ord_data["status"] not in ("new", "confirmed"):
+        return {"status": "error", "reason": f"لا يمكن تعديل الأوردر #{order_number} لأن حالته الحالية ({ord_data['status']}) — مسموح بالتعديل فقط قبل خروج الشحنة"}
+
+    # 2. التحقق من تطابق هوية العميل (Fail-closed)
+    if ord_data.get("customer_id"):
+        if not customer_uuid or ord_data["customer_id"] != customer_uuid:
+            return {"status": "error", "reason": "عذراً، الأوردر ده مش مسجل بنفس هذا الحساب ولا يمكن تعديله"}
+    else:
+        # الأوردر من غير customer_id: لازم current_phone مطابق للموبايل المسجل
+        norm_current = orders.normalize_phone(current_phone) if current_phone else None
+        if not norm_current and channel == "whatsapp":
+            norm_current = orders.normalize_phone(customer_id)
+        expected_phone = orders.normalize_phone(ord_data.get("phone") or "")
+        if not norm_current:
+            return {"status": "error", "reason": "يرجى كتابة رقم الموبايل الحالي المسجل به الأوردر لتأكيد هويتك وإتمام التعديل"}
+        if expected_phone and norm_current != expected_phone:
+            return {"status": "error", "reason": "رقم الموبايل الحالي غير مطابق لبيانات الأوردر المسجلة"}
+
+    target_addr = (address or "").strip()
+    target_phone = (phone or "").strip()
+
+    if not target_addr and not target_phone:
+        return {"status": "error", "reason": "لم يتم تحديد عنوان أو رقم موبايل جديد لتعديله"}
+
+    return orders.update_order_shipping(tenant_id, order_number, phone=target_phone, address=target_addr)
+
+
+def get_tenant_settings(tenant_id: str) -> dict:
+    """جلب سياسات وإعدادات المحل (مواعيد العمل، المعاينة، الاسترجاع) من جدول tenant_settings"""
+    defaults = {
+        "working_hours": "يومياً من الساعة 10:00 صباحاً حتى 11:00 مساءً ما عدا الجمعة من 2:00 ظهراً.",
+        "inspection_policy": "متاح المعاينة والقياس مع مندوب الشحن قبل الاستلام والدفع.",
+        "return_policy": "الاستبدال والاسترجاع متاح خلال 14 يوماً من تاريخ الاستلام بشرط سلامة المنتج ووجود الفاتورة.",
+    }
+    if not tenant_id:
+        return defaults
+
+    try:
+        res = supabase.table("tenant_settings").select("*").eq("tenant_id", tenant_id).execute()
+        if res.data:
+            row = res.data[0]
+            return {
+                "working_hours": row.get("working_hours") or row.get("hours") or defaults["working_hours"],
+                "inspection_policy": row.get("inspection_policy") or row.get("inspection") or defaults["inspection_policy"],
+                "return_policy": row.get("return_policy") or row.get("return_exchange") or defaults["return_policy"],
+            }
+    except Exception:
+        pass
+    return defaults
+
+
+def build_system_instruction(tenant_id: str, allow_orders: bool = True) -> str:
+    """بناء التعليمات الإرشادية للنظام مع تضمين سياسات المحل من tenant_settings بدلاً من النص الثابت"""
+    settings = get_tenant_settings(tenant_id)
+    hours = settings["working_hours"]
+    inspection = settings["inspection_policy"]
+    return_policy = settings["return_policy"]
+
+    policies_block = f"""
+قواعد وسياسات ومواعيد المحل المعتمدة (يجب الالتزام بها نصاً في جميع إجاباتك):
+- مواعيد وساعات العمل: {hours}
+- سياسة المعاينة قبل الاستلام: {inspection}
+- سياسة الاستبدال والاسترجاع: {return_policy}
+"""
+
+    if allow_orders:
+        return SYSTEM_PROMPT + "\n\n" + policies_block
+    else:
+        comments_warning = (
+            "\n\nتنبيه هام للتعليقات العامة (Comments): أنت ترد في التعليقات العامة فقط. "
+            "أدوات تسجيل أو تعديل أو إلغاء الأوردرات غير مفعلة هنا لحماية خصوصية بيانات العميل. "
+            "إذا رغب العميل في الشراء أو الطلب، أجب على استفساره بلطف وشجعه على إرسال رسالة خاصة (DM) لتسجيل طلبه فوراً."
+        )
+        return SYSTEM_PROMPT + "\n\n" + policies_block + comments_warning
+
+
+def _rule_based_classify_comment(text: str, post_text: str = "") -> str:
+    """محرك القواعد الذكي لتصنيف التعليقات كاحتياطي موثوق"""
+    norm = _norm_ar((text or "").lower())
+
+    # 1. شكوى
+    if any(k in norm for k in ["اتاخر", "اتأخر", "تاخير", "تأخير", "محدش بيرد", "نصابين", "وحش", "سيء", "شكوى", "مشكلة", "باظ", "مكسور", "عيب", "زفت"]):
+        return "complaint"
+
+    # 2. طلب شراء (order له أولوية على العروض)
+    if any(k in norm for k in ["عايز اطلب", "عايز أطلب", "احجزلي", "احجز لي", "طلب شراء", "سجلي", "سجل لي", "ابعتلي اوردر"]):
+        return "order"
+
+    # 3. مدح وشكر
+    if any(k in norm for k in ["تحفة", "تحفه", "روعة", "روعه", "جميل", "جميله", "تسلم", "تسلموا", "عاش", "ما شاء الله", "ممتاز", "خامة ممتازة", "ذوق", "شكرا", "شكراً"]):
+        return "praise"
+
+    # 4. مكان وعنوان
+    if any(k in norm for k in ["فين المكان", "العنوان", "عنوانكم", "المكان فين", "اللوكيشن", "مكانكم", "فين المحل", "عنوان المحل", "فروعكم", "ليكم فرع", "فين فرع", "موقعكم", "فينكم"]):
+        return "location"
+
+    # 5. مواعيد العمل
+    if any(k in norm for k in ["فاتحين", "مواعيد", "لحد كام", "ساعة كام", "الساعة كام", "اجازة", "إجازة", "شغالين"]):
+        return "hours"
+
+    # 6. عروض وخصومات
+    if any(k in norm for k in ["القطعتين", "قطعتين", "عرض", "عروض", "خصم", "تخفيض", "لو خدت 2", "سعر القطعتين"]):
+        return "offer"
+
+    # 7. شحن وتوصيل
+    if any(k in norm for k in ["شحن", "توصيل", "يوصل", "مصاريف الشحن", "بتشحنوا"]):
+        return "shipping"
+
+    # 8. أسعار
+    if any(k in norm for k in ["بكام", "السعر", "سعره", "سعرها", "بكم", "تكلفة", "السعر كام"]):
+        return "price"
+
+    # 9. توفر ومقاسات
+    if any(k in norm for k in ["متاح", "متوفر", "المقاس", "مقاس", "اللون", "الوان", "خلصان", "لسه في"]):
+        return "availability"
+
+    if len(text.strip()) < 3 or text.strip().startswith("@"):
+        return "skip"
+
+    return "skip"
+
+
+def classify_comment(text: str, post_text: str = "") -> str:
+    """فرز وتصنيف تعليقات العملاء على منشورات المتاجر باستخدام Gemini إلى واحد من 10 تصنيفات معتمدة"""
+    clean_text = (text or "").strip()
+    if not clean_text:
+        return "skip"
+
+    VALID_CATEGORIES = {
+        "location", "hours", "price", "availability",
+        "shipping", "offer", "order", "praise", "complaint", "skip"
+    }
+
+    # فحص سريع لتعليقات المنشن أو الإيموجي أو النقط
+    if clean_text in [".", "..", "...", "نقطة"]:
+        return "price"
+    if clean_text in ["up", "متابع", "مهتم"]:
+        return "skip"
+
+    prompt = f"""أنت نظام ذكي لفرز وتصنيف تعليقات السوشيال ميديا لمتاجر التجارة الإلكترونية.
+صنف التعليق التالي بناءً على نصه ومحتوى البوست المرتبط به إلى واحد فقط من التصنيفات التالية بدقة:
+- location: سؤال عن العنوان، المكان، اللوكيشن، أماكن الفروع، في محافظة إيه، فين المحل (مثال: 'فين المكان؟'، 'العنوان').
+- hours: سؤال عن مواعيد العمل، فاتحين لغاية امتى، أوقات الفتح والإغلاق، الإجازات.
+- price: سؤال عن السعر، التكلفة، ده بكام (مثال: 'ده بكام؟'، 'السعر كام؟').
+- availability: سؤال عن توفر منتج أو مقاسات أو ألوان معينة (مثال: 'المقاس متاح؟'، 'في منه أسود؟').
+- shipping: سؤال عن الشحن، التوصيل، مصاريف الشحن، مدة التوصيل، الشحن للمحافظات (مثال: 'في شحن؟'، 'الشحن بكام لأسيوط؟').
+- offer: سؤال عن العروض، الخصومات، التخفيضات، شراء أكثر من قطعة، سيل، عرض (مثال: 'القطعتين ولا واحدة؟'، 'في عرض؟').
+- order: طلب شراء صريح، حجز، رغبة في عمل أوردر، إرسال بيانات (مثال: 'عايز أطلب تيشيرت أسود'، 'احجزلي').
+- praise: شكر، إشادة، إعجاب بالمنتج أو الخدمة، كلام جميل (مثال: 'حاجتكم تحفة تسلموا'، 'الخامة روعة').
+- complaint: شكوى، غضب، مشكلة في أوردر، تأخير شحن، عيب صناعة، معاملة سيئة (مثال: 'الأوردر اتأخر ومحدش بيرد').
+- skip: منشن لأشخاص، إيموجي مجرد، تعليقات عشوائية، أو كلام غير مفهوم لا يحتاج رد.
+
+محتوى البوست المرتبط:
+{post_text or 'غير متوفر'}
+
+تعليق العميل:
+{clean_text}
+
+أجب بصيغة JSON فقط:
+{{"category": "<one of: location, hours, price, availability, shipping, offer, order, praise, complaint, skip>"}}
+"""
+
+    try:
+        config = types.GenerateContentConfig(
+            temperature=0.0,
+            response_mime_type="application/json",
+        )
+        res = client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=config,
+        )
+        raw_json = (res.text or "").strip()
+        data = json.loads(raw_json)
+        cat = str(data.get("category", "")).strip().lower()
+        if cat in VALID_CATEGORIES:
+            return cat
+    except Exception as e:
+        pass
+
+    return _rule_based_classify_comment(clean_text, post_text)
+
+
+def handle_customer_message(
+    tenant_id: str,
+    customer_id: str,
+    text: str = "",
+    image_bytes: bytes = None,
+    image_mime_type: str = "image/jpeg",
+    channel: str = "messenger",
+    allow_orders: bool = True,
+    is_comment: bool = False,
+) -> str:
+    """معالجة رسالة عميل (نصية أو صورة) جاية من أي منصة وحفظ سياق الشات وتطبيق السياسات"""
+
+    # فحص حد المعدل: سقف منفصل للتعليقات عن المحادثات
+    if is_comment or not allow_orders or channel in ["facebook_comment", "instagram_comment", "tiktok_comment"]:
+        is_allowed, rate_msg = RATE_LIMITER.check_comment_rate_limit(tenant_id, customer_id)
+    else:
+        is_allowed, rate_msg = RATE_LIMITER.check_rate_limit(tenant_id, customer_id)
+
+    if not is_allowed:
+        return rate_msg
+
+    mode_tag = "orders" if allow_orders else "comments"
+    session_key = f"{tenant_id}:{channel}:{customer_id}:{mode_tag}"
+    now = time.time()
+
     # تعريف أدوات الموديل الخاصة بهذا التاجر تحديداً (عزل تام)
     def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
         """فحص توافر المنتج في المخزن ومعرفة الألوان والمقاسات والأسعار وأكواد الصنف (sku) المتاحة. لو الصنف خلصان بترجع بدائل متاحة.
@@ -209,7 +613,7 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", im
         Returns:
             dict يحتوي على الأصناف المتاحة مع كود الصنف (sku) والسعر والكمية.
         """
-        return db_check_stock(tenant_id, product_name, size=size or None, color=color or None)
+        return db_check_stock(tenant_id, product_name, size=size or None, color=color or None, reveal_qty=False)
 
     def quote_order(items: list[str], governorate: str, promo_code: str = "") -> dict:
         """حساب سعر الأوردر والشحن والإجمالي وتطبيق كود الخصم وعروض الشحن المجاني من غير ما تسجل أوردر. يجب استدعاؤها قبل عرض الملخص على العميل.
@@ -222,7 +626,7 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", im
         Returns:
             dict يحتوي على تفاصيل الأسعار، الخصم، الشحن، والإجمالي النهائي وطريقة الدفع.
         """
-        return orders.quote_order(tenant_id, items, governorate, promo_code=promo_code)
+        return orders.quote_order(tenant_id, items, governorate, promo_code=promo_code, session_id=session_key)
 
     def get_active_offers() -> dict:
         """بترجّع كل العروض وأكواد الخصم النشطة حالياً للمحل (عروض الشحن المجاني، نسب الخصم، أكواد التخفيض)."""
@@ -245,9 +649,15 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", im
         Returns:
             dict يحتوي على حالة الأوردر ورقم الأوردر المسجل وتفاصيل التأكيد.
         """
+        if not orders.has_valid_quote(session_key, items, governorate):
+            return {
+                "status": "error",
+                "reason": "يجب حساب تكلفة الأوردر بـ quote_order أولاً في نفس الجلسة بنفس الأصناف والمحافظة قبل تأكيد الطلب"
+            }
         return orders.place_order(
             tenant_id, customer_name, phone, governorate, address, items,
-            channel=channel, channel_user_id=customer_id, promo_code=promo_code
+            channel=channel, channel_user_id=customer_id, promo_code=promo_code,
+            session_id=session_key
         )
 
     def get_branches(governorate: str = "") -> dict:
@@ -258,7 +668,7 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", im
         """
         query = supabase.table("branches").select("name, governorate, city, address, google_maps_url, working_hours, phone").eq("tenant_id", tenant_id)
         if governorate:
-            query = query.ilike("governorate", f"%{governorate.strip()}%")
+            query = query.ilike("governorate", f"%{escape_like(governorate.strip())}%")
         rows = query.execute().data
         if not rows:
             # لو مفيش فروع مسجلة، نرجع إنه متجر أونلاين بشحن فوري
@@ -267,6 +677,49 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", im
                 "message": "إحنا متجر أونلاين وشغالين شحن لجميع محافظات مصر لحد باب البيت، وتقدر تعاين الشحنة قبل الاستلام!"
             }
         return {"status": "ok", "branches": rows}
+
+    def get_shipping_rates(governorate: str = "") -> dict:
+        """معرفة مصاريف وأسعار الشحن ومناطق التوصيل المتاحة لمختلف المحافظات.
+        
+        Args:
+            governorate: اسم المحافظة بالعربي (مثال: القاهرة، الجيزة، الإسكندرية، أسيوط). سيبها فاضية لو عايز تعرف كل أسعار الشحن.
+            
+        Returns:
+            dict يحتوي على أسعار الشحن المتاحة أو سعر شحن المحافظة المطلوبة.
+        """
+        try:
+            res = supabase.table("shipping_rates").select("governorate,price").eq("tenant_id", tenant_id).execute()
+            rows = res.data or []
+            if not rows:
+                return {
+                    "status": "default",
+                    "rates": [{"governorate": "جميع المحافظات", "price": 50}],
+                    "message": "مصاريف الشحن 50 جنيه لجميع المحافظات والتوصيل خلال 2-4 أيام عمل مع إمكانية المعاينة قبل الاستلام."
+                }
+
+            if governorate and governorate.strip():
+                wanted = _norm_ar(governorate)
+                for r in rows:
+                    gov_norm = _norm_ar(r.get("governorate", ""))
+                    if gov_norm == wanted or wanted in gov_norm or gov_norm in wanted:
+                        return {
+                            "status": "ok",
+                            "governorate": r["governorate"],
+                            "price": r["price"],
+                            "message": f"مصاريف الشحن لمحافظة {r['governorate']} هي {r['price']} جنيه والتوصيل خلال 2-4 أيام عمل مع إمكانية المعاينة قبل الاستلام."
+                        }
+
+            return {
+                "status": "ok",
+                "rates": rows,
+                "message": "قائمة أسعار الشحن المتاحة للمحافظات."
+            }
+        except Exception as e:
+            return {
+                "status": "fallback",
+                "price": 50,
+                "message": "مصاريف الشحن 50 جنيه لجميع المحافظات والتوصيل سريع لباب البيت مع المعاينة."
+            }
 
     def submit_customer_review(feedback: str, rating: int = 5, reviewer_name: str = "") -> dict:
         """تسجيل رأي أو ريفيو أو شكر من العميل وإشعار صاحب المحل فوراً على تليجرام.
@@ -297,7 +750,7 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", im
         """
         query = supabase.table("branches").select("name, google_maps_url, address").eq("tenant_id", tenant_id)
         if branch_name:
-            query = query.ilike("name", f"%{branch_name.strip()}%")
+            query = query.ilike("name", f"%{escape_like(branch_name.strip())}%")
         rows = query.execute().data
         
         valid = [r for r in rows if r.get("google_maps_url")]
@@ -322,140 +775,63 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", im
             phone: رقم الموبايل المسجل به الأوردر لتأكيد هوية العميل
             reason: سبب الإلغاء إذا ذكره العميل
         """
-        customer_uuid = orders.get_or_create_customer(tenant_id, channel, customer_id)
+        return cancel_customer_order_handler(tenant_id, channel, customer_id, order_number, phone=phone, reason=reason)
 
-        rows = (
-            supabase.table("orders")
-            .select("id,status,customer_id,phone,customer_name")
-            .eq("tenant_id", tenant_id)
-            .eq("order_number", int(order_number))
-            .execute()
-            .data
-        )
-        if not rows:
-            return {"status": "error", "reason": f"الأوردر #{order_number} مش موجود"}
-
-        ord_data = rows[0]
-
-        # 1. السماح بالإلغاء في حالة new و confirmed بس
-        if ord_data["status"] not in ("new", "confirmed"):
-            if ord_data["status"] == "cancelled":
-                return {"status": "error", "reason": f"الأوردر #{order_number} ملغي بالفعل"}
-            return {"status": "error", "reason": f"لا يمكن إلغاء الأوردر #{order_number} لأن حالته الحالية ({ord_data['status']}) — مسموح بالإلغاء فقط قبل خروج الشحنة"}
-
-        # 2. التحقق من تطابق هوية العميل المسجلة على الأوردر
-        if ord_data.get("customer_id") and customer_uuid and ord_data["customer_id"] != customer_uuid:
-            return {"status": "error", "reason": "عذراً، الأوردر ده مش مسجل بنفس هذا الحساب ولا يمكن إلغاؤه"}
-
-        # 3. مطابقة رقم الموبايل
-        expected_phone = orders.normalize_phone(ord_data.get("phone") or "")
-        input_phone = orders.normalize_phone(phone) if phone else None
-        if not input_phone:
-            # محاولة قراءة الرقم من customer_id لو الشات من واتساب
-            input_phone = orders.normalize_phone(customer_id)
-
-        if not input_phone:
-            return {"status": "error", "reason": "يرجى كتابة رقم الموبايل المسجل به الأوردر لتأكيد هويتك وإتمام الإلغاء"}
-
-        if expected_phone and input_phone != expected_phone:
-            return {"status": "error", "reason": "رقم الموبايل غير مطابق لبيانات الأوردر المسجلة"}
-
-        return orders.cancel_order(tenant_id, order_number, reason=reason)
-
-    def update_order_address_or_phone(order_number: int, customer_phone: str = "", new_address: str = "", new_phone: str = "", phone: str = "", address: str = "") -> dict:
-        """تعديل عنوان الشحن أو رقم الموبايل لأوردر قائم بناءً على طلب العميل بعد التأكد من ملكيته للأوردر ومطابقة رقم الموبايل.
+    def update_order_address_or_phone(order_number: int, address: str = "", phone: str = "", current_phone: str = "") -> dict:
+        """تعديل عنوان الشحن أو رقم الموبايل لأوردر قائم بناءً على طلب العميل بعد التأكد من ملكيته للأوردر.
         
         Args:
-            order_number: رقم الأوردر المراد تعديله
-            customer_phone: رقم الموبايل الحالي المسجل به الأوردر لتأكيد هوية العميل
-            new_address: العنوان الجديد بالتفصيل إن وجد
-            new_phone: رقم الموبايل الجديد إن كان العميل يريد تغييره
-            phone: حقل بديل لرقم الموبايل
-            address: حقل بديل للعنوان الجديد
+            order_number: رقم الأوردر المراد تعديله (مثلاً 5)
+            address: العنوان الجديد بالتفصيل إن كان العميل يريد تغييره
+            phone: رقم الموبايل الجديد إن كان العميل يريد تغييره
+            current_phone: رقم الموبايل الحالي المسجل به الأوردر لتأكيد هوية العميل
         """
-        customer_uuid = orders.get_or_create_customer(tenant_id, channel, customer_id)
-
-        rows = (
-            supabase.table("orders")
-            .select("id,status,customer_id,phone,address,customer_name")
-            .eq("tenant_id", tenant_id)
-            .eq("order_number", int(order_number))
-            .execute()
-            .data
+        return update_order_address_or_phone_handler(
+            tenant_id, channel, customer_id, order_number, address=address, phone=phone, current_phone=current_phone
         )
-        if not rows:
-            return {"status": "error", "reason": f"الأوردر #{order_number} مش موجود"}
 
-        ord_data = rows[0]
-
-        # 1. السماح بالتعديل في حالة new و confirmed بس
-        if ord_data["status"] not in ("new", "confirmed"):
-            return {"status": "error", "reason": f"لا يمكن تعديل الأوردر #{order_number} لأن حالته الحالية ({ord_data['status']}) — مسموح بالتعديل فقط قبل خروج الشحنة"}
-
-        # 2. التحقق من تطابق هوية العميل المسجلة على الأوردر
-        if ord_data.get("customer_id") and customer_uuid and ord_data["customer_id"] != customer_uuid:
-            return {"status": "error", "reason": "عذراً، الأوردر ده مش مسجل بنفس هذا الحساب ولا يمكن تعديله"}
-
-        # 3. مطابقة رقم الموبايل الحالي المسجل به الأوردر
-        expected_phone = orders.normalize_phone(ord_data.get("phone") or "")
-        check_phone = None
-        if customer_phone:
-            check_phone = orders.normalize_phone(customer_phone)
-        elif phone and expected_phone and orders.normalize_phone(phone) == expected_phone:
-            check_phone = orders.normalize_phone(phone)
-        elif orders.normalize_phone(customer_id):
-            check_phone = orders.normalize_phone(customer_id)
-
-        if not check_phone:
-            return {"status": "error", "reason": "يرجى كتابة رقم الموبايل المسجل به الأوردر لتأكيد هويتك وإتمام التعديل"}
-
-        if expected_phone and check_phone != expected_phone:
-            return {"status": "error", "reason": "رقم الموبايل غير مطابق لبيانات الأوردر المسجلة"}
-
-        # تحديد العنوان الجديد ورقم الموبايل الجديد
-        target_addr = (new_address or address or "").strip()
-        target_phone = ""
-        if new_phone:
-            target_phone = new_phone.strip()
-        elif phone and orders.normalize_phone(phone) != expected_phone:
-            target_phone = phone.strip()
-
-        if not target_addr and not target_phone:
-            return {"status": "error", "reason": "لم يتم تحديد عنوان أو رقم موبايل جديد لتعديله"}
-
-        return orders.update_order_shipping(tenant_id, order_number, phone=target_phone, address=target_addr)
-
-    session_key = f"{tenant_id}:{channel}:{customer_id}"
-    now = time.time()
-
-    # 1. تنظيف الذاكرة في RAM إذا زاد عدد الجلسات عن الحد الأقصى (LRU / TTL)
-    cleanup_customer_chats()
-
-    # 2. تحديد هوية العميل وسجل المحادثة في قاعدة البيانات
+    # 1. تحديد هوية العميل وسجل المحادثة في قاعدة البيانات
     cust_uuid = orders.get_or_create_customer(tenant_id, channel, customer_id)
     conv_id = get_or_create_conversation(tenant_id, cust_uuid, channel) if cust_uuid else None
 
-    # 3. إنشاء أو استرجاع الجلسة
-    if session_key not in CUSTOMER_CHATS:
-        config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            tools=[
-                check_stock, quote_order, place_order, get_branches,
-                submit_customer_review, get_google_review_link, get_active_offers,
-                cancel_customer_order, update_order_address_or_phone
-            ],
-        )
-        # استرجاع سياق الرسائل السابقة من الداتابيز حتى لو حصل إعادة تشغيل أو نشر جديد على Render
-        history = load_recent_messages(conv_id, limit=14) if conv_id else []
-        chat = client.chats.create(model=MODEL, config=config, history=history or None)
-        CUSTOMER_CHATS[session_key] = {
-            "chat": chat,
-            "last_active": now,
-            "conversation_id": conv_id,
-        }
-    else:
-        CUSTOMER_CHATS[session_key]["last_active"] = now
-        chat = CUSTOMER_CHATS[session_key]["chat"]
+    # 2. استرجاع سياق الرسائل السابقة من الداتابيز قبل قفل الذاكرة CHATS_DICT_LOCK لمنع حظر بقية الجلسات
+    history = load_recent_messages(conv_id, limit=14) if conv_id else []
+
+    # 3. إنشاء أو استرجاع الجلسة تحت قفل قاموس الجلسات مع تنظيف دوري للذاكرة
+    with CHATS_DICT_LOCK:
+        cleanup_customer_chats()
+        if session_key not in CUSTOMER_CHATS:
+            if allow_orders:
+                tools = [
+                    check_stock, quote_order, place_order, get_branches,
+                    get_shipping_rates, submit_customer_review, get_google_review_link,
+                    get_active_offers, cancel_customer_order, update_order_address_or_phone
+                ]
+            else:
+                # مسار التعليقات: عدم تمرير أدوات الأوردر والتعديل والإلغاء وتوجيه العميل للخاص
+                tools = [
+                    check_stock, get_branches, get_shipping_rates,
+                    submit_customer_review, get_google_review_link, get_active_offers
+                ]
+            sys_inst = build_system_instruction(tenant_id, allow_orders=allow_orders)
+
+            config = types.GenerateContentConfig(
+                system_instruction=sys_inst,
+                tools=tools,
+            )
+            chat = client.chats.create(model=MODEL, config=config, history=history or None)
+            CUSTOMER_CHATS[session_key] = {
+                "chat": chat,
+                "last_active": now,
+                "conversation_id": conv_id,
+                "lock": threading.Lock(),
+            }
+        else:
+            CUSTOMER_CHATS[session_key]["last_active"] = now
+
+        session_entry = CUSTOMER_CHATS[session_key]
+        chat = session_entry["chat"]
+        session_lock = session_entry["lock"]
 
     contents_to_send = []
     if image_bytes:
@@ -471,17 +847,19 @@ def handle_customer_message(tenant_id: str, customer_id: str, text: str = "", im
     if conv_id and text and text.strip():
         save_message_to_db(conv_id, "customer", text.strip())
 
-    for attempt in range(3):
-        try:
-            res = chat.send_message(message_payload)
-            reply = res.text or "تمام يا فندم، أقدر أساعدك بإيه تاني؟"
-            # حفظ رد البوت في الداتابيز لضمان استمرارية السياق
-            if conv_id:
-                save_message_to_db(conv_id, "assistant", reply)
-            return reply
-        except Exception as e:
-            if ("503" in str(e) or "429" in str(e)) and attempt < 2:
-                time.sleep(3 * (attempt + 1))
-                continue
-            print(f"Error handling customer {customer_id}:", e)
-            return "يا فندم ثواني بس وراجع لحضرتك فوراً 🙏"
+    # قفل threading.Lock لكل جلسة لمنع تداخل الرسائل لنفس العميل
+    with session_lock:
+        for attempt in range(3):
+            try:
+                res = chat.send_message(message_payload)
+                reply = res.text or "تمام يا فندم، أقدر أساعدك بإيه تاني؟"
+                # حفظ رد البوت في الداتابيز لضمان استمرارية السياق
+                if conv_id:
+                    save_message_to_db(conv_id, "assistant", reply)
+                return reply
+            except Exception as e:
+                if ("503" in str(e) or "429" in str(e)) and attempt < 2:
+                    time.sleep(3 * (attempt + 1))
+                    continue
+                print(f"Error handling customer {customer_id}:", e)
+                return "يا فندم ثواني بس وراجع لحضرتك فوراً 🙏"
