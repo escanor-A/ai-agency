@@ -147,7 +147,7 @@ def _query_variants(tenant_id, search_term):
     escaped = escape_like(search_term)
     return (
         supabase.table("variants")
-        .select("sku,size,color,available,image_url,products!inner(name,price,image_url)")
+        .select("sku,size,color,available,image_url,products!inner(name,price,image_url,material)")
         .eq("tenant_id", tenant_id)
         .eq("active", True)
         .ilike("products.name", f"%{escaped}%")
@@ -195,7 +195,7 @@ def check_stock(tenant_id, product_name, size=None, color=None, reveal_qty=False
     if not rows:
         prods = (
             supabase.table("products")
-            .select("name,price")
+            .select("name,price,material")
             .eq("tenant_id", tenant_id)
             .eq("active", True)
             .execute()

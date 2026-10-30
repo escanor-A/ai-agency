@@ -169,8 +169,24 @@ async def send_meta_image(recipient_id: str, image_url: str, page_access_token: 
             print(f"❌ استثناء في إرسال صورة {platform}:", type(e).__name__)
 
 
+async def like_meta_comment(comment_id: str, page_access_token: str):
+    """عمل إعجاب (Like) لكومنت العميل لزيادة التفاعل والخوارزميات على فيسبوك/إنستجرام"""
+    if not comment_id or not page_access_token:
+        return
+    url = f"https://graph.facebook.com/v21.0/{comment_id}/likes"
+    headers = {"Authorization": f"Bearer {page_access_token}"}
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(url, headers=headers, timeout=6)
+            if r.status_code == 200:
+                print(f"👍 تم الإعجاب بالكومنت {comment_id}")
+        except Exception:
+            pass
+
+
 async def send_public_comment_reply(comment_id: str, text: str, page_access_token: str):
-    """الرد العام تحت الكومنت مباشرة على فيسبوك"""
+    """الرد العام تحت الكومنت مباشرة على فيسبوك وعمل لايك للكومنت"""
+    await like_meta_comment(comment_id, page_access_token)
     url = f"https://graph.facebook.com/v21.0/{comment_id}/comments"
     headers = {
         "Authorization": f"Bearer {page_access_token}",
@@ -189,7 +205,8 @@ async def send_public_comment_reply(comment_id: str, text: str, page_access_toke
 
 
 async def send_instagram_comment_reply(comment_id: str, text: str, page_access_token: str):
-    """الرد على كومنت إنستجرام"""
+    """الرد على كومنت إنستجرام وعمل لايك له"""
+    await like_meta_comment(comment_id, page_access_token)
     url = f"https://graph.facebook.com/v21.0/{comment_id}/replies"
     headers = {
         "Authorization": f"Bearer {page_access_token}",
@@ -1042,6 +1059,163 @@ async def receive_tiktok_webhook(request: Request, background_tasks: BackgroundT
 
 
 # ===============================================================
+# 📢 Auto-Posting & Marketing Generator Functions
+# ===============================================================
+
+def generate_autopost_copy(product_name: str, price: float, material: str = "", colors: list = None, sizes: list = None, offer_text: str = "") -> str:
+    """توليد كابشن إعلاني جذاب باللهجة المصرية لبوست فيسبوك باستخدام Gemini"""
+    from google import genai
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return f"🔥 شياكة وأناقة لا تقاوم! {product_name} متوفر الآن بسعر {price:.0f} جنيه فقط. اكتب 'تم' في التعليقات أو ابعتلنا رسالة لحجز مقاسك فوراً والدفع عند الاستلام!"
+
+    client = genai.Client(api_key=api_key)
+    prompt = f"""أنت مسوق وبياع محترف في براند ملابس مصري شهير.
+اكتب بوست تسويقي جذاب وممتع لفيسبوك باللهجة المصرية لمنتجنا:
+- اسم المنتج: {product_name}
+- السعر: {price:.0f} جنيه مصري
+- الخامة: {material or 'خامة فاخرة مريحة وعالية الجودة معالجة ضد الانكماش'}
+- الألوان المتاحة: {', '.join(colors) if colors else 'تشكيلة ألوان شيك'}
+- المقاسات المتاحة: {', '.join(sizes) if sizes else 'جميع المقاسات'}
+{f'- عرض خاص: {offer_text}' if offer_text else ''}
+
+قواعد البوست:
+1. ابدأ بهوك (Hook) يشد الانتباه مع إيموجي جذاب.
+2. اذكر تفاصيل المنتج وخامته ومميزاته بأسلوب بياع مصري شاطر ومقنع.
+3. وضّح إن متاح معاينة وقياس قبل الدفع والدفع عند الاستلام لباب البيت.
+4. Call to Action واضح: "اكتب تم في الكومنتات أو ابعتلنا على رسائل الصفحة وهنحجزلك فوراً!"
+5. اكتب البوست مباشرة بدون مقدمات أو فواصل أو تعليقات خارجية (3 إلى 5 سطور مميزة مع هاشتاجات خفيفة)."""
+
+    try:
+        resp = client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+        )
+        return resp.text.strip()
+    except Exception as e:
+        print("Error generating autopost copy:", e)
+        return (
+            f"🔥 الأناقة والراحة في قطعة واحدة! {product_name} متوفر حالياً بسعر {price:.0f} جنيه {('بخامة ' + material) if material else ''}.\n\n"
+            f"🚚 شحن سريع ومعاينة وقياس قبل الاستلام!\n"
+            f"📩 اطلب دلوقتي في رسالة خاصة أو اكتب تم في التعليقات وهنرد عليك فوراً!"
+        )
+
+
+async def publish_facebook_photo_post(page_id: str, page_access_token: str, image_url: str, caption: str) -> dict:
+    """نشر بوست صورة وكابشن على صفحة فيسبوك عبر Graph API"""
+    if not page_id or not page_access_token or not image_url:
+        return {"status": "error", "message": "بيانات النشر غير مكتملة (Page ID أو Token أو رابط الصورة)"}
+
+    url = f"https://graph.facebook.com/v21.0/{page_id}/photos"
+    payload = {
+        "url": image_url,
+        "caption": caption,
+        "access_token": page_access_token,
+    }
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        try:
+            r = await client.post(url, data=payload)
+            res_json = r.json()
+            if r.status_code == 200 and ("id" in res_json or "post_id" in res_json):
+                post_id = res_json.get("post_id") or res_json.get("id")
+                return {
+                    "status": "success",
+                    "post_id": post_id,
+                    "url": f"https://facebook.com/{post_id}",
+                    "caption": caption,
+                    "image_url": image_url,
+                }
+            else:
+                err_msg = res_json.get("error", {}).get("message") or r.text
+                return {"status": "error", "message": f"فشل نشر البوست على فيسبوك: {err_msg}"}
+        except Exception as e:
+            return {"status": "error", "message": f"خطأ في الاتصال بفيسبوك: {e}"}
+
+
+async def trigger_autopost_for_tenant(tenant_id: str) -> dict:
+    """اختيار أفضل منتج متوفر بالمخزن وتوليد كابشن إعلاني ونشره على صفحة التاجر"""
+    t_res = supabase.table("tenants").select("*").eq("id", tenant_id).execute()
+    if not t_res.data:
+        return {"status": "error", "message": "التاجر غير موجود"}
+    tenant = t_res.data[0]
+    page_id = tenant.get("facebook_page_id")
+    page_token = tenant.get("facebook_page_token")
+    if not page_id or not page_token:
+        return {"status": "error", "message": "يجب ربط صفحة فيسبوك وإدخال التوكن أولاً لتفعيل النشر التلقائي"}
+
+    prods = (
+        supabase.table("products")
+        .select("id, name, price, material, image_url")
+        .eq("tenant_id", tenant_id)
+        .eq("active", True)
+        .neq("image_url", "")
+        .execute()
+        .data or []
+    )
+    if not prods:
+        return {"status": "error", "message": "لا توجد منتجات بها صور في المخزن لنشرها"}
+
+    p_ids = [p["id"] for p in prods]
+    vars_res = (
+        supabase.table("variants")
+        .select("product_id, size, color, available")
+        .eq("tenant_id", tenant_id)
+        .eq("active", True)
+        .gt("available", 0)
+        .in_("product_id", p_ids)
+        .execute()
+        .data or []
+    )
+    if not vars_res:
+        return {"status": "error", "message": "لا توجد منتجات بها كميات متوفرة للبيع حالياً"}
+
+    prod_variants = {}
+    for v in vars_res:
+        pid = v["product_id"]
+        if pid not in prod_variants:
+            prod_variants[pid] = []
+        prod_variants[pid].append(v)
+
+    available_prods = [p for p in prods if p["id"] in prod_variants]
+    if not available_prods:
+        return {"status": "error", "message": "لا توجد منتجات متوفرة بالمخزن ولها صور"}
+
+    import random
+    chosen_prod = random.choice(available_prods)
+    v_list = prod_variants[chosen_prod["id"]]
+    colors = list(set(v.get("color") for v in v_list if v.get("color")))
+    sizes = list(set(v.get("size") for v in v_list if v.get("size")))
+
+    promos = orders.get_active_promotions(tenant_id)
+    offer_text = promos[0].get("description", "") if promos else ""
+
+    caption = await asyncio.to_thread(
+        generate_autopost_copy,
+        product_name=chosen_prod["name"],
+        price=float(chosen_prod.get("price") or 0),
+        material=chosen_prod.get("material") or "",
+        colors=colors,
+        sizes=sizes,
+        offer_text=offer_text,
+    )
+
+    res = await publish_facebook_photo_post(
+        page_id=page_id,
+        page_access_token=page_token,
+        image_url=chosen_prod["image_url"],
+        caption=caption,
+    )
+
+    if res.get("status") == "success":
+        try:
+            supabase.table("tenants").update({"autopost_last_at": "now()"}).eq("id", tenant_id).execute()
+        except Exception:
+            pass
+
+    return {**res, "product_name": chosen_prod["name"]}
+
+
+# ===============================================================
 # 🌐 Merchant Dashboard & Telegram Web App Endpoints
 # ===============================================================
 
@@ -1057,6 +1231,20 @@ class MerchantSettingsPayload(BaseModel):
 
 class ToggleBotPayload(BaseModel):
     bot_enabled: Optional[bool] = None
+
+
+class ToggleAutopostPayload(BaseModel):
+    autopost_enabled: Optional[bool] = None
+    autopost_interval_hours: Optional[int] = 24
+
+
+class PromotionPayload(BaseModel):
+    code: Optional[str] = ""
+    promo_type: str  # 'free_shipping', 'percentage', 'fixed', 'voucher'
+    discount_value: Optional[float] = 0.0
+    min_order_items: Optional[int] = 1
+    min_order_value: Optional[float] = 0.0
+    description: str
 
 
 class BranchPayload(BaseModel):
@@ -1255,6 +1443,20 @@ def format_tenant_dashboard_data(tenant_row: dict) -> dict:
         },
     }
 
+    # جلب العروض والخصومات وكروت الهدايا
+    try:
+        p_res = (
+            supabase.table("promotions")
+            .select("*")
+            .eq("tenant_id", tid)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        promotions = p_res.data or []
+    except Exception as e:
+        print("Error fetching promotions for dashboard:", e)
+        promotions = []
+
     return {
         "id": tenant_row.get("id"),
         "name": tenant_row.get("name"),
@@ -1270,6 +1472,10 @@ def format_tenant_dashboard_data(tenant_row: dict) -> dict:
         "branches": branches,
         "shipping_enabled": shipping_enabled,
         "shipping_rates": shipping_rates,
+        "autopost_enabled": bool(tenant_row.get("autopost_enabled", False)),
+        "autopost_interval_hours": int(tenant_row.get("autopost_interval_hours") or 24),
+        "autopost_last_at": str(tenant_row.get("autopost_last_at") or ""),
+        "promotions": promotions,
         "stats": stats,
     }
 
@@ -1497,6 +1703,107 @@ async def toggle_shipping_api(identifier: str, payload: Optional[ToggleShippingP
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"خطأ أثناء تحديث حالة الشحن: {e}")
+
+
+@app.post("/api/dashboard/{identifier}/autopost-trigger")
+@app.post("/api/merchant/{identifier}/autopost-trigger")
+async def autopost_trigger_api(identifier: str):
+    """نشر بوست إعلاني فوراً لأحد منتجات المخزن على صفحة فيسبوك"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+    res = await trigger_autopost_for_tenant(tenant["id"])
+    if res.get("status") != "success":
+        raise HTTPException(status_code=400, detail=res.get("message", "فشل النشر"))
+    return res
+
+
+@app.post("/api/dashboard/{identifier}/autopost-toggle")
+@app.post("/api/merchant/{identifier}/autopost-toggle")
+async def autopost_toggle_api(identifier: str, payload: ToggleAutopostPayload):
+    """تفعيل أو إيقاف النشر التلقائي وتحديد الفترة بالساعات"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+    tid = tenant["id"]
+    updates = {}
+    if payload.autopost_enabled is not None:
+        updates["autopost_enabled"] = bool(payload.autopost_enabled)
+    if payload.autopost_interval_hours is not None:
+        updates["autopost_interval_hours"] = max(1, int(payload.autopost_interval_hours))
+    try:
+        supabase.table("tenants").update(updates).eq("id", tid).execute()
+        return {"status": "success", "message": "تم تحديث إعدادات النشر التلقائي بنجاح", **updates}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل تحديث إعدادات النشر: {e}")
+
+
+@app.get("/api/dashboard/{identifier}/promotions")
+@app.get("/api/merchant/{identifier}/promotions")
+async def get_promotions_api(identifier: str):
+    """عرض قائمة العروض والخصومات والفاوتشرات الخاصة بالمتجر"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = tenant["id"]
+    try:
+        res = supabase.table("promotions").select("*").eq("tenant_id", tid).order("created_at", desc=True).execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل جلب العروض: {e}")
+
+
+@app.post("/api/dashboard/{identifier}/promotions")
+@app.post("/api/merchant/{identifier}/promotions")
+async def add_promotion_api(identifier: str, payload: PromotionPayload):
+    """إضافة عرض ترويجي جديد (شحن مجاني، نسبة خصم، مبلغ ثابت، أو كارت هدايا/فاوتشر)"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = tenant["id"]
+    if not payload.description.strip():
+        raise HTTPException(status_code=400, detail="يرجى كتابة وصف واضح للعرض")
+
+    insert_data = {
+        "tenant_id": tid,
+        "code": payload.code.strip().upper() if payload.code else None,
+        "promo_type": payload.promo_type.strip().lower(),
+        "discount_value": float(payload.discount_value or 0),
+        "min_order_items": int(payload.min_order_items or 1),
+        "description": payload.description.strip(),
+        "is_active": True,
+    }
+
+    if payload.min_order_value and payload.min_order_value > 0:
+        insert_data["min_order_value"] = float(payload.min_order_value)
+
+    try:
+        res = supabase.table("promotions").insert(insert_data).execute()
+        return {"status": "success", "message": "تمت إضافة العرض الترويجي بنجاح! 🎁", "promo": res.data[0] if res.data else {}}
+    except Exception as e:
+        if "min_order_value" in str(e):
+            insert_data.pop("min_order_value", None)
+            try:
+                res = supabase.table("promotions").insert(insert_data).execute()
+                return {"status": "success", "message": "تمت إضافة العرض الترويجي بنجاح! 🎁", "promo": res.data[0] if res.data else {}}
+            except Exception as e2:
+                raise HTTPException(status_code=500, detail=f"فشل إضافة العرض: {e2}")
+        raise HTTPException(status_code=500, detail=f"فشل إضافة العرض الترويجي: {e}")
+
+
+@app.delete("/api/dashboard/{identifier}/promotions/{promo_id}")
+@app.delete("/api/merchant/{identifier}/promotions/{promo_id}")
+async def delete_promotion_api(identifier: str, promo_id: str):
+    """حذف أو إيقاف عرض ترويجي"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = tenant["id"]
+    try:
+        supabase.table("promotions").delete().eq("id", promo_id).eq("tenant_id", tid).execute()
+        return {"status": "success", "message": "تم حذف العرض الترويجي بنجاح"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل حذف العرض: {e}")
 
 
 @app.get("/api/dashboard/by-telegram/{chat_id}")

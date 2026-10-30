@@ -1508,5 +1508,144 @@ def test_shipping_toggle_and_flat_rate_order(monkeypatch, tmp_path):
     assert "shipping_enabled" in json_data
 
 
+# ============================================================================
+# 25. اختبار عروض الفاوتشر وكروت الهدايا في تسعير الأوردرات (Vouchers)
+# ============================================================================
+
+def test_voucher_promotions_in_quote(monkeypatch):
+    import orders
+
+    tid = "test-voucher-tenant-01"
+
+    # محاكاة بروموشن فاوتشر: اشتري بـ 1000ج واحصل على فاوتشر 200ج للزيارة القادمة
+    fake_voucher_promo = {
+        "id": "promo-voucher-99",
+        "tenant_id": tid,
+        "code": None,
+        "promo_type": "voucher",
+        "discount_value": 200.0,
+        "min_order_value": 1000.0,
+        "min_order_items": 1,
+        "description": "اشتري بـ 1000ج واحصل على فاوتشر 200ج لطلبك القادم!",
+        "is_active": True,
+    }
+
+    monkeypatch.setattr(orders, "get_active_promotions", lambda t: [fake_voucher_promo])
+    monkeypatch.setattr(orders, "is_shipping_enabled", lambda t, fresh=False: True)
+    monkeypatch.setattr(orders, "find_shipping", lambda t, g: {"governorate": g, "price": 50.0})
+
+    # 1. طلب بقيمة 800 ج (أقل من الحد الأدنى 1000) -> لا يتأهل للفاوتشر
+    def mock_load_items_sub800(t, items):
+        return [
+            {"product_name": "قميص", "material": "كتان 100%", "size": "L", "color": "أبيض", "price": 800.0, "qty": 1, "line_total": 800.0, "variant_id": "v1"}
+        ], None
+    monkeypatch.setattr(orders, "load_items", mock_load_items_sub800)
+
+    q1 = orders.quote_order(tid, [{"product_name": "قميص", "size": "L", "color": "أبيض", "qty": 1}], "القاهرة")
+    assert q1["status"] == "ok"
+    assert q1["subtotal"] == 800.0
+    assert not q1["voucher_reward"]
+
+    # 2. طلب بقيمة 1200 ج (أكبر من 1000) -> يتأهل للفاوتشر 200 ج
+    def mock_load_items_over1000(t, items):
+        return [
+            {"product_name": "بدلة", "material": "صوف إيطالي", "size": "XL", "color": "كحلي", "price": 1200.0, "qty": 1, "line_total": 1200.0, "variant_id": "v2"}
+        ], None
+    monkeypatch.setattr(orders, "load_items", mock_load_items_over1000)
+
+    q2 = orders.quote_order(tid, [{"product_name": "بدلة", "size": "XL", "color": "كحلي", "qty": 1}], "القاهرة")
+    assert q2["status"] == "ok"
+    assert q2["subtotal"] == 1200.0
+    assert q2["voucher_reward"]
+    assert "200" in q2["voucher_reward"]
+
+
+# ============================================================================
+# 26. اختبار دعم الخامة (Material) في كشف المخزون
+# ============================================================================
+
+def test_material_in_check_stock(monkeypatch):
+    import check_stock
+
+    tid = "test-material-tenant-01"
+
+    fake_variants = [
+        {
+            "id": "v-101",
+            "size": "L",
+            "color": "أسود",
+            "available": 5,
+            "sku": "TSH-BLK-L",
+            "products": {
+                "name": "تيشيرت أوفر سايز",
+                "price": 350.0,
+                "image_url": "https://example.com/tshirt.jpg",
+                "material": "قطن مصري 100% معالج ضد الانكماش",
+            },
+        }
+    ]
+
+    class FakeQuery:
+        def select(self, *args, **kwargs): return self
+        def eq(self, *args, **kwargs): return self
+        def ilike(self, *args, **kwargs): return self
+        def execute(self):
+            class Res:
+                data = fake_variants
+            return Res()
+
+    monkeypatch.setattr(check_stock.supabase, "table", lambda t: FakeQuery())
+
+    res = check_stock.check_stock(tid, "تيشيرت", size="L", color="أسود")
+    assert res["status"] == "available"
+    assert len(res["items"]) == 1
+    assert res["items"][0]["products"]["material"] == "قطن مصري 100% معالج ضد الانكماش"
+    assert res["items"][0]["products"]["price"] == 350.0
+
+
+# ============================================================================
+# 27. اختبار API العروض والنشر التلقائي للداشبورد
+# ============================================================================
+
+def test_promotions_and_autopost_api(monkeypatch):
+    import server
+    from fastapi.testclient import TestClient
+
+    tid = "test-dashboard-tenant-promo"
+    mock_tenant = {
+        "id": tid,
+        "name": "محل براند",
+        "bot_enabled": True,
+        "autopost_enabled": False,
+        "autopost_interval_hours": 24,
+        "facebook_page_id": "fb-123",
+        "facebook_page_token": "token-123",
+        "telegram_chat_id": 111,
+    }
+
+    monkeypatch.setattr(server, "resolve_tenant_for_dashboard", lambda i: mock_tenant)
+
+    # محاكاة حفظ التحديثات في جدول tenants
+    updated_fields = {}
+    class FakeTenantsTable:
+        def update(self, vals):
+            updated_fields.update(vals)
+            return self
+        def eq(self, *args, **kwargs):
+            return self
+        def execute(self):
+            return self
+
+    monkeypatch.setattr(server.supabase, "table", lambda t: FakeTenantsTable())
+
+    client = TestClient(server.app)
+
+    # 1. اختبار toggle النشر التلقائي
+    res_toggle = client.post(f"/api/dashboard/{tid}/autopost-toggle", json={"autopost_enabled": True, "autopost_interval_hours": 12})
+    assert res_toggle.status_code == 200
+    assert updated_fields.get("autopost_enabled") is True
+    assert updated_fields.get("autopost_interval_hours") == 12
+
+
 
 

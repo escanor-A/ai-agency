@@ -240,7 +240,7 @@ def load_items(tenant_id, items):
 
     rows = (
         supabase.table("variants")
-        .select("id,sku,size,color,available,products!inner(name,price)")
+        .select("id,sku,size,color,available,products!inner(name,price,material)")
         .eq("tenant_id", tenant_id)
         .eq("active", True)
         .in_("sku", list(wanted))
@@ -264,6 +264,7 @@ def load_items(tenant_id, items):
                 "name": r["products"]["name"],
                 "color": r["color"],
                 "size": r["size"],
+                "material": r["products"].get("material") or "",
                 "qty": qty,
                 "unit_price": price,
                 "line_total": price * qty,
@@ -273,19 +274,29 @@ def load_items(tenant_id, items):
 
 
 def get_active_promotions(tenant_id):
-    """بترجع كل العروض النشطة الخاصة بالتاجر"""
+    """بترجع كل العروض والخصومات وكروت الهدايا النشطة الخاصة بالتاجر"""
     try:
-        rows = (
-            supabase.table("promotions")
-            .select("code,promo_type,discount_value,min_order_items,description")
-            .eq("tenant_id", tenant_id)
-            .eq("is_active", True)
-            .execute()
-            .data
-        )
+        cols = "id,code,promo_type,discount_value,min_order_items,description"
+        try:
+            rows = (
+                supabase.table("promotions")
+                .select(cols + ",min_order_value")
+                .eq("tenant_id", tenant_id)
+                .eq("is_active", True)
+                .execute()
+                .data
+            )
+        except Exception:
+            rows = (
+                supabase.table("promotions")
+                .select(cols)
+                .eq("tenant_id", tenant_id)
+                .eq("is_active", True)
+                .execute()
+                .data
+            )
         rows = rows or []
         if not is_shipping_enabled(tenant_id):
-            # التاجر ده مفيهوش شحن: ماينفعش نعرض عروض شحن مجاني
             rows = [r for r in rows if r.get("promo_type") != "free_shipping"]
         return rows
     except Exception:
@@ -293,7 +304,7 @@ def get_active_promotions(tenant_id):
 
 
 def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
-    """حساب السعر والشحن مع تطبيق العروض التلقائية أو أكواد الخصم"""
+    """حساب السعر والشحن مع تطبيق العروض التلقائية، أكواد الخصم، وكروت الهدايا/الفاوتشر"""
     pickup = not is_shipping_enabled(tenant_id)
     if pickup:
         governorate = PICKUP_LABEL
@@ -309,6 +320,7 @@ def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
 
     discount = 0.0
     discount_note = ""
+    voucher_reward = ""
     applied_code = None
     promo_error = ""
 
@@ -316,13 +328,22 @@ def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
     promos = get_active_promotions(tenant_id)
     clean_code = (promo_code or "").strip().upper()
 
-    # 1. تطبيق العروض التلقائية (شحن مجاني على قطعتين مثلاً)
+    # 1. تطبيق العروض التلقائية (شحن مجاني على قطعتين، أو كارت هدايا عند الوصول لمبلغ معين)
     for p in promos:
-        if not p.get("code") and p.get("promo_type") == "free_shipping":
+        ptype = p.get("promo_type")
+        if not p.get("code") and ptype == "free_shipping":
             if total_qty >= int(p.get("min_order_items") or 1):
                 fee = 0.0
                 discount_note = p.get("description", "عرض شحن مجاني")
                 break
+        elif not p.get("code") and ptype in ("voucher", "gift_card"):
+            # التحقق من الحد الأدنى للطلب (min_order_value أو min_order_items كبديل)
+            min_val = float(p.get("min_order_value") or (p.get("min_order_items") if (p.get("min_order_items") or 0) > 10 else 0) or 0)
+            if min_val <= 0 or subtotal >= min_val:
+                val = float(p.get("discount_value") or 0)
+                voucher_reward = f"🎁 مبروك! طلبك حقق عرض كارت هدايا بقيمة {val:.0f} جنيه لطلبك القادم! ({p.get('description', '')})"
+                if not discount_note:
+                    discount_note = f"كارت هدايا {val:.0f}ج للأوردر القادم"
 
     # 2. تطبيق كود الخصم لو العميل دخله
     if clean_code:
@@ -340,6 +361,9 @@ def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
             elif ptype == "free_shipping":
                 fee = 0.0
                 discount_note = f"كود خصم {clean_code} (شحن مجاني)"
+            elif ptype in ("voucher", "gift_card"):
+                discount = min(subtotal, val)
+                discount_note = f"قسيمة شراء/كارت هدايا {clean_code} (-{val:.0f} جنيه)"
         else:
             promo_error = f"كود الخصم '{promo_code}' غير صالح أو منتهي"
 
@@ -351,12 +375,13 @@ def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
         "quote_id": quote_id,
         "governorate": ship["governorate"],
         "lines": [
-            {k: l[k] for k in ("name", "color", "size", "qty", "unit_price", "line_total")}
+            {k: l[k] for k in ("name", "color", "size", "qty", "unit_price", "line_total", "material") if k in l}
             for l in lines
         ],
         "subtotal": subtotal,
         "discount": discount,
         "discount_note": discount_note,
+        "voucher_reward": voucher_reward,
         "applied_code": applied_code,
         "promo_error": promo_error,
         "shipping_fee": fee,
@@ -597,6 +622,8 @@ def place_order(
             return {"status": "error", "reason": "system_error"}
 
     order = {"status": "ok", **result.data}
+    if quote.get("voucher_reward"):
+        order["voucher_reward"] = quote["voucher_reward"]
     if quote.get("promo_error"):
         order["promo_error"] = quote["promo_error"]
 

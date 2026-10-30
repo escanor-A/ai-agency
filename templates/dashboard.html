@@ -220,6 +220,85 @@
     </div>
   </div>
 
+  <!-- Add Promotion / Voucher Modal -->
+  <div id="addPromotionModal"
+    class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div
+      class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl text-right max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🎁</span>
+          <h3 class="text-base sm:text-lg font-bold text-white">إضافة عرض ترويجي أو كارت هدايا (Voucher)</h3>
+        </div>
+        <button type="button" onclick="closeAddPromotionModal()"
+          class="text-slate-400 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <form id="addPromotionForm" onsubmit="submitAddPromotion(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">نوع العرض الترويجي *</label>
+          <select id="promoTypeSelect" onchange="onPromoTypeChange()" required
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-xs sm:text-sm font-semibold">
+            <option value="voucher">🎁 كارت هدايا / فاوتشر للزيارة القادمة (مثال: اشتري بـ 1000ج واحصل على فاوتشر 200ج)</option>
+            <option value="free_shipping">🚚 شحن مجاني (مثال: شحن مجاني لأي طلب قطعتين أو أكثر)</option>
+            <option value="percentage">🏷️ خصم نسبة مئوية (مثال: خصم 20% على إجمالي الأوردر)</option>
+            <option value="fixed">💵 خصم مبلغ ثابت (مثال: خصم 50 جنيه على الأوردر)</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5" id="promoDiscountLabel">قيمة الفاوتشر / الهدية *</label>
+            <div class="relative">
+              <input type="number" step="any" min="0" id="promoDiscountValueInput" placeholder="200" required
+                class="w-full px-4 py-2.5 pl-14 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-sm font-mono dir-ltr text-left">
+              <span id="promoUnitSuffix" class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">ج.م</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">بروموكود (اختياري)</label>
+            <input type="text" id="promoCodeInput" placeholder="مثال: GIFT200 أو اتركه فارغاً"
+              class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-xs font-mono uppercase dir-ltr text-left">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="promoConditionsRow">
+          <div id="promoMinValueCol">
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">الحد الأدنى لقيمة الأوردر للتفعيل</label>
+            <div class="relative">
+              <input type="number" step="any" min="0" id="promoMinValueInput" placeholder="1000"
+                class="w-full px-4 py-2.5 pl-14 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-sm font-mono dir-ltr text-left">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">ج.م</span>
+            </div>
+          </div>
+          <div id="promoMinItemsCol">
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">الحد الأدنى لعدد القطع</label>
+            <input type="number" min="1" id="promoMinItemsInput" value="1"
+              class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-sm font-mono dir-ltr text-left">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">وصف العرض (يظهر للعميل في الشات) *</label>
+          <textarea id="promoDescInput" rows="2" required placeholder="اشتري بقيمة 1000 جنيه واحصل على كارت هدايا بـ 200 جنيه لطلبك القادم!"
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-xs sm:text-sm resize-none"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800/80">
+          <button type="button" onclick="closeAddPromotionModal()"
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition">
+            إلغاء
+          </button>
+          <button type="submit" id="savePromoBtn"
+            class="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-purple-600/20 transition transform active:scale-95 flex items-center gap-1.5">
+            <span id="savePromoSpinner" class="hidden animate-spin">⏳</span>
+            <span>حفظ العرض 🎁</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Main Container -->
   <div class="max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex-1 flex flex-col gap-6">
 
@@ -583,14 +662,16 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-3">
           <span id="shippingStatusBadge" class="text-xs font-semibold px-3 py-1.5 rounded-xl border">
             <!-- Loaded via JS -->
           </span>
-          <button type="button" onclick="toggleShippingStatus()" id="toggleShippingBtn"
-            class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition">
-            تبديل الحالة 🔄
-          </button>
+          <label class="relative inline-flex items-center cursor-pointer select-none" dir="ltr" title="تفعيل أو إيقاف الشحن">
+            <input type="checkbox" id="shippingToggle" onchange="toggleShippingStatus()" class="sr-only peer">
+            <div
+              class="w-14 h-8 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-600 transition-colors duration-200 after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:shadow-md after:transition-transform after:duration-200 peer-checked:after:translate-x-6">
+            </div>
+          </label>
         </div>
       </div>
 
@@ -642,6 +723,106 @@
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- Section 6: Offers & Vouchers (العروض والخصومات وكروت الهدايا) -->
+    <div class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl">
+            🎁
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">العروض والخصومات وكروت الهدايا (Offers & Vouchers)</h3>
+            <p class="text-xs text-slate-400">تحفيز العملاء على الشراء وزيادة متوسط قيمة سلة المشتريات (شحن مجاني، كروت هدايا للزيارة القادمة، خصومات)</p>
+          </div>
+        </div>
+
+        <button type="button" onclick="openAddPromotionModal()"
+          class="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-purple-600/20 transition flex items-center gap-1.5">
+          <span>+ إضافة عرض جديد</span>
+        </button>
+      </div>
+
+      <!-- Promotions Container -->
+      <div id="promotionsContainer">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- Section 7: Auto-Posting (النشر التلقائي الذكي على السوشيال ميديا) -->
+    <div class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-pink-500/10 text-pink-400 flex items-center justify-center text-xl">
+            📢
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">النشر التلقائي الذكي على فيسبوك (AI Auto-Posting)</h3>
+            <p class="text-xs text-slate-400">لو التاجر مشغول ومش بينزل بوستات، الذكاء الاصطناعي بيختار قطعة متوفرة بالمخزن ويكتبلها بوست إعلاني جذاب باللهجة المصرية وينشرها تلقائياً</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <span id="autopostStatusBadge" class="text-xs font-semibold px-3 py-1.5 rounded-xl border">
+            <!-- Loaded via JS -->
+          </span>
+          <label class="relative inline-flex items-center cursor-pointer select-none" dir="ltr" title="تفعيل أو إيقاف النشر التلقائي">
+            <input type="checkbox" id="autopostToggle" onchange="toggleAutopostStatus()" class="sr-only peer">
+            <div
+              class="w-14 h-8 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-600 transition-colors duration-200 after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:shadow-md after:transition-transform after:duration-200 peer-checked:after:translate-x-6">
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- Settings Card -->
+        <div class="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <h4 class="text-sm font-bold text-white flex items-center gap-2">
+            <span>⏱️</span>
+            <span>معدل تكرار النشر</span>
+          </h4>
+          <p class="text-[11px] text-slate-400">اختر عدد الساعات بين كل بوست ينشره الذكاء الاصطناعي تلقائياً:</p>
+          <div class="flex items-center gap-2">
+            <select id="autopostIntervalSelect" onchange="changeAutopostInterval()"
+              class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold focus:border-pink-500 outline-none">
+              <option value="12">كل 12 ساعة (بوستين يومياً)</option>
+              <option value="24" selected>كل 24 ساعة (بوست يومياً)</option>
+              <option value="48">كل يومين (48 ساعة)</option>
+              <option value="72">كل 3 أيام (72 ساعة)</option>
+            </select>
+          </div>
+          <div class="text-[11px] text-slate-500 pt-1">
+            <span>آخر بوست تم نشره: </span>
+            <span id="autopostLastAtLabel" class="text-slate-400 font-medium">لم يتم النشر بعد</span>
+          </div>
+        </div>
+
+        <!-- Immediate Trigger Card -->
+        <div class="lg:col-span-2 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-pink-950/20 to-purple-950/20 border border-pink-900/30 flex flex-col justify-between space-y-4">
+          <div>
+            <div class="flex items-center gap-2 mb-1.5">
+              <span class="text-xl">🚀</span>
+              <h4 class="text-sm font-bold text-white">نشر بوست ترويجي الآن فوراً</h4>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              اختر هذا الزرار لنشر بوست جديد فوراً! سيقوم الذكاء الاصطناعي باختيار منتج به مخزون كافٍ وله صورة، وكتابة كابشن تسويقي يبرز خامة ومقاسات وسعر المنتج ونشره على صفحة فيسبوك في ثوانٍ.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/60">
+            <div id="autopostFeedback" class="text-xs text-slate-400 truncate max-w-xs">
+              جاهز للنشر 📸
+            </div>
+            <button type="button" onclick="triggerAutoPostNow()" id="triggerAutopostBtn"
+              class="px-5 py-2.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-pink-600/20 transition transform active:scale-95 flex items-center gap-2">
+              <span id="triggerAutopostSpinner" class="hidden animate-spin">⏳</span>
+              <span>نشر بوست الآن على فيسبوك 🚀</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -901,6 +1082,8 @@
         renderSocialChannels(data.social_channels);
         renderBranches(data.branches);
         renderShippingSection(data.shipping_rates, data.shipping_enabled);
+        renderPromotionsSection(data.promotions || []);
+        renderAutopostSection(data.autopost_enabled, data.autopost_interval_hours, data.autopost_last_at);
 
       } catch (err) {
         console.error('Error loading dashboard data:', err);
@@ -1310,23 +1493,21 @@
     // Render Shipping Section
     function renderShippingSection(rates, enabled) {
       const badge = document.getElementById('shippingStatusBadge');
-      const toggleBtn = document.getElementById('toggleShippingBtn');
+      const toggle = document.getElementById('shippingToggle');
       const container = document.getElementById('shippingRatesContainer');
       const flatInput = document.getElementById('flatShippingInput');
 
       const isEnabled = enabled !== false;
+      if (toggle) toggle.checked = isEnabled;
+
       if (badge) {
         if (isEnabled) {
           badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
           badge.innerText = '🟢 الشحن مفعّل';
         } else {
           badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-rose-500/10 text-rose-400 border-rose-500/30';
-          badge.innerText = '🔴 الشحن موقوف (استلام فقط)';
+          badge.innerText = '🔴 الشحن موقوف';
         }
-      }
-
-      if (toggleBtn) {
-        toggleBtn.innerText = isEnabled ? 'إيقاف الشحن ⏹️' : 'تفعيل الشحن ▶️';
       }
 
       if (!container) return;
@@ -1375,12 +1556,14 @@
     // Toggle Shipping Enabled / Disabled
     async function toggleShippingStatus() {
       if (!currentTenantId) return;
-      const btn = document.getElementById('toggleShippingBtn');
-      if (btn) btn.disabled = true;
+      const toggle = document.getElementById('shippingToggle');
+      const targetState = toggle ? toggle.checked : true;
 
       try {
         const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-shipping`, {
-          method: 'POST'
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shipping_enabled: targetState })
         });
         const json = await res.json();
         if (res.ok && json.status === 'success') {
@@ -1388,11 +1571,11 @@
           loadDashboardData();
         } else {
           showToast(json.detail || 'فشل تبديل حالة الشحن', 'error');
+          if (toggle) toggle.checked = !targetState;
         }
       } catch (err) {
         showToast('تعذر الاتصال بالسيرفر', 'error');
-      } finally {
-        if (btn) btn.disabled = false;
+        if (toggle) toggle.checked = !targetState;
       }
     }
 
@@ -1507,6 +1690,350 @@
         }
       } catch (err) {
         showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
+    // ==========================================
+    // Promotions & Vouchers Management
+    // ==========================================
+    function renderPromotionsSection(promos) {
+      const container = document.getElementById('promotionsContainer');
+      if (!container) return;
+
+      const list = promos || [];
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="p-5 rounded-2xl bg-slate-900/50 border border-dashed border-slate-800 text-center space-y-2 text-slate-400 text-xs">
+            <div class="text-2xl">🎁</div>
+            <div class="font-bold text-slate-300">لم يتم تفعيل أي عروض ترويجية أو كروت هدايا بعد</div>
+            <p class="text-[11px] text-slate-500 max-w-md mx-auto">
+              يمكنك إضافة عرض شحن مجاني، أو كارت هدايا للزيارة القادمة (مثل: اشتري بـ 1000ج واحصل على فاوتشر 200ج) لتحفيز العملاء على الشراء فوراً!
+            </p>
+            <button onclick="openAddPromotionModal()" class="mt-2 px-3.5 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-bold transition">
+              + إضافة أول عرض ترويجي
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
+      for (const p of list) {
+        const type = (p.promo_type || 'percentage').toLowerCase();
+        let typeBadge = '';
+        let typeColor = 'purple';
+        let icon = '🎁';
+
+        if (type === 'voucher' || type === 'gift_card') {
+          typeBadge = 'كارت هدايا / فاوتشر';
+          icon = '💳';
+          typeColor = 'purple';
+        } else if (type === 'free_shipping') {
+          typeBadge = 'شحن مجاني';
+          icon = '🚚';
+          typeColor = 'teal';
+        } else if (type === 'percentage') {
+          typeBadge = 'خصم مئوي %';
+          icon = '🏷️';
+          typeColor = 'indigo';
+        } else {
+          typeBadge = 'خصم مباشر';
+          icon = '💵';
+          typeColor = 'blue';
+        }
+
+        const codeBadge = p.code ? `<span class="font-mono bg-slate-800 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">كود: ${p.code}</span>` : '<span class="text-slate-500 text-[11px]">تطبيق تلقائي</span>';
+        
+        let conditionText = '';
+        if (p.min_order_value && Number(p.min_order_value) > 0) {
+          conditionText = `أوردر بـ ${Number(p.min_order_value).toLocaleString('ar-EG')} ج.م فأكثر`;
+        } else if (p.min_order_items && Number(p.min_order_items) > 1) {
+          conditionText = `${p.min_order_items} قطع فأكثر`;
+        } else {
+          conditionText = 'أي طلب';
+        }
+
+        let valueText = '';
+        if (type === 'voucher' || type === 'gift_card') {
+          valueText = `هدية: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
+        } else if (type === 'percentage') {
+          valueText = `خصم: ${p.discount_value}%`;
+        } else if (type === 'fixed') {
+          valueText = `خصم: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
+        } else {
+          valueText = 'شحن 0 ج.م';
+        }
+
+        html += `
+          <div class="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 hover:border-purple-500/30 transition flex flex-col justify-between space-y-3">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-${typeColor}-500/10 text-${typeColor}-300 border border-${typeColor}-500/20">
+                  <span>${icon}</span>
+                  <span>${typeBadge}</span>
+                </span>
+                <span class="text-xs font-bold text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                  ${valueText}
+                </span>
+              </div>
+              <p class="text-xs text-white font-medium leading-relaxed">${p.description}</p>
+            </div>
+
+            <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+              <div class="flex items-center gap-2">
+                ${codeBadge}
+                <span>شرط: ${conditionText}</span>
+              </div>
+              <button onclick="deletePromotion('${p.id}')" title="حذف العرض" class="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-rose-500/10 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
+            </div>
+          </div>
+        `;
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function openAddPromotionModal() {
+      document.getElementById('addPromotionModal').classList.remove('hidden');
+      onPromoTypeChange();
+    }
+
+    function closeAddPromotionModal() {
+      document.getElementById('addPromotionModal').classList.add('hidden');
+      document.getElementById('addPromotionForm').reset();
+    }
+
+    function onPromoTypeChange() {
+      const type = document.getElementById('promoTypeSelect').value;
+      const discountLabel = document.getElementById('promoDiscountLabel');
+      const unitSuffix = document.getElementById('promoUnitSuffix');
+      const discountInput = document.getElementById('promoDiscountValueInput');
+      const minValueCol = document.getElementById('promoMinValueCol');
+      const descInput = document.getElementById('promoDescInput');
+
+      if (type === 'voucher') {
+        discountLabel.innerText = 'قيمة الفاوتشر / كارت الهدية *';
+        unitSuffix.innerText = 'ج.م';
+        discountInput.placeholder = '200';
+        minValueCol.classList.remove('hidden');
+        if (!descInput.value || descInput.value.includes('خصم')) {
+          descInput.value = 'اشتري بقيمة 1000 جنيه واحصل على كارت هدايا بـ 200 جنيه لطلبك القادم!';
+        }
+      } else if (type === 'free_shipping') {
+        discountLabel.innerText = 'قيمة التخفيض *';
+        unitSuffix.innerText = 'ج.م';
+        discountInput.value = '0';
+        discountInput.placeholder = '0';
+        if (!descInput.value || descInput.value.includes('كارت هدايا')) {
+          descInput.value = 'شحن مجاني لجميع المحافظات عند طلب قطعتين أو أكثر!';
+        }
+      } else if (type === 'percentage') {
+        discountLabel.innerText = 'نسبة الخصم المئوية *';
+        unitSuffix.innerText = '%';
+        discountInput.placeholder = '20';
+        if (!descInput.value) {
+          descInput.value = 'خصم خاص 20% على إجمالي مشترياتك لفترة محدودة!';
+        }
+      } else if (type === 'fixed') {
+        discountLabel.innerText = 'مبلغ الخصم المباشر *';
+        unitSuffix.innerText = 'ج.م';
+        discountInput.placeholder = '50';
+        if (!descInput.value) {
+          descInput.value = 'خصم فوري بقيمة 50 جنيه على الأوردر!';
+        }
+      }
+    }
+
+    async function submitAddPromotion(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
+
+      const pType = document.getElementById('promoTypeSelect').value;
+      const pVal = parseFloat(document.getElementById('promoDiscountValueInput').value || 0);
+      const pCode = document.getElementById('promoCodeInput').value.trim();
+      const pMinVal = parseFloat(document.getElementById('promoMinValueInput').value || 0);
+      const pMinItems = parseInt(document.getElementById('promoMinItemsInput').value || 1);
+      const pDesc = document.getElementById('promoDescInput').value.trim();
+
+      if (!pDesc) {
+        showToast('يرجى كتابة وصف العرض', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('savePromoBtn');
+      const spinner = document.getElementById('savePromoSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const payload = {
+          promo_type: pType,
+          discount_value: pVal,
+          code: pCode || null,
+          min_order_items: pMinItems,
+          min_order_value: pMinVal,
+          description: pDesc
+        };
+
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تمت إضافة العرض بنجاح! 🎁', 'success');
+          closeAddPromotionModal();
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل إضافة العرض', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    async function deletePromotion(promoId) {
+      if (!confirm('هل أنت متأكد من حذف هذا العرض الترويجي؟')) return;
+      if (!currentTenantId) return;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions/${encodeURIComponent(promoId)}`, {
+          method: 'DELETE'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تم حذف العرض الترويجي', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حذف العرض', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
+    // ==========================================
+    // Auto-Posting Management
+    // ==========================================
+    function renderAutopostSection(enabled, intervalHours, lastAt) {
+      const badge = document.getElementById('autopostStatusBadge');
+      const toggle = document.getElementById('autopostToggle');
+      const select = document.getElementById('autopostIntervalSelect');
+      const lastLabel = document.getElementById('autopostLastAtLabel');
+
+      const isEnabled = Boolean(enabled);
+      if (toggle) toggle.checked = isEnabled;
+
+      if (badge) {
+        if (isEnabled) {
+          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+          badge.innerText = '🟢 النشر التلقائي مفعّل';
+        } else {
+          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-slate-800 text-slate-400 border-slate-700';
+          badge.innerText = '⚪ النشر التلقائي متوقف';
+        }
+      }
+
+      if (select && intervalHours) {
+        select.value = String(intervalHours);
+      }
+
+      if (lastLabel) {
+        if (lastAt && lastAt !== 'None' && lastAt !== '') {
+          try {
+            const d = new Date(lastAt);
+            lastLabel.innerText = d.toLocaleString('ar-EG');
+          } catch (e) {
+            lastLabel.innerText = lastAt;
+          }
+        } else {
+          lastLabel.innerText = 'لم يتم النشر بعد';
+        }
+      }
+    }
+
+    async function toggleAutopostStatus() {
+      if (!currentTenantId) return;
+      const toggle = document.getElementById('autopostToggle');
+      const targetState = toggle ? toggle.checked : false;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autopost_enabled: targetState })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(targetState ? 'تم تفعيل النشر التلقائي 📢' : 'تم إيقاف النشر التلقائي', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل تحديث حالة النشر', 'error');
+          if (toggle) toggle.checked = !targetState;
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+        if (toggle) toggle.checked = !targetState;
+      }
+    }
+
+    async function changeAutopostInterval() {
+      if (!currentTenantId) return;
+      const select = document.getElementById('autopostIntervalSelect');
+      const val = parseInt(select.value);
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autopost_interval_hours: val })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(`تم ضبط معدل النشر: كل ${val} ساعة`, 'success');
+        } else {
+          showToast(json.detail || 'فشل تحديث معدل النشر', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
+    async function triggerAutoPostNow() {
+      if (!currentTenantId) return;
+      const btn = document.getElementById('triggerAutopostBtn');
+      const spinner = document.getElementById('triggerAutopostSpinner');
+      const feedback = document.getElementById('autopostFeedback');
+
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+      if (feedback) feedback.innerText = 'جاري اختيار منتج وصياغة البوست والنشر... ⏳';
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-trigger`, {
+          method: 'POST'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(`تم نشر بوست «${json.product_name || 'المنتج'}» بنجاح على فيسبوك! 🚀`, 'success');
+          if (feedback) feedback.innerText = `تم النشر بنجاح لمنتج «${json.product_name || ''}» 📸`;
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل نشر البوست الترويجي', 'error');
+          if (feedback) feedback.innerText = `خطأ: ${json.detail || 'فشل النشر'}`;
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+        if (feedback) feedback.innerText = 'تعذر الاتصال بالسيرفر';
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
       }
     }
 

@@ -40,7 +40,7 @@ def send_telegram(tenant_id, text):
 
 def send_order_notification(tenant_id, order, customer_name, phone, governorate, address, lines):
     items = "\n".join(
-        f"• {l['qty']} × {l['name']} ({l['color']} - {l['size']}): {l['line_total']:.0f} جنيه"
+        f"• {l['qty']} × {l['name']} ({l['color']} - {l['size']}{(' - خامة: ' + l['material']) if l.get('material') else ''}): {l['line_total']:.0f} جنيه"
         for l in lines
     )
     discount_line = ""
@@ -49,6 +49,10 @@ def send_order_notification(tenant_id, order, customer_name, phone, governorate,
     elif order.get("discount_note"):
         discount_line = f"🏷️ عرض: {order['discount_note']}\n"
 
+    voucher_line = ""
+    if order.get("voucher_reward"):
+        voucher_line = f"{order['voucher_reward']}\n"
+
     text = (
         f"🛒 أوردر جديد #{order['order_number']}\n\n"
         f"👤 {customer_name}\n"
@@ -56,6 +60,7 @@ def send_order_notification(tenant_id, order, customer_name, phone, governorate,
         f"📍 {governorate} - {address}\n\n"
         f"{items}\n"
         f"{discount_line}"
+        f"{voucher_line}"
         f"🚚 الشحن: {float(order['shipping_fee']):.0f} جنيه\n"
         f"💰 الإجمالي: {float(order['total']):.0f} جنيه (الدفع عند الاستلام)"
     )

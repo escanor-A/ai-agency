@@ -649,6 +649,171 @@ async def shipping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def autopost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """التحكم في النشر التلقائي الذكي على فيسبوك: /autopost on/off أو /autopost 24"""
+    chat_id = update.effective_chat.id
+    owner = await asyncio.to_thread(get_merchant_by_telegram, chat_id)
+    is_admin = chat_id in SUPER_ADMIN_IDS
+
+    if not owner and not is_admin:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    args = context.args or []
+    target = owner
+    mode = None
+    interval = None
+
+    for a in args:
+        low = a.strip().lower()
+        if low in ("on", "enable", "start", "شغال", "تفعيل"):
+            mode = True
+        elif low in ("off", "disable", "stop", "إيقاف", "تعطيل"):
+            mode = False
+        elif a.isdigit() and int(a) > 0:
+            interval = int(a)
+        elif is_admin and not target:
+            target, _ = await asyncio.to_thread(resolve_tenant_strict, a)
+
+    if not target:
+        await update.message.reply_text("اكتب الأمر بهذا الشكل: /autopost on أو /autopost 24")
+        return
+
+    tid, name = target["id"], target["name"]
+    t_row = supabase.table("tenants").select("autopost_enabled, autopost_interval_hours, autopost_last_at, facebook_page_id").eq("id", tid).execute().data
+    row = t_row[0] if t_row else {}
+
+    updates = {}
+    if mode is not None:
+        updates["autopost_enabled"] = mode
+    if interval is not None:
+        updates["autopost_interval_hours"] = interval
+
+    if updates:
+        supabase.table("tenants").update(updates).eq("id", tid).execute()
+        cur_enabled = mode if mode is not None else row.get("autopost_enabled", False)
+        cur_interval = interval if interval is not None else row.get("autopost_interval_hours", 24)
+        await update.message.reply_text(
+            f"✅ تم تحديث إعدادات النشر التلقائي في «{name}»:\n"
+            f"• الحالة: {'🟢 مفعّل' if cur_enabled else '⚪ متوقف'}\n"
+            f"• المعدل: كل {cur_interval} ساعة\n\n"
+            "💡 يمكنك نشر بوست الآن فوراً بكتابة: /post_now"
+        )
+        return
+
+    cur_enabled = row.get("autopost_enabled", False)
+    cur_interval = row.get("autopost_interval_hours") or 24
+    last_at = row.get("autopost_last_at") or "لم يتم النشر بعد"
+    has_fb = bool(row.get("facebook_page_id"))
+
+    fb_status = "✅ متصل بصفحة فيسبوك" if has_fb else "⚠️ غير مربوط بصفحة فيسبوك"
+
+    await update.message.reply_text(
+        f"📢 *إعدادات النشر التلقائي الذكي في «{name}»:*\n\n"
+        f"• *الحالة:* {'🟢 مفعّل' if cur_enabled else '⚪ موقوف'}\n"
+        f"• *معدل التكرار:* كل {cur_interval} ساعة\n"
+        f"• *آخر بوست تم نشره:* {last_at}\n"
+        f"• *حالة الصفحة:* {fb_status}\n\n"
+        "💡 *الأوامر السريعة:*\n"
+        "  • `/autopost on` ⬅️ تفعيل النشر التلقائي\n"
+        "  • `/autopost off` ⬅️ إيقاف النشر التلقائي\n"
+        "  • `/autopost 12` ⬅️ نشر بوست كل 12 ساعة\n"
+        "  • `/post_now` ⬅️ نشر بوست إعلاني فوراً لأحد منتجات المخزن 🚀",
+        parse_mode="Markdown"
+    )
+
+
+async def post_now_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نشر بوست ترويجي فوراً على صفحة الفيسبوك من المخزون"""
+    chat_id = update.effective_chat.id
+    owner = await asyncio.to_thread(get_merchant_by_telegram, chat_id)
+    is_admin = chat_id in SUPER_ADMIN_IDS
+
+    if not owner and not is_admin:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    target = owner
+    if is_admin and context.args:
+        target, err = await asyncio.to_thread(resolve_tenant_strict, " ".join(context.args))
+        if not target:
+            await update.message.reply_text(err)
+            return
+
+    if not target:
+        await update.message.reply_text("حدد التاجر لنشر البوست.")
+        return
+
+    msg = await update.message.reply_text("⏳ جاري فحص المخزون واختيار أفضل قطعة وصياغة كابشن إعلاني جذاب ونشره على فيسبوك...")
+
+    try:
+        from server import trigger_autopost_for_tenant
+        res = await trigger_autopost_for_tenant(target["id"])
+        if res.get("status") == "success":
+            p_name = res.get("product_name", "المنتج")
+            post_id = res.get("post_id", "")
+            await msg.edit_text(
+                f"🚀 *تم نشر البوست بنجاح على فيسبوك!*\n\n"
+                f"• *المنتج:* {p_name}\n"
+                f"• *معرّف البوست:* `{post_id}`\n\n"
+                "الذكاء الاصطناعي كتب كابشن بيعي جذاب يبرز الخامة والمقاسات والأسعار ومستعد للرد على العملاء وعمل لايك لتعليقاتهم تلقائياً! 📸✨",
+                parse_mode="Markdown"
+            )
+        else:
+            await msg.edit_text(f"❌ تعذر نشر البوست: {res.get('message', 'خطأ غير معروف')}")
+    except Exception as e:
+        await msg.edit_text(f"❌ حدث خطأ أثناء النشر: {e}")
+
+
+async def offers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض وإدارة العروض الترويجية وكروت الهدايا: /offers"""
+    chat_id = update.effective_chat.id
+    owner = await asyncio.to_thread(get_merchant_by_telegram, chat_id)
+    is_admin = chat_id in SUPER_ADMIN_IDS
+
+    if not owner and not is_admin:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    target = owner
+    if is_admin and context.args:
+        target, err = await asyncio.to_thread(resolve_tenant_strict, " ".join(context.args))
+        if not target:
+            await update.message.reply_text(err)
+            return
+
+    tid, name = target["id"], target["name"]
+    res = supabase.table("promotions").select("*").eq("tenant_id", tid).order("created_at", desc=True).execute()
+    promos = res.data or []
+
+    if not promos:
+        await update.message.reply_text(
+            f"🎁 *العروض والخصومات في «{name}»:*\n\n"
+            "مفيش أي عروض نشطة حالياً.\n\n"
+            "💡 تقدر تضيف عرض جديد من لوحة التحكم أو تكلم البوت مباشرة، مثلاً:\n"
+            "«اعمل عرض اشتري بـ 1000ج واحصل على فاوتشر 200ج للزيارة الجاية»\n"
+            "أو «اعمل خصم 20% بكود SUMMER20»\n"
+            "أو «اعمل شحن مجاني لأي طلب قطعتين أو أكثر»",
+            parse_mode="Markdown"
+        )
+        return
+
+    lines = [f"🎁 *العروض والخصومات النشطة في «{name}»:*\n"]
+    for i, p in enumerate(promos, 1):
+        ptype = p.get("promo_type", "percentage")
+        val = p.get("discount_value", 0)
+        code = f" (كود: `{p['code']}`)" if p.get("code") else " (تطبيق تلقائي)"
+        min_v = p.get("min_order_value")
+        min_i = p.get("min_order_items", 1)
+        cond = f"شرط: أوردر بقيمة {min_v:g} ج.م" if min_v and min_v > 0 else (f"شرط: {min_i} قطع" if min_i > 1 else "بدون حد أدنى")
+
+        type_lbl = "كارت هدايا / فاوتشر" if ptype in ("voucher", "gift_card") else ("شحن مجاني" if ptype == "free_shipping" else "خصم")
+        lines.append(f"{i}. *{p.get('description', 'عرض')}*\n   • النوع: {type_lbl}{code}\n   • {cond}")
+
+    lines.append("\n💡 للتحكم الكامل أو إضافة/حذف أي عرض، افتح /dashboard")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 def resolve_tenant(identifier: str):
     """بحث مرن للتاجر بالرقم الترتيبي أو الاسم أو المعرّف (أو بادئة UUID فريدة 8+ حروف هيكس)."""
     rows = (
@@ -1447,7 +1612,7 @@ def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> lis
         )
         return {"status": "waiting_confirmation", "item": label, "change": change}
 
-    def propose_new_product(name: str, price: float, size: str, color: str, qty: int = 1) -> dict:
+    def propose_new_product(name: str, price: float, size: str, color: str, qty: int = 1, material: str = "") -> dict:
         """بتجهّز إضافة منتج أو صنف جديد خالص في المخزن وتستنى تأكيد صاحب المحل بالأزرار.
 
         Args:
@@ -1456,6 +1621,7 @@ def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> lis
             size: المقاس (M, L, XL, 42, إلخ)
             color: اللون بالعربي (أسود، كحلي، إلخ)
             qty: الكمية المتاحة الأولية (افتراضي 1)
+            material: نوع خامة المنتج (مثلاً: قطن 100%، ميلتون، كتان، جبردين، وتربروف) إن وجدت
         """
         if price <= 0:
             return {"status": "error", "reason": "السعر لازم يكون أكبر من صفر"}
@@ -1469,6 +1635,7 @@ def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> lis
             "size": size.strip().upper(),
             "color": color.strip(),
             "qty": int(qty),
+            "material": material.strip(),
         })
         return {"status": "waiting_confirmation", "product": name, "price": price}
 
@@ -1492,15 +1659,16 @@ def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> lis
         })
         return {"status": "waiting_confirmation", "branch": name}
 
-    def propose_new_promo(code: str = "", promo_type: str = "percentage", discount_value: float = 0.0, description: str = "", min_order_items: int = 1) -> dict:
-        """بتجهّز إضافة كود خصم أو عرض ترويجي للمحل (شحن مجاني، نسبة خصم، أو خصم بالجنيه) وتستنى تأكيد التاجر بالأزرار.
+    def propose_new_promo(code: str = "", promo_type: str = "percentage", discount_value: float = 0.0, description: str = "", min_order_items: int = 1, min_order_value: float = 0.0) -> dict:
+        """بتجهّز إضافة كود خصم أو عرض ترويجي أو كارت هدايا/فاوتشر للزيارة القادمة وتستنى تأكيد التاجر بالأزرار.
 
         Args:
-            code: كود الخصم (زي EID20 أو SUMMER10) أو اتركه فارغاً لو عرض عام تلقائي (زي شحن مجاني لأي حد يطلب قطعتين)
-            promo_type: نوع الخصم (percentage = نسبة مئوية، fixed = خصم بالجنيه، free_shipping = شحن مجاني)
-            discount_value: قيمة الخصم (مثلاً 20 لو 20% أو 50 لو 50 جنيه)
-            description: وصف العرض بالعربي
+            code: كود الخصم (زي EID20 أو GIFT200) أو اتركه فارغاً لو عرض عام تلقائي (زي اشتري بـ 1000ج واحصل على فاوتشر 200ج)
+            promo_type: نوع العرض (voucher = كارت هدايا/فاوتشر، percentage = نسبة مئوية، fixed = خصم بالجنيه، free_shipping = شحن مجاني)
+            discount_value: قيمة الخصم أو الفاوتشر (مثلاً 200 لو فاوتشر 200 جنيه أو 20 لو 20%)
+            description: وصف العرض بالعربي (مثلاً: اشتري بـ 1000 واحصل على فاوتشر 200 لطلبك القادم)
             min_order_items: الحد الأدنى لعدد القطع لتطبيق العرض (افتراضي 1)
+            min_order_value: الحد الأدنى لقيمة الأوردر لتطبيق العرض (مثلاً 1000 لعروض الفاوتشر)
         """
         proposals.append({
             "type": "new_promo",
@@ -1509,6 +1677,7 @@ def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> lis
             "discount_value": float(discount_value),
             "description": description.strip() or f"عرض {code}",
             "min_order_items": int(min_order_items),
+            "min_order_value": float(min_order_value),
         })
         return {"status": "waiting_confirmation", "promo": description}
 
@@ -1582,7 +1751,8 @@ def build_proposals_summary(proposals: list) -> str:
     for p in proposals:
         ptype = p.get("type")
         if ptype == "new_product":
-            summary_lines.append(f"✨ إضافة صنف: {p['name']} ({p['color']} - {p['size']}) | السعر: {p['price']:.0f}ج | الكمية: {p['qty']}")
+            mat_txt = f" | خامة: {p['material']}" if p.get("material") else ""
+            summary_lines.append(f"✨ إضافة صنف: {p['name']} ({p['color']} - {p['size']}{mat_txt}) | السعر: {p['price']:.0f}ج | الكمية: {p['qty']}")
         elif ptype == "new_branch":
             summary_lines.append(f"📍 إضافة فرع: {p['name']} ({p['governorate']} - {p['address']})")
         elif ptype == "new_promo":
@@ -1761,7 +1931,7 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
 
         if itype == "new_promo":
             try:
-                supabase.table("promotions").insert({
+                p_payload = {
                     "tenant_id": tenant_id,
                     "code": item.get("code") or None,
                     "promo_type": item["promo_type"],
@@ -1769,7 +1939,19 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
                     "min_order_items": item.get("min_order_items", 1),
                     "description": item["description"],
                     "is_active": True,
-                }).execute()
+                }
+                if item.get("min_order_value") and float(item["min_order_value"]) > 0:
+                    p_payload["min_order_value"] = float(item["min_order_value"])
+
+                try:
+                    supabase.table("promotions").insert(p_payload).execute()
+                except Exception as e_col:
+                    if "min_order_value" in str(e_col):
+                        p_payload.pop("min_order_value", None)
+                        supabase.table("promotions").insert(p_payload).execute()
+                    else:
+                        raise e_col
+
                 successes.append(f"عرض ترويجي: {item['description']}")
             except Exception as e:
                 print("فشل إضافة العرض:", e)
@@ -1842,7 +2024,7 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
                 # 1. فحص المنتج بالاسم ومقارنته بـ _norm_ar
                 prod_rows = (
                     supabase.table("products")
-                    .select("id, name, price, image_url")
+                    .select("id, name, price, image_url, material")
                     .eq("tenant_id", tenant_id)
                     .execute()
                     .data or []
@@ -1856,23 +2038,33 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
 
                 if matched_prod:
                     product_id = matched_prod["id"]
+                    prod_updates = {}
                     if image_url and not matched_prod.get("image_url"):
-                        supabase.table("products").update({"image_url": image_url}).eq("id", product_id).execute()
+                        prod_updates["image_url"] = image_url
+                    if item.get("material") and not matched_prod.get("material"):
+                        prod_updates["material"] = item["material"]
+                    if prod_updates:
+                        supabase.table("products").update(prod_updates).eq("id", product_id).execute()
+
                     existing_price = float(matched_prod.get("price") or 0)
                     if abs(existing_price - float(item["price"])) > 0.01:
                         warnings.append(
                             f"تنبيه: منتج «{item['name']}» مسجل مسبقاً بسعر {existing_price:.0f}ج وسعرك المدخل {item['price']:.0f}ج. تم الإبقاء على السعر الأصلي للمنتج."
                         )
                 else:
+                    new_prod_payload = {
+                        "tenant_id": tenant_id,
+                        "name": item["name"],
+                        "price": item["price"],
+                        "active": True,
+                        **({"image_url": image_url} if image_url else {}),
+                    }
+                    if item.get("material"):
+                        new_prod_payload["material"] = item["material"]
+
                     new_p = (
                         supabase.table("products")
-                        .insert({
-                            "tenant_id": tenant_id,
-                            "name": item["name"],
-                            "price": item["price"],
-                            "active": True,
-                            **({"image_url": image_url} if image_url else {}),
-                        })
+                        .insert(new_prod_payload)
                         .execute()
                         .data
                     )
@@ -2113,11 +2305,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_rows = [r for r in raw_rows if any(str(v or "").strip() for v in r.values())]
 
     COL_MAP = {
-        "name":  ["اسم المنتج", "المنتج", "الاسم", "name", "product"],
+        "name":  ["اسم المنتج", "المنتج", "الاسم", "الصنف", "name", "product"],
         "price": ["السعر", "سعر البيع", "price"],
         "size":  ["المقاس", "مقاس", "size"],
         "color": ["اللون", "لون", "color"],
-        "qty":   ["الكمية", "كمية", "qty", "quantity", "stock"],
+        "qty":   ["الكمية", "كمية", "عدد", "qty", "quantity", "stock"],
+        "material": ["الخامة", "خامة", "نوع الخامة", "القماش", "material", "fabric"],
     }
 
     def find_col(row_keys, aliases):
@@ -2137,6 +2330,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     col_size  = find_col(first_keys, COL_MAP["size"])
     col_color = find_col(first_keys, COL_MAP["color"])
     col_qty   = find_col(first_keys, COL_MAP["qty"])
+    col_material = find_col(first_keys, COL_MAP["material"])
 
     missing = [k for k, v in {"اسم المنتج": col_name, "السعر": col_price, "المقاس": col_size, "اللون": col_color}.items() if not v]
     if missing:
@@ -2144,7 +2338,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ الأعمدة دي مش موجودة في الشيت: {', '.join(missing)}\n"
             f"الأعمدة اللي عندك: {', '.join(first_keys)}\n\n"
             "الأعمدة المطلوبة:\n"
-            "اسم المنتج | السعر | المقاس | اللون | الكمية"
+            "اسم المنتج | السعر | المقاس | اللون | الكمية | الخامة (اختياري)"
         )
         return
 
@@ -2154,6 +2348,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         size  = (row.get(col_size) or "").strip().upper()
         color = (row.get(col_color) or "").strip()
         qty_raw = (row.get(col_qty) or "1").strip() if col_qty else "1"
+        material = (row.get(col_material) or "").strip() if col_material else ""
 
         if not name or not size or not color:
             errors.append(f"سطر {i}: بيانات ناقصة — تم تخطيه")
@@ -2177,6 +2372,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "size":  size,
             "color": color,
             "qty":   max(1, qty),
+            "material": material,
         })
 
     if not rows_parsed:
@@ -2234,7 +2430,46 @@ def main():
                 except Exception as err:
                     print("Error in subscription background checker:", err)
 
+        async def autopost_background_checker():
+            while True:
+                await asyncio.sleep(1800)  # فحص كل 30 دقيقة
+                try:
+                    from server import trigger_autopost_for_tenant
+                    from datetime import datetime, timezone
+                    active_autopost_tenants = (
+                        supabase.table("tenants")
+                        .select("id, name, autopost_enabled, autopost_interval_hours, autopost_last_at, facebook_page_id, facebook_page_token")
+                        .eq("autopost_enabled", True)
+                        .execute()
+                        .data or []
+                    )
+                    now = datetime.now(timezone.utc)
+                    for t in active_autopost_tenants:
+                        if not t.get("facebook_page_id") or not t.get("facebook_page_token"):
+                            continue
+                        interval = int(t.get("autopost_interval_hours") or 24)
+                        last_at_str = t.get("autopost_last_at")
+                        should_post = False
+                        if not last_at_str:
+                            should_post = True
+                        else:
+                            try:
+                                last_at = datetime.fromisoformat(str(last_at_str).replace("Z", "+00:00"))
+                                diff_hours = (now - last_at).total_seconds() / 3600.0
+                                if diff_hours >= interval:
+                                    should_post = True
+                            except Exception:
+                                should_post = True
+
+                        if should_post:
+                            res = await trigger_autopost_for_tenant(t["id"])
+                            if res.get("status") == "success":
+                                print(f"📢 [Autopost] تم نشر بوست ترويجي تلقائي لمتجر «{t['name']}» بنجاح ({res.get('product_name')})", flush=True)
+                except Exception as e:
+                    print("Error in autopost background checker:", e)
+
         asyncio.create_task(background_checker())
+        asyncio.create_task(autopost_background_checker())
         asyncio.create_task(check_subscriptions_and_notify(application))
 
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
@@ -2258,6 +2493,10 @@ def main():
     app.add_handler(CommandHandler("delete_tenant", delete_tenant_cmd))
     app.add_handler(CommandHandler("renew", renew_cmd))
     app.add_handler(CommandHandler("shipping", shipping_cmd))
+    app.add_handler(CommandHandler("autopost", autopost_cmd))
+    app.add_handler(CommandHandler("post_now", post_now_cmd))
+    app.add_handler(CommandHandler("offers", offers_cmd))
+    app.add_handler(CommandHandler("promos", offers_cmd))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
