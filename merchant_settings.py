@@ -34,9 +34,24 @@ def load_merchant_settings(tenant_id: str) -> dict:
 
 
 def save_merchant_settings(tenant_id: str, updates: dict) -> dict:
-    """حفظ إعدادات التاجر الإضافية"""
+    """حفظ إعدادات التاجر الإضافية في Supabase ومحلياً كنسخة احتياطية"""
     if not tenant_id or not updates:
         return {}
+
+    # 1. المزامنة المباشرة مع قاعدة البيانات (Supabase)
+    try:
+        from check_stock import supabase
+        db_updates = {}
+        if "google_sheets_url" in updates:
+            db_updates["google_sheets_url"] = updates["google_sheets_url"].strip() if updates["google_sheets_url"] else None
+        if "shipping_enabled" in updates:
+            db_updates["shipping_enabled"] = bool(updates["shipping_enabled"])
+        if db_updates:
+            supabase.table("tenants").update(db_updates).eq("id", tenant_id).execute()
+    except Exception as e:
+        print(f"Notice: saving to Supabase tenants failed: {e}")
+
+    # 2. الحفظ المحلي كـ Cache واحتياطي
     with _LOCK:
         data = _read_all()
         tid = str(tenant_id)
@@ -48,5 +63,14 @@ def save_merchant_settings(tenant_id: str, updates: dict) -> dict:
 
 
 def get_merchant_google_sheets_url(tenant_id: str) -> str:
-    """الحصول على رابط شيت المخزن للتاجر"""
+    """الحصول على رابط شيت المخزن للتاجر من الداتابيز مباشرة (مع الفولباك المحلي)"""
+    if not tenant_id:
+        return ""
+    try:
+        from check_stock import supabase
+        res = supabase.table("tenants").select("google_sheets_url").eq("id", tenant_id).execute()
+        if res.data and res.data[0].get("google_sheets_url"):
+            return res.data[0]["google_sheets_url"]
+    except Exception:
+        pass
     return load_merchant_settings(tenant_id).get("google_sheets_url", "")
