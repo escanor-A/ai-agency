@@ -432,13 +432,13 @@ async def fetch_post_text(post_id: str, page_access_token: str) -> str:
             return cached_text
 
     url = f"https://graph.facebook.com/v21.0/{post_id}"
-    params = {"fields": "message,story", "access_token": page_access_token}
+    params = {"fields": "message,story,caption", "access_token": page_access_token}
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(url, params=params)
             if resp.status_code == 200:
                 data = resp.json()
-                msg = (data.get("message") or data.get("story") or "").strip()
+                msg = (data.get("message") or data.get("story") or data.get("caption") or "").strip()
                 POST_TEXT_CACHE[post_id] = (msg, now)
                 return msg
     except Exception as e:
@@ -1237,8 +1237,10 @@ async def process_tiktok_event(data: dict):
                     print(f"⚡ [توفير توكنز] تم الرد بعنوان الفرع على تيك توك مباشرة (0 توكنز)!")
                     return
 
+        video_title = data.get("video_title") or data.get("title") or data.get("item_title") or ""
+
         # تصنيف التعليق
-        category = await asyncio.to_thread(classify_comment, comment_text, "")
+        category = await asyncio.to_thread(classify_comment, comment_text, video_title)
         if category == "skip":
             print(f"⏩ تم تخطي كومنت تيك توك المصنف skip: {comment_text}")
             return
@@ -1249,6 +1251,7 @@ async def process_tiktok_event(data: dict):
                 tenant["id"],
                 customer_name=display_name,
                 comment_text=comment_text,
+                post_text=video_title,
                 comment_id=comment_id,
                 platform="tiktok",
             )
@@ -1277,10 +1280,11 @@ async def process_tiktok_event(data: dict):
             return
 
         elif category in ("location", "hours", "shipping", "offer"):
+            prompt_ctx = f"العميل علّق على فيديو تيك توك عنوانه '{video_title}': {comment_text}" if video_title else f"علّقت على فيديو تيك توك وكتبت: {comment_text}"
             full_reply = await asyncio.to_thread(
                 handle_customer_message,
                 tenant["id"], user_id,
-                f"علّقت على فيديو تيك توك وكتبت: {comment_text}",
+                prompt_ctx,
                 channel="tiktok",
                 allow_orders=False,
                 is_comment=True,
