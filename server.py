@@ -15,13 +15,14 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from check_stock import supabase
-from customer_agent import handle_customer_message, RATE_LIMITER, classify_comment, pop_customer_images
+from customer_agent import handle_customer_message, RATE_LIMITER, classify_comment, pop_customer_images, purge_old_chat_messages
 import orders
 from orders import is_shipping_enabled
 from merchant_settings import load_merchant_settings, save_merchant_settings
 from notify import send_complaint_notification, submit_praise_review
 
-from collections import OrderedDict
+import threading
+from collections import OrderedDict, deque
 
 sys.stdout.reconfigure(encoding="utf-8")
 load_dotenv()
@@ -53,6 +54,185 @@ class MessageDeduplicator:
 
 DEDUPLICATOR = MessageDeduplicator()
 
+
+class TikTokRateLimiter:
+    """
+    التحكم الصارم في معدل طلبات TikTok Open API v2
+    الحد الأقصى الرسمي لتيك توك هو 600 طلب/دقيقة.
+    نضع حداً آمناً عند 550 طلب/دقيقة (نافذة منزلقة 60 ثانية) مع دعم Backoff عند ورود 429
+    لمنع حظر الحسابات أو رفض الطلبات.
+    """
+    def __init__(self, max_requests: int = 550, window_seconds: float = 60.0):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.timestamps = deque()
+        self.lock = asyncio.Lock()
+        self.blocked_until = 0.0
+
+    async def acquire(self):
+        async with self.lock:
+            while True:
+                now = time.time()
+                # في حال تفعيل فترة الانتظار بعد خطأ 429
+                if now < self.blocked_until:
+                    sleep_time = self.blocked_until - now + 0.1
+                    await asyncio.sleep(sleep_time)
+                    continue
+
+                # تصفية الطلبات الأقدم من 60 ثانية من النافذة المنزلقة
+                while self.timestamps and (now - self.timestamps[0]) >= self.window_seconds:
+                    self.timestamps.popleft()
+
+                # إذا كان عدد الطلبات أقل من السقف الآمن
+                if len(self.timestamps) < self.max_requests:
+                    self.timestamps.append(now)
+                    return
+
+                # إذا بلغنا السقف، ننتظر حتى يسقط أقدم طلب من النافذة
+                oldest = self.timestamps[0]
+                wait_time = self.window_seconds - (now - oldest) + 0.05
+                if wait_time > 0:
+                    await asyncio.sleep(wait_time)
+
+    def record_rate_limited(self, retry_after: float = 60.0):
+        """تسجيل ورود خطأ 429 من تيك توك لتأجيل كافة الطلبات القادمة بأمان"""
+        self.blocked_until = time.time() + retry_after
+        print(f"⚠️ [TikTok Rate Limit] تم تفعيل وضع الانتظار لتيك توك لمدة {retry_after} ثانية لتفادي الرفض.")
+
+
+TIKTOK_RATE_LIMITER = TikTokRateLimiter()
+
+
+def normalize_comment_intent(text: str) -> Optional[str]:
+    """
+    تحليل نية الكومنت السريع المتكرر (مثل: تفاصيل، العنوان فين، بكام، تم)
+    لإمكانية إرجاع رد مخزن مسبقاً (كاش) وتوفير آلاف التوكنز.
+    """
+    if not text:
+        return None
+    # إزالة التشكيل وعلامات الترقيم والرموز التعبيرية
+    cleaned = re.sub(r"[^\w\s\u0600-\u06FF]", " ", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().lower()
+    if not cleaned:
+        return None
+
+    # توحيد الحروف العربية
+    cleaned = cleaned.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").replace("ى", "ي")
+
+    # 1. تفاصيل (Details)
+    details_exact = {
+        "تفاصيل", "تفاصيل اكتر", "ممكن تفاصيل", "تفاصيل لو سمحت", "عايز تفاصيل",
+        "ابعتلي تفاصيل", "ممكن التفاصيل", "التفاصيل", "شرح", "تفاصيل ايه",
+        "تفاصيل اكتر لو سمحت", "عاوز تفاصيل", "تفاصيل لاهنت", "تفاصيل كدا",
+        "ممكن اعرف تفاصيل", "ممكن تفاصيل اكتر", "تفاصيل كامله",
+    }
+    if cleaned in details_exact or cleaned.startswith("تفاصيل ") or cleaned.endswith(" تفاصيل"):
+        return "INTENT_DETAILS"
+
+    # 2. العنوان والمكان (Location)
+    location_exact = {
+        "العنوان فين", "فين العنوان", "المكان فين", "فين المكان", "مكانكم فين",
+        "العنوان", "المكان", "فين", "عنوانكم", "عنوانكم فين", "اقرب فرع",
+        "المحل فين", "فين فرعكم", "موقعكم", "موقعكم فين", "المحل وين",
+        "فين في القاهره", "فرعكم فين", "عنوان المحل", "مكان المحل",
+    }
+    if cleaned in location_exact:
+        return "INTENT_LOCATION"
+
+    # 3. السعر (Price)
+    price_exact = {
+        "بكام", "السعر كام", "سعره كام", "كام السعر", "بكام ده", "السعر",
+        "سعر", "السعر كام لو سمحت", "سعره كام لو سمحت", "بكام الشحن", "سعر كام",
+        "بكام القطعه", "بكام التيشيرت", "سعره", "اسعاركم كام",
+    }
+    if cleaned in price_exact or cleaned.startswith("بكام ") or cleaned.startswith("سعره "):
+        return "INTENT_PRICE"
+
+    # 4. تأكيد أو تم (Confirm / Done)
+    confirm_exact = {"تم", "تم تمام", "done", "تمام", "اوكي", "ماشي", "تسلم", "شكرا"}
+    if cleaned in confirm_exact:
+        return "INTENT_CONFIRM"
+
+    # 5. تعليقات نصية قصيرة مكررة (أقل أو يساوي 3 كلمات)
+    words = cleaned.split()
+    if len(words) <= 3:
+        return f"TEXT_{'_'.join(words)}"
+
+    return None
+
+
+class CommentResponseCache:
+    """
+    تخزين مؤقت (كاش) لردود الكومنتات المتكررة لمدة 5 دقائق (300 ثانية).
+    يستبدل اسم العميل في القالب ديناميكياً لتظهر الإجابة شخصية وودودة
+    مع توفير 80% إلى 95% من استهلاك التوكنز في البوستات والريلز الفيروسية.
+    """
+    def __init__(self, ttl_seconds: int = 300, max_entries: int = 2000):
+        self.ttl = ttl_seconds
+        self.max_entries = max_entries
+        self.cache = {}  # key -> {"template": str, "private_template": Optional[str], "expires_at": float}
+        self.lock = threading.Lock()
+
+    def _cleanup_expired(self, now: float):
+        expired = [k for k, v in self.cache.items() if now >= v["expires_at"]]
+        for k in expired:
+            del self.cache[k]
+        while len(self.cache) >= self.max_entries:
+            oldest_key = min(self.cache.keys(), key=lambda k: self.cache[k]["expires_at"])
+            del self.cache[oldest_key]
+
+    def get(self, tenant_id: str, post_id: str, intent_key: str, sender_name: str = "يا فندم") -> Optional[tuple[str, Optional[str]]]:
+        if not intent_key:
+            return None
+        key = f"{tenant_id}:{post_id or 'global'}:{intent_key}"
+        now = time.time()
+        with self.lock:
+            self._cleanup_expired(now)
+            item = self.cache.get(key)
+            if not item:
+                fallback_key = f"{tenant_id}:global:{intent_key}"
+                item = self.cache.get(fallback_key)
+
+            if item and now < item["expires_at"]:
+                pub_tpl = item["template"]
+                priv_tpl = item.get("private_template")
+                
+                # إدراج اسم العميل بشكل مخصص
+                if "{name}" in pub_tpl:
+                    pub_reply = pub_tpl.format(name=sender_name)
+                else:
+                    pub_reply = f"أهلاً {sender_name}! {pub_tpl}"
+
+                priv_reply = None
+                if priv_tpl:
+                    if "{name}" in priv_tpl:
+                        priv_reply = priv_tpl.format(name=sender_name)
+                    else:
+                        priv_reply = f"أهلاً {sender_name} 🙏\n{priv_tpl}"
+
+                return (pub_reply, priv_reply)
+        return None
+
+    def set(self, tenant_id: str, post_id: str, intent_key: str, template: str, private_template: Optional[str] = None):
+        if not intent_key or not template:
+            return
+        key = f"{tenant_id}:{post_id or 'global'}:{intent_key}"
+        now = time.time()
+        with self.lock:
+            self._cleanup_expired(now)
+            self.cache[key] = {
+                "template": template,
+                "private_template": private_template,
+                "expires_at": now + self.ttl,
+            }
+
+    def clear(self):
+        with self.lock:
+            self.cache.clear()
+
+
+COMMENT_CACHE = CommentResponseCache(ttl_seconds=300)
+
 # توكن التحقق السري ومفاتيح التوقيع الخاصة بالـ Webhooks
 ALLOW_UNSIGNED = os.environ.get("ALLOW_UNSIGNED_WEBHOOKS") == "1"  # للتطوير المحلي بس
 META_VERIFY_TOKEN = os.environ.get("META_VERIFY_TOKEN", "")
@@ -70,10 +250,23 @@ def check_startup_warnings():
         print("🚨 [تحذير أمني خطير] وضع ALLOW_UNSIGNED_WEBHOOKS=1 مفعّل! السيرفر سيقبل طلبات Webhook غير موثقة (مخصص فقط للتطوير المحلي، خطر جداً في الإنتاج).")
 
 
+async def periodic_chat_cleanup():
+    """مهمة خلفية دورية لحذف شاتات العملاء القديمة التي مضى عليها أكثر من 20 يوماً لتوفير مساحة الداتابيز"""
+    while True:
+        try:
+            await asyncio.to_thread(purge_old_chat_messages, 20)
+        except Exception as e:
+            print("❌ خطأ في المهمة المجدولة لتنظيف الشات:", e)
+        # تشغيل مرة كل 24 ساعة (86400 ثانية)
+        await asyncio.sleep(86400)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     check_startup_warnings()
+    cleanup_task = asyncio.create_task(periodic_chat_cleanup())
     yield
+    cleanup_task.cancel()
 
 
 app = FastAPI(title="AI Agency Omnichannel Webhook Server", lifespan=lifespan)
@@ -528,6 +721,39 @@ async def process_meta_event(data: dict):
                 post_text = await fetch_post_text(post_id, page_token)
                 img_bytes, img_mime = await fetch_comment_image(value, comment_id, page_token)
 
+                # فحص الردود المتكررة في الكاش لتوفير التوكنز (كاش 5 دقائق)
+                intent = normalize_comment_intent(comment_text)
+                if intent:
+                    cached = COMMENT_CACHE.get(tenant["id"], post_id, intent, sender_name=sender_name)
+                    if cached:
+                        cached_pub, cached_priv = cached
+                        if cached_pub:
+                            await send_public_comment_reply(comment_id, cached_pub, page_token)
+                        if cached_priv:
+                            await send_meta_reply(sender_id, cached_priv, page_token, platform="messenger", comment_id=comment_id)
+                        print(f"⚡ [توفير توكنز] تم الرد من الكاش (5 دقائق) للعميل «{sender_name}» على فيسبوك بنية [{intent}] (0 توكنز)!")
+                        continue
+
+                    # اختصارات صفر توكنز للنيات المحددة
+                    if intent == "INTENT_CONFIRM":
+                        confirm_tpl = "تسلم يا {name}! نورتنا وشرفتنا، ولو محتاج أي استفسار إحنا معاك دائماً ❤️"
+                        await send_public_comment_reply(comment_id, confirm_tpl.format(name=sender_name), page_token)
+                        COMMENT_CACHE.set(tenant["id"], post_id, intent, confirm_tpl)
+                        continue
+
+                    if intent == "INTENT_LOCATION":
+                        try:
+                            branches = supabase.table("branches").select("name, city, address, working_hours").eq("tenant_id", tenant["id"]).execute().data
+                        except Exception:
+                            branches = []
+                        if branches:
+                            b_details = " - ".join([f"{b.get('name', 'فرع')}: {b.get('address', '')} ({b.get('working_hours', 'طوال الأسبوع')})" for b in branches])
+                            loc_tpl = f"أهلاً {{name}} ❤️ تشرفنا زيارتك في {b_details}. ونشرف بيك في أي وقت 🙏"
+                            await send_public_comment_reply(comment_id, loc_tpl.format(name=sender_name), page_token)
+                            COMMENT_CACHE.set(tenant["id"], post_id, intent, loc_tpl)
+                            print(f"⚡ [توفير توكنز] تم الرد بعنوان الفرع مباشرة للعميل «{sender_name}» (0 توكنز)!")
+                            continue
+
                 # شرط 2: classify_comment(text, post_text)
                 category = await asyncio.to_thread(classify_comment, comment_text, post_text)
                 print(f"💬 تعليق فيسبوك على «{tenant['name']}» من {sender_name}: [{category}] - {comment_text}")
@@ -579,8 +805,8 @@ async def process_meta_event(data: dict):
 
                 elif category in ("price", "availability"):
                     # price/availability = رد علني قصير + دعوة للخاص (أو Private Reply لو متاح)
-                    public_teaser = f"أهلاً {sender_name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات لحضرتك في رسائل الصفحة على الخاص (شيك على الـ DM) 📩🙏"
-                    await send_public_comment_reply(comment_id, public_teaser, page_token)
+                    public_teaser_tpl = "أهلاً {name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات لحضرتك في رسائل الصفحة على الخاص (شيك على الـ DM) 📩🙏"
+                    await send_public_comment_reply(comment_id, public_teaser_tpl.format(name=sender_name), page_token)
 
                     prompt_ctx = f"العميل علّق على بوست نصه: '{post_text}' وسأل في التعليق: '{comment_text}'. أجب على استفساره بخصوص السعر أو المقاسات والألوان المتاحة باختصار ولطف."
                     detailed_reply = await asyncio.to_thread(
@@ -595,6 +821,8 @@ async def process_meta_event(data: dict):
                     )
                     if detailed_reply and detailed_reply.strip():
                         await send_meta_reply(sender_id, detailed_reply.strip(), page_token, platform="messenger", comment_id=comment_id)
+                        # تخزين في الكاش 5 دقائق للكومنتات المتكررة القادمة
+                        COMMENT_CACHE.set(tenant["id"], post_id, intent or "INTENT_DETAILS", public_teaser_tpl, detailed_reply.strip())
                     continue
 
                 elif category in ("location", "hours", "shipping", "offer"):
@@ -612,6 +840,8 @@ async def process_meta_event(data: dict):
                     )
                     if public_answer and public_answer.strip():
                         await send_public_comment_reply(comment_id, public_answer.strip(), page_token)
+                        if intent:
+                            COMMENT_CACHE.set(tenant["id"], post_id, intent, public_answer.strip())
                     continue
 
             # 1b. تعليقات إنستجرام
@@ -683,6 +913,36 @@ async def process_meta_event(data: dict):
                 if ig_media_id:
                     post_text = await fetch_post_text(ig_media_id, page_token)
 
+                # فحص الردود المتكررة في الكاش لتوفير التوكنز في إنستجرام
+                intent = normalize_comment_intent(comment_text)
+                if intent:
+                    cached = COMMENT_CACHE.get(tenant["id"], ig_media_id, intent, sender_name=sender_name)
+                    if cached:
+                        cached_pub, _ = cached
+                        if cached_pub:
+                            await send_instagram_comment_reply(comment_id, cached_pub, page_token)
+                        print(f"⚡ [توفير توكنز] تم الرد من الكاش (5 دقائق) للعميل «{sender_name}» على إنستجرام بنية [{intent}] (0 توكنز)!")
+                        continue
+
+                    if intent == "INTENT_CONFIRM":
+                        confirm_tpl = "تسلم يا {name}! نورتنا وشرفتنا، ولو محتاج أي استفسار إحنا معاك دائماً ❤️"
+                        await send_instagram_comment_reply(comment_id, confirm_tpl.format(name=sender_name), page_token)
+                        COMMENT_CACHE.set(tenant["id"], ig_media_id, intent, confirm_tpl)
+                        continue
+
+                    if intent == "INTENT_LOCATION":
+                        try:
+                            branches = supabase.table("branches").select("name, city, address, working_hours").eq("tenant_id", tenant["id"]).execute().data
+                        except Exception:
+                            branches = []
+                        if branches:
+                            b_details = " - ".join([f"{b.get('name', 'فرع')}: {b.get('address', '')} ({b.get('working_hours', 'طوال الأسبوع')})" for b in branches])
+                            loc_tpl = f"أهلاً {{name}} ❤️ تشرفنا زيارتك في {b_details}. ونشرف بيك في أي وقت 🙏"
+                            await send_instagram_comment_reply(comment_id, loc_tpl.format(name=sender_name), page_token)
+                            COMMENT_CACHE.set(tenant["id"], ig_media_id, intent, loc_tpl)
+                            print(f"⚡ [توفير توكنز] تم الرد بعنوان الفرع على إنستجرام مباشرة (0 توكنز)!")
+                            continue
+
                 # شرط 2: classify_comment
                 category = await asyncio.to_thread(classify_comment, comment_text, post_text)
                 print(f"📸 كومنت إنستجرام على «{tenant['name']}» من {sender_name}: [{category}] - {comment_text}")
@@ -717,8 +977,9 @@ async def process_meta_event(data: dict):
                     continue
 
                 elif category in ("price", "availability"):
-                    dm_teaser = f"أهلاً {sender_name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات لحضرتك في الـ DM، شيك على الرسائل الخاصة 📩🙏"
-                    await send_instagram_comment_reply(comment_id, dm_teaser, page_token)
+                    dm_teaser_tpl = "أهلاً {name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات لحضرتك في الـ DM، شيك على الرسائل الخاصة 📩🙏"
+                    await send_instagram_comment_reply(comment_id, dm_teaser_tpl.format(name=sender_name), page_token)
+                    COMMENT_CACHE.set(tenant["id"], ig_media_id, intent or "INTENT_DETAILS", dm_teaser_tpl)
                     continue
 
                 elif category in ("location", "hours", "shipping", "offer"):
@@ -733,6 +994,8 @@ async def process_meta_event(data: dict):
                     )
                     if public_reply and public_reply.strip():
                         await send_instagram_comment_reply(comment_id, public_reply.strip(), page_token)
+                        if intent:
+                            COMMENT_CACHE.set(tenant["id"], ig_media_id, intent, public_reply.strip())
                     continue
 
 
@@ -835,7 +1098,8 @@ async def receive_meta_webhook(request: Request, background_tasks: BackgroundTas
 # ==========================================
 
 async def send_tiktok_comment_reply(video_id: str, comment_id: str, text: str, access_token: str):
-    """الرد على كومنت تيك توك عبر TikTok Open API v2"""
+    """الرد على كومنت تيك توك عبر TikTok Open API v2 مع حماية الـ Rate Limiting (550 طلب/دقيقة)"""
+    await TIKTOK_RATE_LIMITER.acquire()
     url = "https://open.tiktokapis.com/v2/comment/reply/create/"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -849,9 +1113,14 @@ async def send_tiktok_comment_reply(video_id: str, comment_id: str, text: str, a
     async with httpx.AsyncClient() as client:
         try:
             r = await client.post(url, json=payload, headers=headers, timeout=10)
+            if r.status_code == 429:
+                TIKTOK_RATE_LIMITER.record_rate_limited(60.0)
             data = r.json()
             if data.get("error", {}).get("code") == "ok":
                 print(f"✅ تم الرد على كومنت تيك توك {comment_id}")
+            elif "rate_limit" in str(data.get("error", {}).get("message", "")).lower() or data.get("error", {}).get("code") == "rate_limit_exceeded":
+                TIKTOK_RATE_LIMITER.record_rate_limited(60.0)
+                print(f"⚠️ [TikTok Rate Limit] رد تيك توك بتجاوز السقف:", data.get("error"))
             else:
                 print(f"❌ خطأ في الرد على تيك توك:", data.get("error"))
         except Exception as e:
@@ -859,7 +1128,8 @@ async def send_tiktok_comment_reply(video_id: str, comment_id: str, text: str, a
 
 
 async def send_tiktok_dm(user_id: str, text: str, access_token: str):
-    """إرسال رسالة مباشرة DM على تيك توك (TikTok Business Messaging)"""
+    """إرسال رسالة مباشرة DM على تيك توك (TikTok Business Messaging) مع حماية الـ Rate Limiting"""
+    await TIKTOK_RATE_LIMITER.acquire()
     url = "https://open.tiktokapis.com/v2/direct_message/send/"
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -873,9 +1143,14 @@ async def send_tiktok_dm(user_id: str, text: str, access_token: str):
     async with httpx.AsyncClient() as client:
         try:
             r = await client.post(url, json=payload, headers=headers, timeout=10)
+            if r.status_code == 429:
+                TIKTOK_RATE_LIMITER.record_rate_limited(60.0)
             data = r.json()
             if data.get("error", {}).get("code") == "ok":
                 print(f"✅ DM تيك توك اتبعت للعميل {user_id}")
+            elif "rate_limit" in str(data.get("error", {}).get("message", "")).lower() or data.get("error", {}).get("code") == "rate_limit_exceeded":
+                TIKTOK_RATE_LIMITER.record_rate_limited(60.0)
+                print(f"⚠️ [TikTok Rate Limit] رد تيك توك DM بتجاوز السقف:", data.get("error"))
             else:
                 print(f"❌ خطأ في DM تيك توك:", data.get("error"))
         except Exception as e:
@@ -930,6 +1205,38 @@ async def process_tiktok_event(data: dict):
         tiktok_token = tenant.get("tiktok_access_token", "")
         print(f"🎵 كومنت على «{tenant['name']}» من {display_name}: {comment_text}")
 
+        # فحص الكاش للردود المتكررة في تيك توك لتوفير التوكنز
+        intent = normalize_comment_intent(comment_text)
+        if intent:
+            cached = COMMENT_CACHE.get(tenant["id"], video_id, intent, sender_name=display_name)
+            if cached:
+                cached_pub, _ = cached
+                if cached_pub and tiktok_token and video_id and comment_id:
+                    await send_tiktok_comment_reply(video_id, comment_id, cached_pub, tiktok_token)
+                print(f"⚡ [توفير توكنز] تم الرد من الكاش (5 دقائق) للعميل «{display_name}» على تيك توك بنية [{intent}] (0 توكنز)!")
+                return
+
+            if intent == "INTENT_CONFIRM":
+                confirm_tpl = "تسلم يا {name}! نورتنا وشرفتنا دائماً ❤️"
+                if tiktok_token and video_id and comment_id:
+                    await send_tiktok_comment_reply(video_id, comment_id, confirm_tpl.format(name=display_name), tiktok_token)
+                COMMENT_CACHE.set(tenant["id"], video_id, intent, confirm_tpl)
+                return
+
+            if intent == "INTENT_LOCATION":
+                try:
+                    branches = supabase.table("branches").select("name, city, address, working_hours").eq("tenant_id", tenant["id"]).execute().data
+                except Exception:
+                    branches = []
+                if branches:
+                    b_details = " - ".join([f"{b.get('name', 'فرع')}: {b.get('address', '')} ({b.get('working_hours', 'طوال الأسبوع')})" for b in branches])
+                    loc_tpl = f"أهلاً {{name}} ❤️ تشرفنا زيارتك في {b_details}. ونشرف بيك في أي وقت 🙏"
+                    if tiktok_token and video_id and comment_id:
+                        await send_tiktok_comment_reply(video_id, comment_id, loc_tpl.format(name=display_name), tiktok_token)
+                    COMMENT_CACHE.set(tenant["id"], video_id, intent, loc_tpl)
+                    print(f"⚡ [توفير توكنز] تم الرد بعنوان الفرع على تيك توك مباشرة (0 توكنز)!")
+                    return
+
         # تصنيف التعليق
         category = await asyncio.to_thread(classify_comment, comment_text, "")
         if category == "skip":
@@ -963,9 +1270,10 @@ async def process_tiktok_event(data: dict):
             return
 
         elif category in ("price", "availability"):
-            teaser = f"أهلاً {display_name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات في الرسائل الخاصة، شيك على الخاص 📩🙏"
+            teaser_tpl = "أهلاً {name} ❤️ تم إرسال كافة التفاصيل والأسعار والمقاسات في الرسائل الخاصة، شيك على الخاص 📩🙏"
             if tiktok_token and video_id and comment_id:
-                await send_tiktok_comment_reply(video_id, comment_id, teaser, tiktok_token)
+                await send_tiktok_comment_reply(video_id, comment_id, teaser_tpl.format(name=display_name), tiktok_token)
+            COMMENT_CACHE.set(tenant["id"], video_id, intent or "INTENT_DETAILS", teaser_tpl)
             return
 
         elif category in ("location", "hours", "shipping", "offer"):
@@ -979,6 +1287,8 @@ async def process_tiktok_event(data: dict):
             )
             if tiktok_token and video_id and comment_id and full_reply and full_reply.strip():
                 await send_tiktok_comment_reply(video_id, comment_id, full_reply.strip(), tiktok_token)
+                if intent:
+                    COMMENT_CACHE.set(tenant["id"], video_id, intent, full_reply.strip())
             elif not tiktok_token:
                 print(f"⚠️ التاجر «{tenant['name']}» مش عنده tiktok_token — استخدم /link_page")
 
@@ -1850,6 +2160,13 @@ async def list_merchants_summary_api():
         return {"status": "success", "data": res.data or []}
     except Exception as e:
         return {"status": "error", "data": [], "detail": str(e)}
+
+
+@app.post("/api/maintenance/purge-old-chats")
+async def purge_old_chats_api(days: int = Query(20, ge=1, le=365)):
+    """حذف شاتات العملاء القديمة التي مضى عليها أكثر من عدد الأيام المحدد (افتراضياً 20 يوماً)"""
+    res = await asyncio.to_thread(purge_old_chat_messages, days)
+    return res
 
 
 if __name__ == "__main__":

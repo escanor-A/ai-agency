@@ -1647,5 +1647,153 @@ def test_promotions_and_autopost_api(monkeypatch):
     assert updated_fields.get("autopost_interval_hours") == 12
 
 
+# ============================================================================
+# 28. اختبار حذف شاتات العملاء القديمة بعد 20 يوماً
+# ============================================================================
+
+def test_purge_old_chat_messages(monkeypatch):
+    import customer_agent
+
+    deleted_calls = []
+
+    class MockDeleteQuery:
+        def __init__(self, table_name):
+            self.table_name = table_name
+            self.field = None
+            self.val = None
+
+        def delete(self):
+            return self
+
+        def lt(self, field, val):
+            self.field = field
+            self.val = val
+            return self
+
+        def execute(self):
+            deleted_calls.append((self.table_name, self.field, self.val))
+            class Resp:
+                data = [{"id": "1"}, {"id": "2"}] if self.table_name == "messages" else [{"id": "c1"}]
+            return Resp()
+
+    monkeypatch.setattr(customer_agent.supabase, "table", lambda t: MockDeleteQuery(t))
+
+    res = customer_agent.purge_old_chat_messages(days=20)
+    assert res["status"] == "ok"
+    assert res["days"] == 20
+    assert res["deleted_messages"] == 2
+    assert res["deleted_conversations"] == 1
+    assert len(deleted_calls) == 2
+    assert deleted_calls[0][0] == "messages"
+    assert deleted_calls[0][1] == "created_at"
+    assert deleted_calls[1][0] == "conversations"
+    assert deleted_calls[1][1] == "updated_at"
+
+
+# ============================================================================
+# 29. اختبار محدد معدل طلبات تيك توك TikTokRateLimiter (600 req/min safe cap)
+# ============================================================================
+
+import pytest
+
+@pytest.mark.anyio
+async def test_tiktok_rate_limiter():
+    import server
+
+    # اختبار محدد بمعدل صغير لاختبار النافذة المنزلقة بسرعة
+    limiter = server.TikTokRateLimiter(max_requests=3, window_seconds=0.2)
+
+    # الطلبات الـ 3 الأولى تمر فوراً
+    t0 = time.time()
+    await limiter.acquire()
+    await limiter.acquire()
+    await limiter.acquire()
+    t1 = time.time()
+    assert (t1 - t0) < 0.1  # مرت بدون تأخير
+
+    # الطلب الرابع يجب أن ينتظر حتى تنتهي نافذة الـ 0.2 ثانية
+    await limiter.acquire()
+    t2 = time.time()
+    assert (t2 - t0) >= 0.15
+
+    # اختبار وضع الانتظار عند وصول خطأ 429 من تيك توك
+    limiter.record_rate_limited(retry_after=0.2)
+    assert limiter.blocked_until > time.time()
+    await limiter.acquire()
+    assert time.time() >= limiter.blocked_until
+
+
+# ============================================================================
+# 30. اختبار تحليل نية الكومنتات ونظام كاش الردود (توفير 80-95% توكنز)
+# ============================================================================
+
+def test_comment_cache_and_intent_normalizer():
+    import server
+
+    # 1. اختبار استخلاص النية من الكومنتات المتكررة
+    assert server.normalize_comment_intent("تفاصيل") == "INTENT_DETAILS"
+    assert server.normalize_comment_intent("ممكن تفاصيل") == "INTENT_DETAILS"
+    assert server.normalize_comment_intent("تفاصيل اكتر لو سمحت") == "INTENT_DETAILS"
+    assert server.normalize_comment_intent("العنوان فين") == "INTENT_LOCATION"
+    assert server.normalize_comment_intent("فين المكان") == "INTENT_LOCATION"
+    assert server.normalize_comment_intent("مكانكم فين") == "INTENT_LOCATION"
+    assert server.normalize_comment_intent("بكام") == "INTENT_PRICE"
+    assert server.normalize_comment_intent("السعر كام") == "INTENT_PRICE"
+    assert server.normalize_comment_intent("تم") == "INTENT_CONFIRM"
+    assert server.normalize_comment_intent("شكرا") == "INTENT_CONFIRM"
+
+    # تعليق طويل فريد
+    assert server.normalize_comment_intent("أنا عايز أعرف الخامه دي هل بتكش في الغسيل مع المية السخنة ولا لأ") is None
+
+    # 2. اختبار الكاش المؤقت لمدة 5 دقائق
+    cache = server.CommentResponseCache(ttl_seconds=1)  # 1 ثانية للاختبار
+    tenant_id = "tenant-test-123"
+    post_id = "post-999"
+
+    # قبل الحفظ في الكاش
+    assert cache.get(tenant_id, post_id, "INTENT_DETAILS") is None
+
+    # حفظ رد في الكاش مع علامة الاسم {name}
+    pub_template = "أهلاً {name} ❤️ تم إرسال التفاصيل في الخاص 📩"
+    priv_template = "أهلاً يا {name}، السعر 300 جنيه ومتاح مقاسات M لـ XXL."
+    cache.set(tenant_id, post_id, "INTENT_DETAILS", pub_template, priv_template)
+
+    # استرجاع للعميل الأول: Mohamed
+    res1 = cache.get(tenant_id, post_id, "INTENT_DETAILS", sender_name="Mohamed")
+    assert res1 is not None
+    assert "Mohamed" in res1[0]
+    assert "Mohamed" in res1[1]
+
+    # استرجاع للعميل الثاني: Sara بنفس المحتوى بدون أي استهلاك ذكاء اصطناعي
+    res2 = cache.get(tenant_id, post_id, "INTENT_DETAILS", sender_name="Sara")
+    assert res2 is not None
+    assert "Sara" in res2[0]
+    assert "Sara" in res2[1]
+
+    # بعد انتهاء الـ TTL
+    time.sleep(1.1)
+    assert cache.get(tenant_id, post_id, "INTENT_DETAILS") is None
+
+
+# ============================================================================
+# 31. اختبار API مسار حذف الشاتات القديمة
+# ============================================================================
+
+def test_maintenance_purge_api(monkeypatch):
+    import server
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(server, "purge_old_chat_messages", lambda days: {"status": "ok", "days": days, "deleted": 15})
+
+    client = TestClient(server.app)
+    res = client.post("/api/maintenance/purge-old-chats?days=20")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert data["days"] == 20
+    assert data["deleted"] == 15
+
+
+
 
 

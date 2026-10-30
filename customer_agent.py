@@ -337,6 +337,40 @@ def save_message_to_db(conversation_id: str, role: str, content: str):
         print("خطأ في حفظ الرسالة بالداتابيز:", e)
 
 
+def purge_old_chat_messages(days: int = 20) -> dict:
+    """
+    حذف رسائل الشات القديمة التي مضى عليها أكثر من 20 يوماً من جدول messages 
+    وتنظيف المحادثات القديمة لتقليل استهلاك مساحة قاعدة البيانات (Supabase Storage).
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    deleted_messages = 0
+    deleted_conversations = 0
+    try:
+        # 1. حذف الرسائل التي مر عليها أكثر من 20 يوماً
+        res = supabase.table("messages").delete().lt("created_at", cutoff).execute()
+        if res and hasattr(res, "data") and res.data:
+            deleted_messages = len(res.data)
+            print(f"🧹 [تنظيف الشات] تم حذف {deleted_messages} رسالة قديمة مضى عليها أكثر من {days} يوماً.")
+        
+        # 2. تنظيف المحادثات القديمة التي ليس لها نشاط حديث
+        conv_res = supabase.table("conversations").delete().lt("updated_at", cutoff).execute()
+        if conv_res and hasattr(conv_res, "data") and conv_res.data:
+            deleted_conversations = len(conv_res.data)
+            print(f"🧹 [تنظيف الشات] تم تنظيف {deleted_conversations} محادثة قديمة.")
+            
+        return {
+            "status": "ok",
+            "days": days,
+            "cutoff": cutoff,
+            "deleted_messages": deleted_messages,
+            "deleted_conversations": deleted_conversations,
+        }
+    except Exception as e:
+        print(f"❌ خطأ أثناء تنظيف الشاتات القديمة: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 def cancel_customer_order_handler(
     tenant_id: str, channel: str, customer_id: str, order_number: int, phone: str = "", reason: str = ""
 ) -> dict:
