@@ -44,3 +44,4 @@ $$;
 
 -- (اختياري) لتفعيل الجدولة التلقائية يومياً في Supabase باستخدام امتداد pg_cron (لو مفعّل):
 -- SELECT cron.schedule('daily_chat_purge', '0 3 * * *', 'SELECT purge_old_chat_messages(20);');
+
