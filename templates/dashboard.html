@@ -1,18 +1,20 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl" class="h-full">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>لوحة تحكم التاجر | AI Agency</title>
-  
+
   <!-- Telegram Web App JS -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  
+
   <!-- Google Fonts: Cairo -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -42,6 +44,7 @@
       font-family: 'Cairo', sans-serif;
       -webkit-tap-highlight-color: transparent;
     }
+
     /* Telegram theme integration */
     :root {
       --bg-color: #0f172a;
@@ -49,51 +52,171 @@
       --text-color: #f8fafc;
       --accent-color: #4f46e5;
     }
+
     .tg-theme-enabled {
       background-color: var(--tg-theme-bg-color, var(--bg-color));
       color: var(--tg-theme-text-color, var(--text-color));
     }
+
     .glass-card {
       background: rgba(30, 41, 59, 0.7);
       backdrop-filter: blur(12px);
       border: 1px solid rgba(255, 255, 255, 0.08);
     }
+
     .pulse-glow-green {
       box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
     }
+
     .pulse-glow-amber {
       box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
     }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+<body
+  class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
 
   <!-- Floating Toast Notification -->
-  <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform -translate-y-20 opacity-0 pointer-events-none flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold border backdrop-blur-md">
+  <div id="toast"
+    class="fixed top-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform -translate-y-20 opacity-0 pointer-events-none flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold border backdrop-blur-md">
     <span id="toastIcon" class="text-xl"></span>
     <span id="toastMsg"></span>
   </div>
 
   <!-- Store Switcher / Login Modal (if no tenant loaded) -->
-  <div id="loginModal" class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
-    <div class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center">
-      <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">
+  <div id="loginModal"
+    class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div
+      class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center">
+      <div
+        class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">
         🏬
       </div>
       <h2 class="text-2xl font-bold mb-2">تسجيل الدخول للوحة التحكم</h2>
-      <p class="text-slate-400 text-sm mb-6">أدخل معرّف المتجر (Tenant ID) أو اختر متجرك للمتابعة</p>
-      
+      <p class="text-slate-400 text-sm mb-6">أدخل معرّف المتجر (Tenant ID) للمتابعة</p>
+
       <div class="space-y-4">
         <div>
-          <label class="block text-right text-xs font-semibold text-slate-300 mb-2">معرّف المتجر أو الاسم</label>
-          <input type="text" id="manualTenantInput" placeholder="مثال: e0ec2505 أو اسم المحل" 
-                 class="w-full px-4 py-3 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-slate-100 placeholder-slate-500 transition text-sm">
+          <label class="block text-right text-xs font-semibold text-slate-300 mb-2">معرّف المتجر (Tenant ID)</label>
+          <input type="text" id="manualTenantInput" placeholder="مثال: c87109de (كود المعرّف الخاص بمتجرك)"
+            class="w-full px-4 py-3 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none text-slate-100 placeholder-slate-500 transition text-sm">
         </div>
-        <button onclick="submitManualTenant()" class="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition transform active:scale-95 text-sm flex items-center justify-center gap-2">
+        <button onclick="submitManualTenant()"
+          class="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition transform active:scale-95 text-sm flex items-center justify-center gap-2">
           <span>دخول اللوحة</span>
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Add Branch Modal -->
+  <div id="addBranchModal"
+    class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div
+      class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl text-right">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🏬</span>
+          <h3 class="text-base sm:text-lg font-bold text-white">إضافة فرع جديد للمتجر</h3>
+        </div>
+        <button type="button" onclick="closeAddBranchModal()"
+          class="text-slate-400 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <form id="addBranchForm" onsubmit="submitAddBranch(event)" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">اسم الفرع *</label>
+          <input type="text" id="branchNameInput" placeholder="مثال: فرع الفيوم، فرع وسط البلد" required
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none text-slate-100 text-sm">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">المحافظة *</label>
+            <input type="text" id="branchGovInput" placeholder="مثال: الفيوم، القاهرة، الجيزة" required
+              class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none text-slate-100 text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">مواعيد العمل</label>
+            <input type="text" id="branchHoursInput" placeholder="مثال: من 12 ظهراً لـ 11 مساءً"
+              value="من 12 ظهراً لـ 11 مساءً"
+              class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none text-slate-100 text-sm">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">العنوان بالتفصيل *</label>
+          <input type="text" id="branchAddressInput" placeholder="مثال: شارع الحرية بجوار محطة القطار" required
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none text-slate-100 text-sm">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">رابط خرائط جوجل (Google Maps URL)</label>
+          <input type="url" id="branchMapInput" placeholder="https://maps.app.goo.gl/..."
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none text-slate-100 text-xs font-mono dir-ltr text-left">
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800/80">
+          <button type="button" onclick="closeAddBranchModal()"
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition">
+            إلغاء
+          </button>
+          <button type="submit" id="saveBranchBtn"
+            class="px-5 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-amber-600/20 transition transform active:scale-95 flex items-center gap-1.5">
+            <span id="saveBranchSpinner" class="hidden animate-spin">⏳</span>
+            <span>حفظ الفرع</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Shipping Rate Modal -->
+  <div id="addShippingRateModal"
+    class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div
+      class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl text-right">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🚚</span>
+          <h3 class="text-base sm:text-lg font-bold text-white">إضافة تسعيرة شحن لمحافظة</h3>
+        </div>
+        <button type="button" onclick="closeAddShippingRateModal()"
+          class="text-slate-400 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <form id="addShippingRateForm" onsubmit="submitAddShippingRate(event)" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">المحافظة أو المنطقة *</label>
+          <input type="text" id="shippingGovInput" placeholder="مثال: القاهرة، الجيزة، الإسكندرية، الصعيد..." required
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none text-slate-100 text-sm">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">تكلفة الشحن (بالجنيه المصري) *</label>
+          <div class="relative">
+            <input type="number" step="any" min="0" id="shippingPriceInput" placeholder="مثال: 45" required
+              class="w-full px-4 py-2.5 pl-14 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none text-slate-100 text-sm font-mono dir-ltr text-left">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">ج.م</span>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800/80">
+          <button type="button" onclick="closeAddShippingRateModal()"
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition">
+            إلغاء
+          </button>
+          <button type="submit" id="saveShippingRateBtn"
+            class="px-5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-teal-600/20 transition transform active:scale-95 flex items-center gap-1.5">
+            <span id="saveShippingRateSpinner" class="hidden animate-spin">⏳</span>
+            <span>حفظ التسعيرة</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -103,40 +226,46 @@
     <!-- Top Navigation Header -->
     <header class="glass-card rounded-3xl p-4 sm:p-6 flex flex-wrap items-center justify-between gap-4 shadow-xl">
       <div class="flex items-center gap-4">
-        <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-2xl">
+        <div
+          class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20 text-2xl">
           🚀
         </div>
         <div>
           <div class="flex items-center gap-2">
-            <h1 id="merchantName" class="text-xl sm:text-2xl font-extrabold text-white tracking-wide">جاري التحميل...</h1>
-            <span id="botStatusBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
+            <h1 id="merchantName" class="text-xl sm:text-2xl font-extrabold text-white tracking-wide">جاري التحميل...
+            </h1>
+            <span id="botStatusBadge"
+              class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
               <span class="w-2 h-2 rounded-full bg-slate-400"></span>
               فحص...
             </span>
           </div>
           <div class="flex items-center gap-2 mt-1">
             <span class="text-xs text-slate-400">المعرّف:</span>
-            <code id="merchantId" class="text-xs font-mono bg-slate-800/80 text-indigo-300 px-2 py-0.5 rounded-lg border border-slate-700/60 select-all cursor-pointer" onclick="copyId()" title="اضغط للنسخ">--</code>
+            <code id="merchantId"
+              class="text-xs font-mono bg-slate-800/80 text-indigo-300 px-2 py-0.5 rounded-lg border border-slate-700/60 select-all cursor-pointer"
+              onclick="copyId()" title="اضغط للنسخ">--</code>
           </div>
         </div>
       </div>
 
       <div class="flex items-center gap-2">
-        <button onclick="loadDashboardData()" title="تحديث البيانات" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95 border border-slate-700/60">
-          <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-        </button>
-        <button onclick="openChangeStoreModal()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition border border-slate-700/60 flex items-center gap-1.5">
-          <span>تبديل المتجر</span>
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/></svg>
+        <button onclick="loadDashboardData()" title="تحديث البيانات"
+          class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition active:scale-95 border border-slate-700/60 flex items-center justify-center">
+          <svg id="refreshIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
         </button>
       </div>
     </header>
 
     <!-- Quick Stats Grid -->
     <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-      
+
       <!-- Card 1: Bot Status -->
-      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+      <div
+        class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-slate-400">حالة الرد الآلي</span>
           <span class="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl text-lg">🤖</span>
@@ -148,7 +277,8 @@
       </div>
 
       <!-- Card 2: Messages -->
-      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+      <div
+        class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-slate-400">عدد الرسائل</span>
           <span class="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl text-lg">💬</span>
@@ -160,7 +290,8 @@
       </div>
 
       <!-- Card 3: Products -->
-      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+      <div
+        class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-slate-400">المنتجات بالمخزن</span>
           <span class="p-2 bg-blue-500/10 text-blue-400 rounded-xl text-lg">📦</span>
@@ -172,7 +303,8 @@
       </div>
 
       <!-- Card 4: Orders -->
-      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+      <div
+        class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-slate-400">إجمالي الطلبات</span>
           <span class="p-2 bg-purple-500/10 text-purple-400 rounded-xl text-lg">🛒</span>
@@ -190,7 +322,7 @@
 
       <!-- Left Column: Bot Control Card (1 col) -->
       <div class="lg:col-span-1 space-y-6">
-        
+
         <!-- Bot Pause / Resume Card -->
         <div class="glass-card rounded-3xl p-5 sm:p-6 border-slate-800 flex flex-col justify-between gap-5 shadow-lg">
           <div>
@@ -210,13 +342,16 @@
             </div>
 
             <!-- Modern Toggle Switch -->
-            <label class="relative inline-flex items-center cursor-pointer">
+            <label class="relative inline-flex items-center cursor-pointer select-none" dir="ltr">
               <input type="checkbox" id="botEnabledToggle" onchange="toggleBotSwitch()" class="sr-only peer">
-              <div class="w-14 h-8 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:right-[4px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-600 peer-checked:after:-translate-x-6"></div>
+              <div
+                class="w-14 h-8 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-600 transition-colors duration-200 after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:shadow-md after:transition-transform after:duration-200 peer-checked:after:translate-x-6">
+              </div>
             </label>
           </div>
 
-          <button id="quickToggleBtn" onclick="toggleBotSwitchClick()" class="w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200">
+          <button id="quickToggleBtn" onclick="toggleBotSwitchClick()"
+            class="w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200">
             <span>تبديل حالة البوت</span>
           </button>
         </div>
@@ -240,7 +375,8 @@
         <div class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl">
           <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
             <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xl">
+              <div
+                class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-xl">
                 📊
               </div>
               <div>
@@ -248,10 +384,14 @@
                 <p class="text-xs text-slate-400">مزامنة المنتجات والأسعار والكميات المتاحة</p>
               </div>
             </div>
-            
-            <a id="openSheetBtn" href="#" target="_blank" class="hidden text-xs text-emerald-400 hover:text-emerald-300 font-bold px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 items-center gap-1 transition">
+
+            <a id="openSheetBtn" href="#" target="_blank"
+              class="hidden text-xs text-emerald-400 hover:text-emerald-300 font-bold px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 items-center gap-1 transition">
               <span>فتح الشيت</span>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
             </a>
           </div>
 
@@ -259,9 +399,10 @@
             <div>
               <label class="block text-xs font-semibold text-slate-300 mb-2">رابط جدول Google Sheets</label>
               <div class="relative">
-                <input type="url" id="sheetsUrlInput" placeholder="https://docs.google.com/spreadsheets/d/..." 
-                       class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
-                <button type="button" onclick="pasteToInput('sheetsUrlInput')" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition">
+                <input type="url" id="sheetsUrlInput" placeholder="https://docs.google.com/spreadsheets/d/..."
+                  class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
+                <button type="button" onclick="pasteToInput('sheetsUrlInput')"
+                  class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition">
                   لصق
                 </button>
               </div>
@@ -271,7 +412,8 @@
             </div>
 
             <div class="flex justify-end">
-              <button type="submit" id="saveSheetsBtn" class="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-emerald-600/20 transition transform active:scale-95 flex items-center gap-2">
+              <button type="submit" id="saveSheetsBtn"
+                class="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-emerald-600/20 transition transform active:scale-95 flex items-center gap-2">
                 <span id="saveSheetsSpinner" class="hidden animate-spin">⏳</span>
                 <span>حفظ رابط الشيت</span>
               </button>
@@ -292,39 +434,79 @@
           </div>
 
           <form id="facebookForm" onsubmit="saveFacebookSettings(event)" class="space-y-4">
-            
+
             <!-- Facebook Page ID -->
             <div>
               <label class="block text-xs font-semibold text-slate-300 mb-2">معرّف الصفحة (Page ID)</label>
-              <input type="text" id="facebookPageIdInput" placeholder="مثال: 109876543210987" 
-                     class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
+              <input type="text" id="facebookPageIdInput" placeholder="مثال: 109876543210987"
+                class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
               <p class="text-[11px] text-slate-500 mt-1.5">
                 تجد معرّف الصفحة في إعدادات صفحتك على فيسبوك (About -> Page ID).
               </p>
             </div>
 
             <!-- Facebook Page Access Token -->
-            <div>
-              <label class="block text-xs font-semibold text-slate-300 mb-2">توكن الوصول للصفحة (Page Access Token)</label>
-              <div class="relative">
-                <input type="password" id="facebookTokenInput" placeholder="EAAB..." 
-                       class="w-full px-4 py-3 pl-20 rounded-xl bg-slate-900 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
-                <div class="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  <button type="button" onclick="toggleTokenVisibility()" class="text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition" id="toggleTokenBtn">
-                    إظهار
-                  </button>
-                  <button type="button" onclick="pasteToInput('facebookTokenInput')" class="text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition">
-                    لصق
+            <div id="facebookTokenSection">
+              <!-- When token is already saved: masked & hidden -->
+              <div id="tokenSavedContainer"
+                class="hidden p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-800/40">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="flex items-center gap-2.5">
+                    <div
+                      class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm flex-shrink-0">
+                      🔒
+                    </div>
+                    <div>
+                      <div class="text-xs font-bold text-emerald-300">تم حفظ وتشفير التوكن بأمان</div>
+                      <div class="text-[10px] text-slate-400">الحقل مخفي لحماية حسابك (Never-expiring Token نشط ومفعل)
+                      </div>
+                    </div>
+                  </div>
+                  <button type="button" onclick="showChangeTokenInput()"
+                    class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold border border-slate-700 transition flex-shrink-0">
+                    تغيير التوكن ✏️
                   </button>
                 </div>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1.5">
-                التوكن الدائم (Never-expiring Page Access Token) لتفويض البوت بإرسال الردود.
-              </p>
+
+              <!-- When entering or changing token -->
+              <div id="tokenEntryContainer">
+                <div class="flex items-center justify-between mb-2">
+                  <label class="block text-xs font-semibold text-slate-300">توكن الوصول للصفحة (Page Access
+                    Token)</label>
+                  <button type="button" id="cancelChangeTokenBtn" onclick="hideChangeTokenInput()"
+                    class="hidden text-[11px] text-slate-400 hover:text-rose-400">
+                    إلغاء التغيير ✕
+                  </button>
+                </div>
+                <div class="relative">
+                  <input type="password" id="facebookTokenInput" placeholder="أدخل أو الصق التوكن (EAAB...)"
+                    class="w-full px-4 py-3 pl-20 rounded-xl bg-slate-900 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 placeholder-slate-600 transition text-xs sm:text-sm font-mono dir-ltr text-left">
+                  <div class="absolute left-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <button type="button" onclick="toggleTokenVisibility()"
+                      class="text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition"
+                      id="toggleTokenBtn">
+                      إظهار
+                    </button>
+                    <button type="button" onclick="pasteToInput('facebookTokenInput')"
+                      class="text-[11px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 transition">
+                      لصق
+                    </button>
+                  </div>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1.5">
+                  التوكن الدائم (Never-expiring Page Access Token) — سيختفي الحقل تلقائياً بمجرد حفظه.
+                </p>
+              </div>
             </div>
 
-            <div class="flex justify-end pt-2">
-              <button type="submit" id="saveFacebookBtn" class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-blue-600/20 transition transform active:scale-95 flex items-center gap-2">
+            <div class="flex flex-wrap justify-between items-center gap-2 pt-2">
+              <button type="button" onclick="unlinkFacebook()" id="unlinkFacebookBtn"
+                class="px-4 py-2.5 bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 font-bold rounded-xl text-xs sm:text-sm border border-rose-600/30 transition flex items-center gap-1.5">
+                <span>🗑️ إلغاء ربط الصفحة</span>
+              </button>
+              <button type="submit" id="saveFacebookBtn"
+                class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-blue-600/20 transition transform active:scale-95 flex items-center gap-2">
                 <span id="saveFacebookSpinner" class="hidden animate-spin">⏳</span>
                 <span>حفظ إعدادات فيسبوك</span>
               </button>
@@ -335,6 +517,132 @@
 
       </div>
 
+    </div>
+
+    <!-- Section 3: Social Media Channels (قنوات السوشيال ميديا والتواصل) -->
+    <div class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl">
+            🌐
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">قنوات السوشيال ميديا والتواصل</h3>
+            <p class="text-xs text-slate-400">القنوات والمنصات المربوطة التي يستقبل منها الذكاء الاصطناعي الرسائل
+              والكومنتات</p>
+          </div>
+        </div>
+        <span class="text-[11px] text-slate-400 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/60">
+          للربط السريع عبر البوت: <code class="text-indigo-300 font-mono">/link_page</code>
+        </span>
+      </div>
+
+      <!-- Social Channels Cards Grid -->
+      <div id="socialChannelsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- Section 4: Store Branches & Locations (فروع وعناوين المتجر) -->
+    <div class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center text-xl">
+            📍
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">فروع وعناوين المتجر (Branches)</h3>
+            <p class="text-xs text-slate-400">الفروع ومواقع الاستلام التي يُجيب بها الذكاء الاصطناعي للعملاء باللوكيشن
+            </p>
+          </div>
+        </div>
+
+        <button onclick="openAddBranchModal()"
+          class="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-amber-600/20 transition transform active:scale-95 flex items-center gap-1.5">
+          <span>+ إضافة فرع جديد</span>
+        </button>
+      </div>
+
+      <!-- Branches List Container -->
+      <div id="branchesContainer" class="space-y-3 pt-1">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- Section 5: Shipping & Delivery Settings (إعدادات ومصاريف الشحن) -->
+    <div class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-teal-500/10 text-teal-400 flex items-center justify-center text-xl">
+            🚚
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">إعدادات ومصاريف الشحن (Shipping)</h3>
+            <p class="text-xs text-slate-400">تحديد تكلفة الشحن التي يعتمدها الذكاء الاصطناعي مع العملاء في الأوردرات
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span id="shippingStatusBadge" class="text-xs font-semibold px-3 py-1.5 rounded-xl border">
+            <!-- Loaded via JS -->
+          </span>
+          <button type="button" onclick="toggleShippingStatus()" id="toggleShippingBtn"
+            class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition">
+            تبديل الحالة 🔄
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Flat Rate Box & Custom Rates Box -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        <!-- Flat Rate Card (شحن موحد لجميع المحافظات) -->
+        <div
+          class="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between space-y-3">
+          <div>
+            <div class="flex items-center gap-2 mb-1.5">
+              <span class="text-lg">⚡</span>
+              <h4 class="text-sm font-bold text-white">شحن موحد لجميع المحافظات</h4>
+            </div>
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              لو عندك سعر ثابت للتوصيل لأي مكان في مصر، اكتبه هنا واضغط تطبيق:
+            </p>
+          </div>
+
+          <form onsubmit="submitFlatShipping(event)" class="space-y-2.5 pt-1">
+            <div class="relative">
+              <input type="number" step="any" min="0" id="flatShippingInput" placeholder="مثال: 60" required
+                class="w-full px-4 py-2.5 pl-14 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none text-slate-100 text-sm font-mono dir-ltr text-left">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">ج.م</span>
+            </div>
+            <button type="submit" id="saveFlatShippingBtn"
+              class="w-full py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-teal-600/20 transition transform active:scale-95 flex items-center justify-center gap-1.5">
+              <span>تطبيق كشحن موحد ⚡</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Custom Rates by Governorate (أسعار مخصصة للمحافظات) -->
+        <div class="lg:col-span-2 p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/60">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">📋</span>
+              <h4 class="text-sm font-bold text-white">تسعيرة المحافظات المسجلة</h4>
+            </div>
+            <button type="button" onclick="openAddShippingRateModal()"
+              class="px-3 py-1.5 bg-teal-600/10 hover:bg-teal-600/20 text-teal-400 font-bold rounded-xl text-xs border border-teal-500/30 transition flex items-center gap-1">
+              <span>+ إضافة محافظة</span>
+            </button>
+          </div>
+
+          <!-- Rates List Grid -->
+          <div id="shippingRatesContainer" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+      </div>
     </div>
 
     <!-- Footer -->
@@ -420,6 +728,47 @@
         input.type = 'password';
         btn.innerText = 'إظهار';
       }
+     // Facebook Token Security & Visibility State
+    let hasSavedToken = false;
+
+    function updateTokenUIState(isChanging = false) {
+      const savedContainer = document.getElementById('tokenSavedContainer');
+      const entryContainer = document.getElementById('tokenEntryContainer');
+      const cancelBtn = document.getElementById('cancelChangeTokenBtn');
+      const tokenInput = document.getElementById('facebookTokenInput');
+
+      if (!savedContainer || !entryContainer) return;
+
+      if (hasSavedToken && !isChanging) {
+        savedContainer.classList.remove('hidden');
+        entryContainer.classList.add('hidden');
+        if (tokenInput) tokenInput.value = '';
+      } else {
+        savedContainer.classList.add('hidden');
+        entryContainer.classList.remove('hidden');
+        if (cancelBtn) {
+          if (hasSavedToken && isChanging) {
+            cancelBtn.classList.remove('hidden');
+          } else {
+            cancelBtn.classList.add('hidden');
+          }
+        }
+      }
+    }
+
+    function showChangeTokenInput() {
+      updateTokenUIState(true);
+      const tokenInput = document.getElementById('facebookTokenInput');
+      if (tokenInput) {
+        tokenInput.value = '';
+        tokenInput.focus();
+      }
+    }
+
+    function hideChangeTokenInput() {
+      const tokenInput = document.getElementById('facebookTokenInput');
+      if (tokenInput) tokenInput.value = '';
+      updateTokenUIState(false);
     }
 
     // Tenant Resolution Logic
@@ -486,7 +835,12 @@
     function submitManualTenant() {
       const input = document.getElementById('manualTenantInput').value.trim();
       if (!input) {
-        showToast('يرجى كتابة معرّف المتجر', 'error');
+        showToast('يرجى كتابة معرّف المتجر (Tenant ID)', 'error');
+        return;
+      }
+      const cleanHex = input.replace(/-/g, '').toLowerCase();
+      if (cleanHex.length < 8 || !/^[0-9a-f]+$/i.test(cleanHex)) {
+        showToast('الدخول متاح فقط بكود المعرّف (Tenant ID) وليس بالاسم لضمان الأمان والخصوصية', 'error');
         return;
       }
       currentTenantId = input;
@@ -540,7 +894,13 @@
         updateSheetButton(data.google_sheets_url);
 
         document.getElementById('facebookPageIdInput').value = data.facebook_page_id || '';
-        document.getElementById('facebookTokenInput').value = data.facebook_page_token || '';
+        hasSavedToken = Boolean(data.facebook_page_token);
+        updateTokenUIState();
+
+        // Render Social Channels & Branches
+        renderSocialChannels(data.social_channels);
+        renderBranches(data.branches);
+        renderShippingSection(data.shipping_rates, data.shipping_enabled);
 
       } catch (err) {
         console.error('Error loading dashboard data:', err);
@@ -641,8 +1001,8 @@
       btn.disabled = true;
       spinner.classList.remove('hidden');
 
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+      try
+  onst res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ google_sheets_url: url })
@@ -672,26 +1032,40 @@
       const tokenInput = document.getElementById('facebookTokenInput');
       const btn = document.getElementById('saveFacebookBtn');
       const spinner = document.getElementById('saveFacebookSpinner');
+      const entryContainer = document.getElementById('tokenEntryContainer');
 
       const pageId = pageIdInput.value.trim();
-      const token = tokenInput.value.trim();
+      const token = tokenInput ? tokenInput.value.trim() : '';
 
       btn.disabled = true;
       spinner.classList.remove('hidden');
+
+      const payload = {
+        facebook_page_id: pageId
+      };
+
+      // Only send token if entry field is active/visible and user typed/pasted a new token
+      const isEntryVisible = entryContainer && !entryContainer.classList.contains('hidden');
+      if (isEntryVisible && token) {
+        payload.facebook_page_token = token;
+      }
 
       try {
         const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            facebook_page_id: pageId,
-            facebook_page_token: token
-          })
+          body: JSON.stringify(payload)
         });
         const json = await res.json();
 
         if (res.ok && json.status === 'success') {
-          showToast('تم تحديث بيانات صفحة فيسبوك بنجاح! 📘', 'success');
+          if (pageId && !token && !hasSavedToken) {
+            showToast('⚠️ تم حفظ رقم الصفحة، ولكن يجب إدخال التوكن (Page Token) لتفعيل الرد التلقائي وإرسال الرسائل.', 'warning');
+          } else {
+            showToast('تم حفظ إعدادات فيسبوك وتأمين التوكن بنجاح! 🔒', 'success');
+          }
+          if (tokenInput) tokenInput.value = '';
+          loadDashboardData();
         } else {
           showToast(json.detail || 'فشل تحديث بيانات فيسبوك', 'error');
         }
@@ -703,8 +1077,442 @@
       }
     }
 
+    // Unlink Facebook Page
+    async function unlinkFacebook() {
+      if (!currentTenantId) return;
+      if (!confirm('هل أنت متأكد من رغبتك في إلغاء ربط صفحة فيسبوك؟ سيتوقف البوت عن الرد على رسائل الصفحة.')) {
+        return;
+      }
+
+      const btn = document.getElementById('unlinkFacebookBtn');
+      if (btn) btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            facebook_page_id: "",
+            facebook_page_token: ""
+          })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تم إلغاء ربط صفحة فيسبوك بنجاح! 🗑️', 'info');
+          const pageIdInput = document.getElementById('facebookPageIdInput');
+          const tokenInput = document.getElementById('facebookTokenInput');
+          if (pageIdInput) pageIdInput.value = '';
+          if (tokenInput) tokenInput.value = '';
+          hasSavedToken = false;
+          updateTokenUIState(false);
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل إلغاء الربط', 'error');
+        }
+      } catch (err) {
+        showToast('خطأ في الاتصال أثناء إلغاء الربط', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // Render Social Media Channels Grid
+    function renderSocialChannels(channels) {
+      const container = document.getElementById('socialChannelsGrid');
+      if (!container) return;
+      if (!channels || Object.keys(channels).length === 0) {
+        container.innerHTML = '<div class="col-span-full text-xs text-slate-500 text-center py-4">لا توجد قنوات مربوطة حالياً.</div>';
+        return;
+      }
+
+      let html = '';
+      for (const [key, ch] of Object.entries(channels)) {
+        let borderClass = 'border-slate-800 bg-slate-900/40';
+        let badgeClass = 'bg-slate-800 text-slate-400 border border-slate-700';
+        let badgeText = '⚪ غير مربوط';
+
+        if (ch.status === 'connected') {
+          borderClass = 'border-emerald-800/60 bg-emerald-950/20';
+          badgeClass = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
+          badgeText = '🟢 متصل ونشط';
+        } else if (ch.status === 'pending_token') {
+          borderClass = 'border-amber-800/60 bg-amber-950/20';
+          badgeClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/30';
+          badgeText = '⚠️ ناقص التوكن';
+        }
+
+        const idDisplay = ch.id ? `<div class="text-[11px] font-mono text-slate-400 truncate mt-1 dir-ltr text-right" title="${ch.id}">ID: ${ch.id}</div>` : '';
+        const visitBtn = (ch.status === 'connected' && ch.url) ? `
+          <a href="${ch.url}" target="_blank" class="mt-2 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-1">
+            <span>زيارة الرابط</span>
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+          </a>` : '';
+
+        html += `
+          <div class="rounded-2xl p-4 border ${borderClass} transition flex flex-col justify-between">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">${ch.icon || '📱'}</span>
+                <span class="text-xs font-bold text-white">${ch.name}</span>
+              </div>
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${badgeClass}">
+                ${badgeText}
+              </span>
+            </div>
+            <div class="mt-2">
+              ${idDisplay}
+              ${visitBtn}
+            </div>
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+    }
+
+    // Render Branches
+    function renderBranches(branches) {
+      const container = document.getElementById('branchesContainer');
+      if (!container) return;
+      if (!branches || branches.length === 0) {
+        container.innerHTML = `
+          <div class="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-slate-400 space-y-2">
+            <span class="text-3xl block">🏬</span>
+            <div class="text-xs font-bold text-slate-300">لا توجد فروع مسجلة حتى الآن</div>
+            <p class="text-[11px] text-slate-500">أضف فروع متجرك لتسهيل توجيه العملاء للاستلام وتزويد الذكاء الاصطناعي بالعناوين ومواقع الخريطة.</p>
+            <button onclick="openAddBranchModal()" class="mt-2 px-3.5 py-1.5 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 text-xs font-bold transition inline-flex items-center gap-1">
+              <span>+ إضافة فرع الآن</span>
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
+      for (const b of branches) {
+        const mapBtn = b.google_maps_url ? `
+          <a href="${b.google_maps_url}" target="_blank" class="px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 text-xs font-bold transition flex items-center gap-1">
+            <span>🗺️ الخريطة</span>
+          </a>
+        ` : '';
+
+        html += `
+          <div class="glass-card rounded-2xl p-4 sm:p-5 border border-slate-800/80 bg-slate-900/60 flex flex-col justify-between gap-3 hover:border-slate-700 transition">
+            <div>
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="p-2 bg-amber-500/10 text-amber-400 rounded-xl text-base">🏬</span>
+                  <div>
+                    <h4 class="text-sm font-bold text-white">${b.name}</h4>
+                    <span class="text-[11px] text-amber-400/90 font-medium">${b.governorate || ''}</span>
+                  </div>
+                </div>
+                <button onclick="deleteBranch('${b.id}', '${b.name}')" title="حذف الفرع" class="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+              </div>
+
+              <div class="space-y-1.5 mt-3 text-xs text-slate-300">
+                <div class="flex items-start gap-1.5">
+                  <span class="text-slate-500 text-[11px]">العنوان:</span>
+                  <span class="text-slate-200">${b.address || 'غير محدد'}</span>
+                </div>
+                ${b.working_hours ? `
+                <div class="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                  <span>⏰ المواعيد:</span>
+                  <span>${b.working_hours}</span>
+                </div>` : ''}
+                ${b.phone ? `
+                <div class="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                  <span>📞 هاتف:</span>
+                  <span class="font-mono dir-ltr">${b.phone}</span>
+                </div>` : ''}
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800/60">
+              <span class="text-[10px] text-slate-500">مربوط بالذكاء الاصطناعي</span>
+              ${mapBtn}
+            </div>
+          </div>
+        `;
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function openAddBranchModal() {
+      document.getElementById('addBranchModal').classList.remove('hidden');
+      document.getElementById('branchNameInput').focus();
+    }
+
+    function closeAddBranchModal() {
+      document.getElementById('addBranchModal').classList.add('hidden');
+      document.getElementById('addBranchForm').reset();
+    }
+
+    async function submitAddBranch(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
+
+      const name = document.getElementById('branchNameInput').value.trim();
+      const governorate = document.getElementById('branchGovInput').value.trim();
+      const address = document.getElementById('branchAddressInput').value.trim();
+      const working_hours = document.getElementById('branchHoursInput').value.trim();
+      const google_maps_url = document.getElementById('branchMapInput').value.trim();
+
+      const btn = document.getElementById('saveBranchBtn');
+      const spinner = document.getElementById('saveBranchSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, governorate, address, working_hours, google_maps_url })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تمت إضافة الفرع بنجاح! 🏬', 'success');
+          closeAddBranchModal();
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل إضافة الفرع', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    async function deleteBranch(branchId, branchName) {
+      if (!confirm(`هل أنت متأكد من حذف ${branchName}؟`)) return;
+      if (!currentTenantId) return;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches/${encodeURIComponent(branchId)}`, {
+          method: 'DELETE'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تم حذف الفرع بنجاح', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حذف الفرع', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
+    // Render Shipping Section
+    function renderShippingSection(rates, enabled) {
+      const badge = document.getElementById('shippingStatusBadge');
+      const toggleBtn = document.getElementById('toggleShippingBtn');
+      const container = document.getElementById('shippingRatesContainer');
+      const flatInput = document.getElementById('flatShippingInput');
+
+      const isEnabled = enabled !== false;
+      if (badge) {
+        if (isEnabled) {
+          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+          badge.innerText = '🟢 الشحن مفعّل';
+        } else {
+          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-rose-500/10 text-rose-400 border-rose-500/30';
+          badge.innerText = '🔴 الشحن موقوف (استلام فقط)';
+        }
+      }
+
+      if (toggleBtn) {
+        toggleBtn.innerText = isEnabled ? 'إيقاف الشحن ⏹️' : 'تفعيل الشحن ▶️';
+      }
+
+      if (!container) return;
+
+      const ratesList = rates || [];
+      // If flat rate exists, prefill the flat input
+      const flatRow = ratesList.find(r => r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد');
+      if (flatRow && flatInput && !flatInput.value) {
+        flatInput.value = flatRow.price;
+      }
+
+      if (ratesList.length === 0) {
+        container.innerHTML = `
+          <div class="p-4 rounded-xl bg-slate-800/40 border border-dashed border-slate-700/80 text-center space-y-1 text-slate-400 text-xs">
+            <div>💡 لم يتم تسجيل أسعار شحن مخصصة بعد.</div>
+            <div class="text-[11px] text-slate-500">يعتمد الذكاء الاصطناعي السعر الافتراضي (50 ج.م) أو يمكنك تطبيق شحن موحد الآن ⚡.</div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">';
+      for (const r of ratesList) {
+        const isFlat = r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد';
+        const icon = isFlat ? '⚡' : '📍';
+        const cardBg = isFlat ? 'bg-teal-950/20 border-teal-800/40' : 'bg-slate-800/60 border-slate-700/60';
+        html += `
+          <div class="p-2.5 sm:p-3 rounded-xl border ${cardBg} flex items-center justify-between gap-2 transition hover:border-teal-500/40">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-base">${icon}</span>
+              <div class="truncate">
+                <div class="text-xs font-bold text-white truncate">${r.governorate}</div>
+                <div class="text-[11px] font-mono text-teal-400 font-bold">${Number(r.price).toLocaleString('ar-EG')} ج.م</div>
+              </div>
+            </div>
+            <button onclick="deleteShippingRate('${r.id}', '${r.governorate}')" title="حذف التسعيرة" class="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </div>
+        `;
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    // Toggle Shipping Enabled / Disabled
+    async function toggleShippingStatus() {
+      if (!currentTenantId) return;
+      const btn = document.getElementById('toggleShippingBtn');
+      if (btn) btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-shipping`, {
+          method: 'POST'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(json.message || 'تم تحديث حالة الشحن', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل تبديل حالة الشحن', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // Submit Flat Shipping Rate
+    async function submitFlatShipping(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
+
+      const input = document.getElementById('flatShippingInput');
+      const btn = document.getElementById('saveFlatShippingBtn');
+      const price = parseFloat(input.value);
+
+      if (isNaN(price) || price < 0) {
+        showToast('يرجى إدخال سعر شحن صحيح', 'warning');
+        return;
+      }
+
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            governorate: 'جميع المحافظات',
+            price: price,
+            is_flat: true
+          })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(`تم تطبيق الشحن الموحد (${price} ج.م) لجميع المحافظات بنجاح! 🚚`, 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حفظ الشحن الموحد', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // Modal controls for Custom Governorate Rate
+    function openAddShippingRateModal() {
+      document.getElementById('addShippingRateModal').classList.remove('hidden');
+      document.getElementById('shippingGovInput').focus();
+    }
+
+    function closeAddShippingRateModal() {
+      document.getElementById('addShippingRateModal').classList.add('hidden');
+      document.getElementById('addShippingRateForm').reset();
+    }
+
+    async function submitAddShippingRate(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
+
+      const gov = document.getElementById('shippingGovInput').value.trim();
+      const price = parseFloat(document.getElementById('shippingPriceInput').value);
+
+      if (!gov || isNaN(price) || price < 0) {
+        showToast('يرجى ملء الحقول بشكل صحيح', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('saveShippingRateBtn');
+      const spinner = document.getElementById('saveShippingRateSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            governorate: gov,
+            price: price,
+            is_flat: false
+          })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(`تم حفظ تسعيرة شحن ${gov} بنجاح! 🚚`, 'success');
+          closeAddShippingRateModal();
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حفظ تسعيرة الشحن', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    async function deleteShippingRate(rateId, govName) {
+      if (!confirm(`هل أنت متأكد من حذف تسعيرة شحن ${govName}؟`)) return;
+      if (!currentTenantId) return;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates/${encodeURIComponent(rateId)}`, {
+          method: 'DELETE'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تم حذف تسعيرة الشحن بنجاح', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حذف تسعيرة الشحن', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
     // Initialize on page load
     window.addEventListener('DOMContentLoaded', resolveInitialTenant);
   </script>
 </body>
+
 </html>

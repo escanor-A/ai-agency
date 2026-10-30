@@ -15,7 +15,9 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from check_stock import supabase
-from customer_agent import handle_customer_message, RATE_LIMITER, classify_comment
+from customer_agent import handle_customer_message, RATE_LIMITER, classify_comment, pop_customer_images
+import orders
+from orders import is_shipping_enabled
 from merchant_settings import load_merchant_settings, save_merchant_settings
 from notify import send_complaint_notification, submit_praise_review
 
@@ -148,6 +150,23 @@ async def send_meta_reply(recipient_id: str, text: str, page_access_token: str, 
                 print(f"❌ خطأ في إرسال الرد لـ {platform}:", r.text)
         except Exception as e:
             print(f"❌ استثناء في إرسال {platform}:", type(e).__name__)
+
+
+async def send_meta_image(recipient_id: str, image_url: str, page_access_token: str, platform: str = "messenger"):
+    """إرسال صورة فعلية للعميل في الشات الخاص على ماسنجر أو إنستجرام (رابط عام https)"""
+    url = "https://graph.facebook.com/v21.0/me/messages"
+    headers = {"Authorization": f"Bearer {page_access_token}", "Content-Type": "application/json"}
+    payload = {
+        "recipient": {"id": recipient_id},
+        "message": {"attachment": {"type": "image", "payload": {"url": image_url, "is_reusable": True}}},
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(url, json=payload, headers=headers, timeout=15)
+            if r.status_code != 200:
+                print(f"❌ خطأ في إرسال صورة لـ {platform}:", r.text[:200])
+        except Exception as e:
+            print(f"❌ استثناء في إرسال صورة {platform}:", type(e).__name__)
 
 
 async def send_public_comment_reply(comment_id: str, text: str, page_access_token: str):
@@ -338,6 +357,25 @@ async def send_whatsapp_reply(to_phone: str, text: str, phone_number_id: str, ac
             print(f"❌ استثناء واتساب:", type(e).__name__)
 
 
+async def send_whatsapp_image(to_phone: str, image_url: str, phone_number_id: str, access_token: str):
+    """إرسال صورة فعلية على واتساب عبر WhatsApp Cloud API (رابط عام https)"""
+    url = f"https://graph.facebook.com/v21.0/{phone_number_id}/messages"
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_phone,
+        "type": "image",
+        "image": {"link": image_url},
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(url, json=payload, headers=headers, timeout=15)
+            if r.status_code != 200:
+                print("❌ خطأ في إرسال صورة واتساب:", r.text[:200])
+        except Exception as e:
+            print("❌ استثناء صورة واتساب:", type(e).__name__)
+
+
 async def process_meta_event(data: dict):
     """معالجة الرسائل الواردة من فيسبوك وإنستجرام وواتساب وتحديد التاجر"""
     entry_list = data.get("entry", [])
@@ -393,6 +431,9 @@ async def process_meta_event(data: dict):
             # إرسال الرد للعميل
             if page_token and reply and reply.strip():
                 await send_meta_reply(sender_id, reply, page_token)
+                # صور المنتجات اللي البوت جهزها (لو العميل طلب يشوف الصورة)
+                for img_url in pop_customer_images(tenant["id"], meta_channel, sender_id):
+                    await send_meta_image(sender_id, img_url, page_token, platform=meta_channel)
             elif not page_token:
                 print(f"⚠️ التاجر «{tenant['name']}» مش عنده page_token مسجّل — استخدم /link_page في تليجرام")
 
@@ -502,12 +543,20 @@ async def process_meta_event(data: dict):
 
                 elif category == "order":
                     # order = الخاص بس
-                    order_private_msg = (
-                        f"أهلاً بحضرتك يا فندم! 🌸 يسعدنا جداً تنفيذ طلبك.\n"
-                        f"علشان نسجل الأوردر ويوصلك في أسرع وقت، يرجى إرسال بياناتك هنا في الخاص:\n"
-                        f"• الاسم ثلاثي\n• رقم الموبايل\n• المحافظة والعنوان بالتفصيل\n"
-                        f"والدفع عند الاستلام مع إمكانية المعاينة قبل الاستلام 🙏"
-                    )
+                    if await asyncio.to_thread(is_shipping_enabled, tenant["id"]):
+                        order_private_msg = (
+                            f"أهلاً بحضرتك يا فندم! 🌸 يسعدنا جداً تنفيذ طلبك.\n"
+                            f"علشان نسجل الأوردر ويوصلك في أسرع وقت، يرجى إرسال بياناتك هنا في الخاص:\n"
+                            f"• الاسم ثلاثي\n• رقم الموبايل\n• المحافظة والعنوان بالتفصيل\n"
+                            f"والدفع عند الاستلام مع إمكانية المعاينة قبل الاستلام 🙏"
+                        )
+                    else:
+                        order_private_msg = (
+                            f"أهلاً بحضرتك يا فندم! 🌸 يسعدنا جداً تنفيذ طلبك.\n"
+                            f"علشان نحجزلك الأوردر، يرجى إرسال بياناتك هنا في الخاص:\n"
+                            f"• الاسم\n• رقم الموبايل\n"
+                            f"والاستلام من المحل والدفع عند الاستلام مع إمكانية المعاينة والقياس 🙏"
+                        )
                     await send_meta_reply(sender_id, order_private_msg, page_token, platform="messenger", comment_id=comment_id)
                     continue
 
@@ -645,7 +694,8 @@ async def process_meta_event(data: dict):
                     continue
 
                 elif category == "order":
-                    order_reply = f"أهلاً {sender_name} ❤️ يسعدنا طلبك! يرجى إرسال بياناتك (الاسم، العنوان، الموبايل) في الرسائل الخاصة (DM) لتأكيد الأوردر فوراً 📩"
+                    _data_hint = "(الاسم، العنوان، الموبايل)" if await asyncio.to_thread(is_shipping_enabled, tenant["id"]) else "(الاسم والموبايل)"
+                    order_reply = f"أهلاً {sender_name} ❤️ يسعدنا طلبك! يرجى إرسال بياناتك {_data_hint} في الرسائل الخاصة (DM) لتأكيد الأوردر فوراً 📩"
                     await send_instagram_comment_reply(comment_id, order_reply, page_token)
                     continue
 
@@ -710,6 +760,8 @@ async def process_meta_event(data: dict):
                             print(f"🟢 واتساب «{tenant['name']}» -> رد للعميل {wa_from}: {reply}")
                             if wa_token and phone_number_id and reply and reply.strip():
                                 await send_whatsapp_reply(wa_from, reply, phone_number_id, wa_token)
+                                for img_url in pop_customer_images(tenant["id"], "whatsapp", wa_from):
+                                    await send_whatsapp_image(wa_from, img_url, phone_number_id, wa_token)
                             elif not wa_token:
                                 print(f"⚠️ التاجر «{tenant['name']}» مش عنده wa_token — استخدم /link_page wa_token=...")
 
@@ -887,7 +939,8 @@ async def process_tiktok_event(data: dict):
             return
 
         elif category == "order":
-            order_reply = f"أهلاً {display_name} ❤️ يسعدنا طلبك! يرجى التواصل معنا عبر الرسائل الخاصة (DM) لتأكيد الأوردر وبيانات الشحن فوراً 📩"
+            _what = "بيانات الشحن" if await asyncio.to_thread(is_shipping_enabled, tenant["id"]) else "بيانات الاستلام من المحل"
+            order_reply = f"أهلاً {display_name} ❤️ يسعدنا طلبك! يرجى التواصل معنا عبر الرسائل الخاصة (DM) لتأكيد الأوردر و{_what} فوراً 📩"
             if tiktok_token and video_id and comment_id:
                 await send_tiktok_comment_reply(video_id, comment_id, order_reply, tiktok_token)
             return
@@ -1006,8 +1059,27 @@ class ToggleBotPayload(BaseModel):
     bot_enabled: Optional[bool] = None
 
 
+class BranchPayload(BaseModel):
+    name: str
+    governorate: str
+    address: str
+    google_maps_url: Optional[str] = ""
+    working_hours: Optional[str] = "من 12 ظهراً لـ 11 مساءً"
+    phone: Optional[str] = ""
+
+
+class ShippingRatePayload(BaseModel):
+    governorate: Optional[str] = "جميع المحافظات"
+    price: float
+    is_flat: Optional[bool] = False
+
+
+class ToggleShippingPayload(BaseModel):
+    shipping_enabled: Optional[bool] = None
+
+
 def resolve_tenant_for_dashboard(identifier: str):
-    """البحث عن التاجر بالـ UUID أو بادئة الـ ID (8 حروف سداسية عشرية فأكثر) أو الاسم"""
+    """البحث عن التاجر بالـ UUID أو بادئة الـ ID (8 حروف سداسية عشرية فأكثر) فقط لحماية خصوصية المتاجر ومنع الدخول بالاسم"""
     if not identifier:
         return None
     ident = str(identifier).strip()
@@ -1032,21 +1104,14 @@ def resolve_tenant_for_dashboard(identifier: str):
         except Exception:
             pass
 
-    # 3. فحص الاسم المباشر
-    try:
-        res = supabase.table("tenants").select("*").eq("name", ident).execute()
-        if res.data:
-            return res.data[0]
-    except Exception:
-        pass
-
-    # 4. محاولة البحث بجدول merchants كاحتياطي إن وجد
-    try:
-        res = supabase.table("merchants").select("*").eq("id", ident).execute()
-        if res.data:
-            return res.data[0]
-    except Exception:
-        pass
+    # 3. محاولة البحث بجدول merchants كاحتياطي بالـ ID فقط
+    if len(clean_hex) >= 8 and re.fullmatch(r"[0-9a-f]+", clean_hex):
+        try:
+            res = supabase.table("merchants").select("*").eq("id", ident).execute()
+            if res.data:
+                return res.data[0]
+        except Exception:
+            pass
 
     return None
 
@@ -1096,13 +1161,115 @@ def format_tenant_dashboard_data(tenant_row: dict) -> dict:
     if not sheets_url:
         sheets_url = load_merchant_settings(tid).get("google_sheets_url", "")
 
+    # جلب الفروع المسجلة للمتجر
+    branches = []
+    try:
+        b_res = (
+            supabase.table("branches")
+            .select("id, name, governorate, city, address, google_maps_url, working_hours, phone")
+            .eq("tenant_id", tid)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        branches = b_res.data or []
+    except Exception as e:
+        print("Error fetching branches for dashboard:", e)
+
+    # جلب أسعار الشحن
+    try:
+        s_res = (
+            supabase.table("shipping_rates")
+            .select("id,governorate,price")
+            .eq("tenant_id", tid)
+            .order("price", desc=False)
+            .execute()
+        )
+        shipping_rates = s_res.data or []
+    except Exception as e:
+        print("Error fetching shipping rates for dashboard:", e)
+        shipping_rates = []
+
+    shipping_enabled = orders.is_shipping_enabled(tid)
+
+    # تجهيز قنوات السوشيال ميديا
+    fb_id = tenant_row.get("facebook_page_id") or ""
+    fb_token = tenant_row.get("facebook_page_token") or ""
+    ig_id = tenant_row.get("instagram_account_id") or ""
+    wa_id = tenant_row.get("whatsapp_phone_number_id") or ""
+    wa_token = tenant_row.get("whatsapp_access_token") or ""
+    tt_id = tenant_row.get("tiktok_account_id") or ""
+    tt_token = tenant_row.get("tiktok_access_token") or ""
+    tg_id = tenant_row.get("telegram_chat_id") or ""
+    bot_uname = os.environ.get("BOT_USERNAME", "ORIK_1_bot")
+
+    # تحديد حالة القنوات بدقة:
+    # متصل كامل: Page ID + Token
+    # غير مكتمل: Page ID بدون Token
+    if fb_id and fb_token:
+        fb_status = "connected"
+    elif fb_id and not fb_token:
+        fb_status = "pending_token"
+    else:
+        fb_status = "disconnected"
+
+    social_channels = {
+        "facebook": {
+            "name": "فيسبوك",
+            "icon": "📘",
+            "connected": fb_status == "connected",
+            "status": fb_status,
+            "id": fb_id,
+            "url": f"https://facebook.com/{fb_id}" if fb_id else "",
+        },
+        "instagram": {
+            "name": "إنستجرام",
+            "icon": "📸",
+            "connected": bool(ig_id),
+            "status": "connected" if ig_id else "disconnected",
+            "id": ig_id,
+            "url": f"https://instagram.com/{ig_id}" if ig_id else "",
+        },
+        "whatsapp": {
+            "name": "واتساب",
+            "icon": "🟢",
+            "connected": bool(wa_id and wa_token),
+            "status": "connected" if (wa_id and wa_token) else ("pending_token" if wa_id else "disconnected"),
+            "id": wa_id,
+            "url": f"https://wa.me/{wa_id}" if wa_id else "",
+        },
+        "tiktok": {
+            "name": "تيك توك",
+            "icon": "🎵",
+            "connected": bool(tt_id and tt_token),
+            "status": "connected" if (tt_id and tt_token) else ("pending_token" if tt_id else "disconnected"),
+            "id": tt_id,
+            "url": f"https://tiktok.com/@{tt_id}" if tt_id else "",
+        },
+        "telegram": {
+            "name": "تليجرام",
+            "icon": "✈️",
+            "connected": bool(tg_id),
+            "status": "connected" if tg_id else "disconnected",
+            "id": str(tg_id) if tg_id else "",
+            "url": f"https://t.me/{bot_uname}",
+        },
+    }
+
     return {
         "id": tenant_row.get("id"),
         "name": tenant_row.get("name"),
+        "owner_phone": tenant_row.get("owner_phone") or "",
         "bot_enabled": bool(tenant_row.get("bot_enabled", True)),
-        "facebook_page_id": tenant_row.get("facebook_page_id") or "",
+        "facebook_page_id": fb_id,
         "facebook_page_token": tenant_row.get("facebook_page_token") or "",
+        "instagram_account_id": ig_id,
+        "whatsapp_phone_number_id": wa_id,
+        "tiktok_account_id": tt_id,
         "google_sheets_url": sheets_url,
+        "social_channels": social_channels,
+        "branches": branches,
+        "shipping_enabled": shipping_enabled,
+        "shipping_rates": shipping_rates,
         "stats": stats,
     }
 
@@ -1218,6 +1385,118 @@ async def toggle_merchant_bot_api(identifier: str, payload: Optional[ToggleBotPa
         "bot_enabled": new_status,
         "message": f"تم {'تفعيل' if new_status else 'إيقاف'} الرد التلقائي بنجاح",
     }
+
+
+@app.post("/api/dashboard/{identifier}/branches")
+@app.post("/api/merchant/{identifier}/branches")
+async def add_branch_api(identifier: str, payload: BranchPayload):
+    """إضافة فرع جديد للمتجر من لوحة التحكم"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+    tid = tenant["id"]
+    try:
+        data = {
+            "tenant_id": tid,
+            "name": payload.name.strip(),
+            "governorate": payload.governorate.strip(),
+            "address": payload.address.strip(),
+            "google_maps_url": (payload.google_maps_url or "").strip(),
+            "working_hours": (payload.working_hours or "من 12 ظهراً لـ 11 مساءً").strip(),
+            "phone": (payload.phone or "").strip(),
+        }
+        res = supabase.table("branches").insert(data).execute()
+        return {"status": "success", "message": "تم إضافة الفرع بنجاح", "branch": res.data[0] if res.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل إضافة الفرع: {e}")
+
+
+@app.delete("/api/dashboard/{identifier}/branches/{branch_id}")
+@app.delete("/api/merchant/{identifier}/branches/{branch_id}")
+async def delete_branch_api(identifier: str, branch_id: str):
+    """حذف فرع المتجر من لوحة التحكم"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+    tid = tenant["id"]
+    try:
+        supabase.table("branches").delete().eq("id", branch_id).eq("tenant_id", tid).execute()
+        return {"status": "success", "message": "تم حذف الفرع بنجاح"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل حذف الفرع: {e}")
+
+
+@app.post("/api/dashboard/{identifier}/shipping-rates")
+@app.post("/api/merchant/{identifier}/shipping-rates")
+async def save_shipping_rate_api(identifier: str, payload: ShippingRatePayload):
+    """إضافة أو تحديث سعر شحن لمحافظة معينة أو شحن موحد لجميع المحافظات"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+    tid = tenant["id"]
+
+    try:
+        price = float(payload.price)
+        if price < 0:
+            raise HTTPException(status_code=400, detail="سعر الشحن لا يمكن أن يكون سالباً")
+
+        gov = (payload.governorate or "جميع المحافظات").strip()
+        is_flat = payload.is_flat or gov in ("جميع المحافظات", "شحن موحد", "الكل", "كل المحافظات")
+
+        if is_flat:
+            # مسح أي تسعيرة قديمة باسم "جميع المحافظات" وتثبيت السعر الموحد
+            supabase.table("shipping_rates").delete().eq("tenant_id", tid).eq("governorate", "جميع المحافظات").execute()
+            res = supabase.table("shipping_rates").insert({"tenant_id": tid, "governorate": "جميع المحافظات", "price": price}).execute()
+            return {"status": "success", "message": f"تم تطبيق الشحن الموحد ({price:g} ج.م) لجميع المحافظات بنجاح!", "data": res.data}
+        else:
+            # تسعيرة لمحافظة معينة: تحديث إذا كانت موجودة أو إضافة جديدة
+            existing = supabase.table("shipping_rates").select("id").eq("tenant_id", tid).eq("governorate", gov).execute().data
+            if existing:
+                res = supabase.table("shipping_rates").update({"price": price}).eq("id", existing[0]["id"]).execute()
+            else:
+                res = supabase.table("shipping_rates").insert({"tenant_id": tid, "governorate": gov, "price": price}).execute()
+            return {"status": "success", "message": f"تم تحديث سعر شحن {gov} إلى {price:g} ج.م بنجاح!", "data": res.data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل حفظ سعر الشحن: {e}")
+
+
+@app.delete("/api/dashboard/{identifier}/shipping-rates/{rate_id}")
+@app.delete("/api/merchant/{identifier}/shipping-rates/{rate_id}")
+async def delete_shipping_rate_api(identifier: str, rate_id: str):
+    """حذف تسعيرة شحن محافظة من لوحة التحكم"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+    tid = tenant["id"]
+    try:
+        supabase.table("shipping_rates").delete().eq("id", rate_id).eq("tenant_id", tid).execute()
+        return {"status": "success", "message": "تم حذف تسعيرة الشحن بنجاح"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل حذف تسعيرة الشحن: {e}")
+
+
+@app.post("/api/dashboard/{identifier}/toggle-shipping")
+@app.post("/api/merchant/{identifier}/toggle-shipping")
+async def toggle_shipping_api(identifier: str, payload: Optional[ToggleShippingPayload] = None):
+    """تفعيل أو إيقاف الشحن للمتجر"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود أو المعرّف غير صحيح")
+    tid = tenant["id"]
+
+    try:
+        current_status = orders.is_shipping_enabled(tid, fresh=True)
+        new_status = not current_status if (payload is None or payload.shipping_enabled is None) else payload.shipping_enabled
+        ok, err = orders.set_shipping_enabled(tid, new_status)
+        if not ok:
+            raise HTTPException(status_code=500, detail=err or "فشل تحديث حالة الشحن")
+        return {"status": "success", "shipping_enabled": new_status, "message": f"تم {'تفعيل' if new_status else 'إيقاف'} الشحن بنجاح"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"خطأ أثناء تحديث حالة الشحن: {e}")
 
 
 @app.get("/api/dashboard/by-telegram/{chat_id}")

@@ -28,6 +28,7 @@ from check_stock import _norm_ar
 from check_stock import check_stock as db_check_stock
 from check_stock import escape_like, supabase
 from orders import cancel_order, update_order_shipping, update_order_status
+from orders import is_shipping_enabled, set_shipping_enabled
 from subscriptions import (
     add_or_renew_subscription,
     check_and_update_subscriptions,
@@ -65,7 +66,9 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
 10. لو صاحب المحل طلب إضافة فرع أو عنوان للمحل (مثلاً: فرع مدينة نصر، شارع كذا، لوكيشن ماب كذا)، استخرج البيانات ونادِ propose_new_branch.
 11. لو صاحب المحل طلب عمل كود خصم أو عرض ترويجي (مثلاً: كود EID20 خصم 20%، أو عرض شحن مجاني لأي حد يطلب قطعتين أو أكتر)، استخرج البيانات ونادِ propose_new_promo.
+13. لو صاحب المحل بعت صورة منتج (أو كان بعت صورة من دقايق وبيكمل كلامه): الصورة بتتحفظ وبتتربط تلقائياً بالمنتج أول ما يضغط تأكيد. بص على الصورة والكلام اللي معاها وحدد نوع القطعة واللون. لو قال وصل/جاي/ضيف منتج جديد استخدم propose_new_product (الاسم، السعر، المقاس، اللون، الكمية). لو عايز يغيّر صورة منتج موجود بس استخدم propose_set_product_image. لو السعر أو المقاس ناقص اسأل، ممنوع تخمّن. لو الصورة من غير أي كلام اسأله: المنتج ده إيه وسعره ومقاسه وكميته؟
 12. اتفاقية حتمية: أي عملية بتغيّر أوردر أو مخزون لازم تعدي على أزرار التأكيد وماتتنفذش فوراً! لو صاحب المحل طلب إلغاء أوردر أو تعديل عنوان/موبايل/حالة أوردر، استدعِ propose_cancel_order أو propose_update_order لتجهيزها، والأزرار هي اللي هتأكد.
+14. لو صاحب المحل سأل 'المخزن فيه إيه؟' أو 'عايز كشف المخزون' أو 'إيه اللي عندي في المخزن؟': نادِ list_inventory واديله كشف سريع بالأصناف والكميات المتاحة وقوله إنه يقدر يكتب /stock عشان يشوف الكشف كامل ومفصل.
 
 معلومات: المقاسات M و L و XL و 40 و 41 و 42 و 43 وغيرها (لارج = L، ميديم = M، إكس لارج = XL). الألوان بالعربي: أسود، أبيض، رمادي، كحلي، بني، بيج، أحمر، أصفر، بنفسجي، أخضر.
 """
@@ -212,7 +215,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_admin:
         text += (
             "👑 *لوحة تحكم مدير النظام (Super Admin):*\n"
-            "• `/new_tenant <اسم المحل> [الموبايل] [1m|3m]` — إنشاء تاجر جديد وتحديد مدة اشتراكه\n"
+            "• `/new_tenant <اسم المحل> [الموبايل] [1m|3m] [noship]` — إنشاء تاجر جديد (noship = بدون شحن)\n"
+            "• `/shipping on|off <الرقم أو الاسم>` — تشغيل/إيقاف الشحن لتاجر\n"
             "• `/tenants` — عرض قائمة التجار وحالة اشتراكاتهم\n"
             "• `/renew <الرقم أو الاسم> [1m|3m|6m|1y]` — تجديد اشتراك تاجر وتفعيل البوت\n"
             "• `/pause_bot <الرقم>` — إيقاف بوت تاجر مؤقتاً\n"
@@ -233,12 +237,15 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• *ضيف فرع جديد في مدينة نصر...*\n"
         "• *اعمل كود خصم EID20 خصم 20%*\n\n"
         "📊 *الأوامر السريعة:*\n"
-        "• `/dashboard` — فتح لوحة تحكم التاجر وإعدادات الشيت وفيسبوك (Web App)\n"
+        "• `/dashboard` — فتح لوحة تحكم التاجر وإحصائيات المخزن والمبيعات (Web App)\n"
+        "• `/stock` — عرض كشف المخزون المتاح والكميات الحالية لكل صنف\n"
         "• `/orders` — آخر 5 أوردرات وتفاصيلها\n"
         "• `/today` — تقرير ملخص مبيعات اليوم\n"
-        "• `/cancel <رقم_الأوردر>` — إلغاء أوردر وإرجاع بضاعته للمخزن\n\n"
-        "📁 *تحديث المخزن دفعة واحدة:*\n"
-        "ابعت أي ملف Excel (.xlsx) أو CSV فيه بضاعتك (حتى 2 ميجا و500 صف)، وهقرأه وأحدث المخزن فوراً!"
+        "• `/cancel <رقم_الأوردر>` — إلغاء أوردر وإرجاع بضاعته للمخزن\n"
+        "• `/shipping` — حالة الشحن، و`/shipping off` لو محلك استلام من المحل بس، و`/shipping on` لتشغيله\n\n"
+        "📁 *إضافة وتحديث المخزن:*\n"
+        "• *بصورة المنتج:* ابعت صورة الموديل واكتب معاه كابشن: «وصل 50 ترنج شتوي بني مقاس L بـ600» وهسجله بالصورة فوراً!\n"
+        "• *بشيت إكسيل:* ابعت أي ملف Excel (.xlsx) أو CSV فيه بضاعتك، وهقرأه وأحدث المخزن فوراً!"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
@@ -300,26 +307,29 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "اكتب اسم المحل بعد الأمر، مثلاً:\n"
             "`/new_tenant محل السعادة`\n"
             "أو مع رقم الموبايل:\n"
-            "`/new_tenant محل السعادة 01012345678`",
+            "`/new_tenant محل السعادة 01012345678`\n"
+            "ولو المحل مفيهوش شحن (استلام من المحل بس) زوّد `noship`:\n"
+            "`/new_tenant محل السعادة 01012345678 noship`",
             parse_mode="Markdown"
         )
         return
 
     full_text = " ".join(context.args)
 
+    # علامة "بدون شحن": المحل بيبيع استلام من المحل بس
+    noship = bool(re.search(r"(?<!\S)(noship|بدون_شحن|بدون-شحن)(?!\S)", full_text, re.IGNORECASE))
+    if noship:
+        full_text = re.sub(r"(?<!\S)(noship|بدون_شحن|بدون-شحن)(?!\S)", "", full_text, flags=re.IGNORECASE).strip()
+
     months = 1
-    dur_match = re.search(r"\b(1m|3m|6m|12m|1y|شهرين|سنة)\b", full_text, re.IGNORECASE)
+    dur_match = re.search(r"\b(\d+)\s*(m|شهر|أشهر|شهور)\b|\b(1y|سنة)\b", full_text, re.IGNORECASE)
     if dur_match:
-        tag = dur_match.group(1).lower()
-        if "3" in tag:
-            months = 3
-        elif "6" in tag:
-            months = 6
-        elif "12" in tag or "y" in tag or "سنة" in tag:
+        matched_str = dur_match.group(0).lower()
+        if "y" in matched_str or "سنة" in matched_str:
             months = 12
-        elif "شهرين" in tag:
-            months = 2
-        full_text = re.sub(r"\b(1m|3m|6m|12m|1y|شهرين|سنة)\b", "", full_text, flags=re.IGNORECASE).strip()
+        elif dur_match.group(1):
+            months = max(1, int(dur_match.group(1)))
+        full_text = re.sub(r"\b\d+\s*(m|شهر|أشهر|شهور)\b|\b(1y|سنة)\b", "", full_text, flags=re.IGNORECASE).strip()
 
     phone_match = re.search(r"(\+?20\d{10}|01[0125]\d{8})", full_text.replace(" ", ""))
     if phone_match:
@@ -350,9 +360,8 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ex = existing[0]
             if ex.get("telegram_chat_id"):
                 await msg.reply_text(
-                    f"⚠️ *تنبيه:* متجر «{name}» مسجل ومربوط بالفعل في السيستم!\n"
-                    f"شوف بياناته عبر `/tenants` أو جدد اشتراكه بـ `/renew {name} {months}m`",
-                    parse_mode="Markdown"
+                    f"⚠️ تنبيه: متجر «{name}» مسجل ومربوط بالفعل في السيستم!\n"
+                    f"شوف بياناته عبر /tenants أو جدد اشتراكه بـ /renew {name} {months}m"
                 )
                 return
             else:
@@ -360,16 +369,15 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 supabase.table("tenants").update({"telegram_link_code": link_code}).eq("id", ex["id"]).execute()
                 deep_link = f"https://t.me/{BOT_USERNAME}?start={code}"
                 await msg.reply_text(
-                    f"ℹ️ *المحل «{name}» متسجل مسبقاً وبانتظار التفعيل:*\n\n"
-                    f"🔑 *كود الربط:* `{code}`\n\n"
+                    f"ℹ️ المحل «{name}» متسجل مسبقاً وبانتظار التفعيل:\n\n"
+                    f"🔑 كود الربط: {code}\n\n"
                     f"انسخ الرسالة دي وابعتها للتاجر:\n"
                     f"👇👇👇\n"
                     f"أهلاً بحضرتك في سيستم إدارة المبيعات والمخزن 🚀\n"
                     f"اضغط على الرابط التالي لتفعيل حسابك فوراً:\n"
                     f"{deep_link}\n\n"
-                    f"أو ادخل على البوت `@{BOT_USERNAME}` واكتب:\n"
-                    f"`/start {code}`",
-                    parse_mode="Markdown"
+                    f"أو ادخل على البوت @{BOT_USERNAME} واكتب:\n"
+                    f"/start {code}"
                 )
                 return
     except Exception as e:
@@ -382,6 +390,8 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     if phone:
         data["owner_phone"] = phone
+    if noship:
+        data["shipping_enabled"] = False
 
     try:
         res = supabase.table("tenants").insert(data).execute()
@@ -395,21 +405,22 @@ async def new_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         deep_link = f"https://t.me/{BOT_USERNAME}?start={link_code}"
         await msg.reply_text(
-            f"🎉 *تم إنشاء حساب التاجر بنجاح!*\n\n"
-            f"🏢 *المحل:* `{t['name']}`\n"
-            f"🔑 *كود الربط:* `{link_code}`\n"
-            f"📅 *مدة الاشتراك:* {months} شهر (ساري حتى: `{ends_str}`)\n\n"
+            f"🎉 تم إنشاء حساب التاجر بنجاح!\n\n"
+            f"🏢 المحل: {t['name']}\n"
+            f"🔑 كود الربط: {link_code}\n"
+            f"📅 مدة الاشتراك: {months} شهر (ساري حتى: {ends_str})\n"
+            f"🚚 الشحن: {'❌ غير متاح (استلام من المحل فقط)' if noship else '✅ متاح'}\n\n"
             f"انسخ الرسالة دي وابعتها للتاجر:\n"
             f"👇👇👇\n"
             f"أهلاً بحضرتك في سيستم إدارة المبيعات والمخزن 🚀\n"
             f"اضغط على الرابط التالي لتفعيل حسابك فوراً:\n"
             f"{deep_link}\n\n"
-            f"أو ادخل على البوت `@{BOT_USERNAME}` واكتب:\n"
-            f"`/start {link_code}`",
-            parse_mode="Markdown"
+            f"أو ادخل على البوت @{BOT_USERNAME} واكتب:\n"
+            f"/start {link_code}"
         )
     except Exception as e:
-        await msg.reply_text(f"❌ حدث خطأ: {e}")
+        hint = "\n(لو استخدمت noship شغّل docs/shipping_enabled.sql في Supabase الأول)" if noship else ""
+        await msg.reply_text(f"❌ حدث خطأ: {e}{hint}")
 
 
 async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -448,6 +459,11 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     updates = {}
+    args_lower = [a.lower() for a in context.args[1:]]
+    if "unlink" in args_lower or "unlink_fb" in args_lower or "إلغاء" in args_lower:
+        updates["facebook_page_id"] = None
+        updates["facebook_page_token"] = None
+
     for arg in context.args[1:]:
         if "=" not in arg:
             continue
@@ -456,6 +472,9 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         val = val.strip()
         if not val:
             continue
+        if val.lower() in ("none", "null", "del", "0", "clear", "حذف", "إلغاء"):
+            val = None
+
         if key == "fb":
             updates["facebook_page_id"] = val
         elif key == "ig":
@@ -504,6 +523,130 @@ async def link_page_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.delete()
     except Exception:
         pass
+
+
+SHIPPING_ON_WORDS = {"on", "yes", "enable", "تشغيل", "شغل", "شغّل", "نعم", "متاح"}
+SHIPPING_OFF_WORDS = {"off", "no", "disable", "ايقاف", "إيقاف", "وقف", "اقفل", "قفل", "لا", "بدون"}
+
+
+async def shipping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/shipping [on|off|<price>|<gov=price>] [التاجر] - إدارة وأسعار الشحن"""
+    chat_id = update.effective_chat.id
+    is_admin = chat_id == SUPER_ADMIN_CHAT_ID
+    owner = await asyncio.to_thread(get_owner_tenant, chat_id)
+    if not owner and not is_admin:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    mode = None
+    new_flat_price = None
+    custom_gov_rate = None
+    rest = []
+
+    for a in context.args or []:
+        low = a.strip().lower()
+        if mode is None and low in SHIPPING_ON_WORDS:
+            mode = True
+        elif mode is None and low in SHIPPING_OFF_WORDS:
+            mode = False
+        elif "=" in a:
+            gov_part, _, p_part = a.partition("=")
+            try:
+                custom_gov_rate = (gov_part.strip(), float(p_part.strip()))
+            except ValueError:
+                rest.append(a)
+        elif new_flat_price is None and re.match(r"^\d+(\.\d+)?$", a.strip()):
+            new_flat_price = float(a.strip())
+        else:
+            rest.append(a)
+
+    target = None
+    if rest:
+        if not is_admin:
+            await update.message.reply_text("⛔ تحديد تاجر تاني للـ Super Admin بس. اكتب /shipping لمحلك.")
+            return
+        target, err = await asyncio.to_thread(resolve_tenant_strict, " ".join(rest))
+        if not target:
+            await update.message.reply_text(err)
+            return
+    elif owner:
+        target = owner
+    else:
+        await update.message.reply_text("اكتب التاجر بعد الأمر، مثلاً: /shipping off 2 أو /shipping 65 2")
+        return
+
+    tid, name = target["id"], target["name"]
+
+    # 1. إذا كان الأمر لتحديث سعر الشحن لمحافظة معينة
+    if custom_gov_rate:
+        c_gov, c_price = custom_gov_rate
+        try:
+            existing = supabase.table("shipping_rates").select("id").eq("tenant_id", tid).eq("governorate", c_gov).execute().data
+            if existing:
+                supabase.table("shipping_rates").update({"price": c_price}).eq("id", existing[0]["id"]).execute()
+            else:
+                supabase.table("shipping_rates").insert({"tenant_id": tid, "governorate": c_gov, "price": c_price}).execute()
+            await asyncio.to_thread(set_shipping_enabled, tid, True)
+            await update.message.reply_text(f"✅ تم تحديث سعر شحن محافظة «{c_gov}» في «{name}» إلى {c_price:g} ج.م بنجاح!")
+            return
+        except Exception as e:
+            await update.message.reply_text(f"❌ فشل تحديث سعر الشحن: {e}")
+            return
+
+    # 2. إذا كان الأمر لتطبيق سعر شحن موحد
+    if new_flat_price is not None:
+        try:
+            supabase.table("shipping_rates").delete().eq("tenant_id", tid).eq("governorate", "جميع المحافظات").execute()
+            supabase.table("shipping_rates").insert({"tenant_id": tid, "governorate": "جميع المحافظات", "price": new_flat_price}).execute()
+            await asyncio.to_thread(set_shipping_enabled, tid, True)
+            await update.message.reply_text(
+                f"✅ تم تطبيق الشحن الموحد لـ «{name}» بنجاح! 🚚\n\n"
+                f"💰 سعر الشحن: {new_flat_price:g} ج.م لجميع المحافظات.\n"
+                "الذكاء الاصطناعي وبوتات التواصل هيعتمدوا السعر الجديد فوراً في الردود والأوردرات."
+            )
+            return
+        except Exception as e:
+            await update.message.reply_text(f"❌ فشل تحديث سعر الشحن: {e}")
+            return
+
+    # 3. إذا كان الأمر لتشغيل أو إيقاف الشحن
+    if mode is not None:
+        ok, err = await asyncio.to_thread(set_shipping_enabled, tid, mode)
+        if not ok:
+            await update.message.reply_text(f"❌ ماقدرتش أغيّر الإعداد: {err}")
+            return
+        if mode:
+            await update.message.reply_text(f"✅ تم تشغيل الشحن في «{name}» بنجاح.")
+        else:
+            await update.message.reply_text(
+                f"✅ تم إيقاف الشحن في «{name}».\n"
+                "من دلوقتي البوت هيقول للعملاء إن الاستلام من المحل بس."
+            )
+        return
+
+    # 4. عرض حالة وأسعار الشحن الحالية
+    enabled = await asyncio.to_thread(is_shipping_enabled, tid, True)
+    state = "✅ متاح ومفعّل" if enabled else "❌ موقوف (استلام من المحل فقط)"
+
+    rates_res = supabase.table("shipping_rates").select("governorate,price").eq("tenant_id", tid).execute()
+    rates_list = rates_res.data or []
+
+    if rates_list:
+        rates_text = "\n📦 *أسعار الشحن المسجلة:*\n" + "\n".join(
+            [f"  • {r['governorate']}: {float(r['price']):g} ج.م" for r in rates_list]
+        )
+    else:
+        rates_text = "\n📦 *أسعار الشحن الحالية:* الافتراضي 50 ج.م لجميع المحافظات\n"
+
+    await update.message.reply_text(
+        f"🚚 *إعدادات الشحن في «{name}»:* {state}\n"
+        f"{rates_text}\n"
+        "💡 *أوامر التحكم السريع:*\n"
+        "  • `/shipping 65` ⬅️ لتحديد سعر شحن موحد لكل المحافظات\n"
+        "  • `/shipping القاهرة=40` ⬅️ لتحديد سعر لمحافظة معينة\n"
+        "  • `/shipping on` أو `/shipping off` ⬅️ لتفعيل/إيقاف الشحن",
+        parse_mode="Markdown"
+    )
 
 
 def resolve_tenant(identifier: str):
@@ -801,7 +944,7 @@ async def delete_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
         await update.message.reply_text(
-            f"⚠️ *تحذير: هل أنت متأكد من حذف التاجر «{tenant['name']}» (المعرّف: `{tid}`) نهائياً؟*\n"
+            f"⚠️ تحذير: هل أنت متأكد من حذف التاجر «{tenant['name']}» نهائياً؟\n(المعرّف: `{tid}`)\n"
             f"ده هيحذف كل منتجاته ومخزنه وسجل أوردراته ({orders_count} أوردر) بالكامل ولا يمكن التراجع!\n\n"
             f"للتأكيد، اكتب:\n"
             f"`/delete_tenant {tid8} confirm`",
@@ -812,7 +955,7 @@ async def delete_tenant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await asyncio.to_thread(purge_tenant_data, tid)
         await update.message.reply_text(
-            f"🗑️ *تم حذف التاجر «{tenant['name']}» (المعرّف: `{tid}`) وبياناته من السيستم نهائياً.* ✅",
+            f"🗑️ تم حذف التاجر «{tenant['name']}» وبياناته من السيستم نهائياً ✅\n(المعرّف: `{tid}`)",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -1005,6 +1148,38 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def stock_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض كشف المخزون المتاح والكميات الحالية لكل صنف في المحل"""
+    tenant = get_owner_tenant(update.effective_chat.id)
+    if not tenant:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    rows = (
+        supabase.table("variants")
+        .select("sku, size, color, stock, reserved, available, products!inner(name, price)")
+        .eq("tenant_id", tenant["id"])
+        .eq("active", True)
+        .execute()
+        .data or []
+    )
+    if not rows:
+        await update.message.reply_text("📦 المخزن فاضي حالياً! تقدر تضيف بضاعة فويس أو كتابة أو تبعت شيت إكسيل.")
+        return
+
+    lines = [f"📦 كشف مخزون «{tenant['name']}» المتاح حالياً:\n"]
+    total_qty = 0
+    for r in rows:
+        pname = r.get("products", {}).get("name", "منتج")
+        price = float(r.get("products", {}).get("price") or 0)
+        avail = int(r.get("available") if r.get("available") is not None else (r.get("stock", 0) - r.get("reserved", 0)))
+        total_qty += max(0, avail)
+        lines.append(f"• {pname} ({r.get('color')} - {r.get('size')}): {avail} قطعة | {price:.0f}ج | كود: {r.get('sku')}")
+
+    lines.append(f"\n📊 إجمالي الأصناف: {len(rows)} صنف | {total_qty} قطعة في المخزن")
+    await update.message.reply_text("\n".join(lines))
+
+
 # جلسات المحادثة وإدارة الذاكرة مع قفل أمان
 MERCHANT_SESSIONS = {}
 MERCHANT_SESSIONS_LOCK = threading.Lock()
@@ -1109,7 +1284,93 @@ def pop_pending_operation(context, pid: str) -> dict:
     return pending
 
 
-def build_tools(tenant_id: str, proposals: list) -> list:
+# ---------------------------------------------------------------
+# 🖼️ صور المنتجات: استقبال من تليجرام + رفع على Supabase Storage
+# ---------------------------------------------------------------
+IMAGES_BUCKET = os.environ.get("PRODUCT_IMAGES_BUCKET", "product-images")
+MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 ميجا
+ALLOWED_IMAGE_MIMES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+LAST_PHOTOS = {}  # chat_id -> {"bytes", "mime", "ts"}  (آخر صورة بعتها التاجر)
+LAST_PHOTO_TTL = 15 * 60  # 15 دقيقة
+MAX_LAST_PHOTOS = 200
+
+
+def remember_photo(chat_id: int, data: bytes, mime: str):
+    now = time.time()
+    if len(LAST_PHOTOS) > MAX_LAST_PHOTOS:
+        for k in [k for k, v in LAST_PHOTOS.items() if now - v["ts"] > LAST_PHOTO_TTL]:
+            LAST_PHOTOS.pop(k, None)
+    LAST_PHOTOS[chat_id] = {"bytes": data, "mime": mime, "ts": now}
+
+
+def get_fresh_photo(chat_id: int):
+    ph = LAST_PHOTOS.get(chat_id)
+    if ph and time.time() - ph["ts"] <= LAST_PHOTO_TTL:
+        return ph
+    LAST_PHOTOS.pop(chat_id, None)
+    return None
+
+
+def upload_product_image(tenant_id: str, data: bytes, mime: str) -> str:
+    """بيرفع الصورة على Supabase Storage (bucket عام) وبيرجّع الرابط العام."""
+    ext = ALLOWED_IMAGE_MIMES.get(mime, "jpg")
+    path = f"{tenant_id}/{uuid.uuid4().hex}.{ext}"
+    bucket = supabase.storage.from_(IMAGES_BUCKET)
+    try:
+        bucket.upload(path, data, {"content-type": mime})
+    except Exception as first_err:
+        # أول مرة؟ جرّب تنشئ الـ bucket كعام وكرر الرفع
+        try:
+            supabase.storage.create_bucket(IMAGES_BUCKET, options={"public": True})
+            bucket.upload(path, data, {"content-type": mime})
+        except Exception:
+            raise RuntimeError(
+                f"تعذر رفع الصورة. اتأكد إن في bucket عام اسمه {IMAGES_BUCKET} في Supabase Storage ({type(first_err).__name__})"
+            )
+    url = bucket.get_public_url(path)
+    if isinstance(url, dict):  # اختلاف بين إصدارات المكتبة
+        url = url.get("publicURL") or url.get("publicUrl") or ""
+    return str(url).rstrip("?")
+
+
+def _find_product_by_name(tenant_id: str, name: str):
+    rows = (
+        supabase.table("products").select("id,name,image_url")
+        .eq("tenant_id", tenant_id).execute().data or []
+    )
+    target = _norm_ar(name)
+    for r in rows:
+        if _norm_ar(r.get("name", "")) == target:
+            return r
+    for r in rows:
+        rn = _norm_ar(r.get("name", ""))
+        if target and (target in rn or rn in target):
+            return r
+    return None
+
+
+async def reply_with_proposals(update, context, chat_id, tenant_id, proposals, reply, intro="هنفّذ العملية دي:", image=None):
+    """لو في عمليات مقترحة: اعرض الملخص بأزرار التأكيد، وإلا ابعت رد الموديل."""
+    if not proposals:
+        await update.message.reply_text(reply)
+        return
+    pid = uuid.uuid4().hex[:12]
+    data = {"chat_id": chat_id, "tenant_id": tenant_id, "items": proposals}
+    if image and any(p.get("type") in ("new_product", "set_image") for p in proposals):
+        data["image"] = {"bytes": image["bytes"], "mime": image["mime"]}
+        LAST_PHOTOS.pop(chat_id, None)
+    store_pending_operation(context, pid, data)
+    summary = build_proposals_summary(proposals)
+    if data.get("image"):
+        summary += "\n🖼️ هتتربط الصورة اللي بعتها بالمنتج."
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ تأكيد", callback_data=f"ok:{pid}"),
+        InlineKeyboardButton("❌ إلغاء", callback_data=f"no:{pid}"),
+    ]])
+    await update.message.reply_text(f"{intro}\n{summary}\n\nتأكيد؟", reply_markup=keyboard)
+
+
+def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> list:
     """
     تجهيز قائمة أدوات Gemini التفاعلية لتاجر معين مع docstrings كاملة ومفصلة.
     تُستخدم في handle_text و handle_voice دون تكرار كود.
@@ -1126,6 +1387,33 @@ def build_tools(tenant_id: str, proposals: list) -> list:
         return db_check_stock(
             tenant_id, product_name, size=size or None, color=color or None, reveal_qty=True
         )
+
+    def list_inventory() -> dict:
+        """بتعرض ملخص لكل الأصناف والكميات والأسعار المتاحة حالياً في مخزن المحل. استخدمها لما التاجر يسأل: 'المخزن فيه إيه؟' أو 'إيه اللي عندي في المخزن؟' أو 'عايز كشف المخزون'."""
+        rows = (
+            supabase.table("variants")
+            .select("sku, size, color, stock, reserved, available, products!inner(name, price)")
+            .eq("tenant_id", tenant_id)
+            .eq("active", True)
+            .execute()
+            .data or []
+        )
+        if not rows:
+            return {"status": "empty", "message": "المخزن فاضي حالياً"}
+        items = []
+        for r in rows:
+            pname = r.get("products", {}).get("name", "منتج")
+            price = float(r.get("products", {}).get("price") or 0)
+            avail = int(r.get("available") if r.get("available") is not None else (r.get("stock", 0) - r.get("reserved", 0)))
+            items.append({
+                "product": pname,
+                "color": r.get("color"),
+                "size": r.get("size"),
+                "available": avail,
+                "price": price,
+                "sku": r.get("sku"),
+            })
+        return {"status": "ok", "total_items": len(items), "inventory": items}
 
     def propose_stock_change(sku: str, qty: int, kind: str) -> dict:
         """بتجهّز تعديل على المخزون (بيع، بضاعة، مرتجع) وتستنى تأكيد صاحب المحل بالأزرار. مابتنفذش حاجة مباشرة.
@@ -1263,8 +1551,18 @@ def build_tools(tenant_id: str, proposals: list) -> list:
         })
         return {"status": "waiting_confirmation", "order_number": order_number}
 
-    return [
+    def propose_set_product_image(product_name: str) -> dict:
+        """بتجهّز ربط آخر صورة بعتها صاحب المحل بمنتج موجود بالفعل (بتستبدل صورته) وتستنى تأكيده بالأزرار.
+
+        Args:
+            product_name: اسم المنتج الموجود في المخزن (مثلاً: هودي، ترنج شتوي)
+        """
+        proposals.append({"type": "set_image", "product_name": product_name.strip()})
+        return {"status": "waiting_confirmation", "product": product_name}
+
+    tools = [
         check_stock,
+        list_inventory,
         propose_stock_change,
         propose_new_product,
         propose_new_branch,
@@ -1272,6 +1570,9 @@ def build_tools(tenant_id: str, proposals: list) -> list:
         propose_cancel_order,
         propose_update_order,
     ]
+    if has_image:
+        tools.append(propose_set_product_image)
+    return tools
 
 
 def build_proposals_summary(proposals: list) -> str:
@@ -1287,6 +1588,8 @@ def build_proposals_summary(proposals: list) -> str:
         elif ptype == "new_promo":
             code_txt = f" (كود: {p['code']})" if p.get('code') else ""
             summary_lines.append(f"🎁 إضافة عرض/خصم: {p['description']}{code_txt}")
+        elif ptype == "set_image":
+            summary_lines.append(f"🖼️ تغيير صورة المنتج: {p['product_name']}")
         elif ptype == "cancel_order":
             reason_txt = f" (السبب: {p['reason']})" if p.get("reason") else ""
             summary_lines.append(f"❌ إلغاء الأوردر #{p['order_number']}{reason_txt} وإرجاع بضاعته للمخزن")
@@ -1307,40 +1610,83 @@ def build_proposals_summary(proposals: list) -> str:
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    tenant = get_owner_tenant(chat_id)
+    tenant = await asyncio.to_thread(get_owner_tenant, chat_id)
     if not tenant:
         await update.message.reply_text(NOT_OWNER_MESSAGE)
         return
 
     tenant_id = tenant["id"]
     proposals = []
-    tools = build_tools(tenant_id, proposals)
+    photo = get_fresh_photo(chat_id)
+    tools = build_tools(tenant_id, proposals, has_image=bool(photo))
 
-    content_to_send = update.message.text
-    reply = await asyncio.to_thread(run_llm, chat_id, content_to_send, tools)
+    reply = await asyncio.to_thread(run_llm, chat_id, update.message.text, tools)
+    await reply_with_proposals(update, context, chat_id, tenant_id, proposals, reply, image=photo)
 
-    if not proposals:
-        await update.message.reply_text(reply)
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال صور المنتجات (صورة عادية أو صورة مبعوتة كملف) مع الكابشن كتعليمات."""
+    msg = update.message
+    chat_id = update.effective_chat.id
+    tenant = await asyncio.to_thread(get_owner_tenant, chat_id)
+    if not tenant:
+        await msg.reply_text(NOT_OWNER_MESSAGE)
+        return
+    tenant_id = tenant["id"]
+
+    if msg.photo:
+        tg_obj = msg.photo[-1]  # أكبر نسخة
+        mime = "image/jpeg"
+    elif msg.document:
+        tg_obj = msg.document
+        fname = (msg.document.file_name or "").lower()
+        if fname.endswith(".png"):
+            mime = "image/png"
+        elif fname.endswith(".webp"):
+            mime = "image/webp"
+        elif fname.endswith(".jpg") or fname.endswith(".jpeg"):
+            mime = "image/jpeg"
+        else:
+            mime = msg.document.mime_type or "image/jpeg"
+    else:
         return
 
-    pid = uuid.uuid4().hex[:12]
-    store_pending_operation(context, pid, {
-        "chat_id": chat_id,
-        "tenant_id": tenant_id,
-        "items": proposals,
-    })
+    if mime not in ALLOWED_IMAGE_MIMES:
+        await msg.reply_text("❌ الصيغة دي مش مدعومة. ابعت الصورة بصيغة JPG أو PNG أو WEBP.")
+        return
+    if getattr(tg_obj, "file_size", 0) and tg_obj.file_size > MAX_IMAGE_BYTES:
+        await msg.reply_text("❌ الصورة كبيرة (الحد الأقصى 5 ميجا). ابعتها كصورة عادية مش كملف.")
+        return
 
-    summary = build_proposals_summary(proposals)
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("✅ تأكيد", callback_data=f"ok:{pid}"),
-                InlineKeyboardButton("❌ إلغاء", callback_data=f"no:{pid}"),
-            ]
-        ]
+    status_msg = await msg.reply_text("🖼️ جاري تحليل الصورة...")
+    try:
+        tg_file = await context.bot.get_file(tg_obj.file_id)
+        data = bytes(await tg_file.download_as_bytearray())
+    except Exception:
+        await status_msg.edit_text("❌ معرفتش أحمّل الصورة، ابعتها تاني.")
+        return
+
+    photo = {"bytes": data, "mime": mime, "ts": time.time()}
+    remember_photo(chat_id, data, mime)
+
+    caption = (msg.caption or "").strip()
+    proposals = []
+    tools = build_tools(tenant_id, proposals, has_image=True)
+    prompt = (
+        f"صاحب المحل بعتلك صورة منتج. كلامه معاها: «{caption}». نفّذ المطلوب واستدعِ الأدوات المناسبة."
+        if caption else
+        "صاحب المحل بعتلك صورة منتج من غير أي كلام. بص عليها وقوله شايف إيه، واسأله عن الناقص (الاسم، السعر، المقاس، الكمية)."
     )
-    await update.message.reply_text(
-        f"هنفّذ العملية دي:\n{summary}\n\nتأكيد؟", reply_markup=keyboard
+    content = [types.Part.from_bytes(data=data, mime_type=mime), prompt]
+
+    reply = await asyncio.to_thread(run_llm, chat_id, content, tools)
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+    await reply_with_proposals(
+        update, context, chat_id, tenant_id, proposals, reply,
+        intro="استلمت الصورة، وهنفّذ العملية دي:", image=photo,
     )
 
 
@@ -1371,7 +1717,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     audio_bytes = await voice_file.download_as_bytearray()
 
     proposals = []
-    tools = build_tools(tenant_id, proposals)
+    photo = get_fresh_photo(chat_id)
+    tools = build_tools(tenant_id, proposals, has_image=bool(photo))
 
     mime_type = getattr(voice, "mime_type", None) or "audio/ogg"
     audio_part = types.Part.from_bytes(data=bytes(audio_bytes), mime_type=mime_type)
@@ -1379,33 +1726,13 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply = await asyncio.to_thread(run_llm, chat_id, content_list, tools)
     await status_msg.delete()
-
-    if not proposals:
-        await update.message.reply_text(reply)
-        return
-
-    pid = uuid.uuid4().hex[:12]
-    store_pending_operation(context, pid, {
-        "chat_id": chat_id,
-        "tenant_id": tenant_id,
-        "items": proposals,
-    })
-
-    summary = build_proposals_summary(proposals)
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("✅ تأكيد", callback_data=f"ok:{pid}"),
-                InlineKeyboardButton("❌ إلغاء", callback_data=f"no:{pid}"),
-            ]
-        ]
-    )
-    await update.message.reply_text(
-        f"سمعت الفويس، وهنفّذ العملية دي:\n{summary}\n\nتأكيد؟", reply_markup=keyboard
+    await reply_with_proposals(
+        update, context, chat_id, tenant_id, proposals, reply,
+        intro="سمعت الفويس، وهنفّذ العملية دي:", image=photo,
     )
 
 
-def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
+def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: dict = None) -> dict:
     """
     تنفيذ العمليات بعد تأكيد صاحب المحل:
     - البحث عن الصنف بـ (product_id, size, _norm_ar(color)).
@@ -1418,6 +1745,15 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
     successes = []
     failures = []
     warnings = []
+
+    # رفع الصورة مرة واحدة لو في عمليات محتاجاها
+    image_url = None
+    if image and any(it.get("type") in ("new_product", "set_image") for it in items):
+        try:
+            image_url = upload_product_image(tenant_id, image["bytes"], image["mime"])
+        except Exception as e:
+            print("فشل رفع الصورة:", e)
+            warnings.append(f"الصورة ماترفعتش ({e}). العمليات اتنفذت من غير صورة.")
 
     for i, item in enumerate(items):
         itype = item.get("type")
@@ -1453,6 +1789,19 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
             except Exception as e:
                 print("فشل إضافة الفرع:", e)
                 failures.append(f"فرع: {item['name']} ({e})")
+
+        elif itype == "set_image":
+            try:
+                if not image_url:
+                    raise RuntimeError("مفيش صورة جاهزة للربط")
+                prod = _find_product_by_name(tenant_id, item["product_name"])
+                if not prod:
+                    raise RuntimeError("المنتج مش موجود في المخزن")
+                supabase.table("products").update({"image_url": image_url}).eq("id", prod["id"]).execute()
+                supabase.table("variants").update({"image_url": image_url}).eq("tenant_id", tenant_id).eq("product_id", prod["id"]).execute()
+                successes.append(f"تم تحديث صورة «{prod['name']}» 🖼️")
+            except Exception as e:
+                failures.append(f"صورة «{item['product_name']}»: {e}")
 
         elif itype == "cancel_order":
             try:
@@ -1493,7 +1842,7 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
                 # 1. فحص المنتج بالاسم ومقارنته بـ _norm_ar
                 prod_rows = (
                     supabase.table("products")
-                    .select("id, name, price")
+                    .select("id, name, price, image_url")
                     .eq("tenant_id", tenant_id)
                     .execute()
                     .data or []
@@ -1507,6 +1856,8 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
 
                 if matched_prod:
                     product_id = matched_prod["id"]
+                    if image_url and not matched_prod.get("image_url"):
+                        supabase.table("products").update({"image_url": image_url}).eq("id", product_id).execute()
                     existing_price = float(matched_prod.get("price") or 0)
                     if abs(existing_price - float(item["price"])) > 0.01:
                         warnings.append(
@@ -1520,6 +1871,7 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
                             "name": item["name"],
                             "price": item["price"],
                             "active": True,
+                            **({"image_url": image_url} if image_url else {}),
                         })
                         .execute()
                         .data
@@ -1559,6 +1911,8 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
                             "p_ref": ref_code,
                         },
                     ).execute()
+                    if image_url:
+                        supabase.table("variants").update({"image_url": image_url}).eq("id", var_id).execute()
                     successes.append(f"تزويد مخزون «{item['name']}» ({item['color']} {item['size']}): +{item['qty']}")
                 else:
                     # صنف غير موجود -> إنشاؤه بـ stock=0 وكود لاتيني، ثم تزويد رصيده بحركة restock
@@ -1574,6 +1928,7 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list) -> dict:
                             "stock": 0,
                             "reserved": 0,
                             "active": True,
+                            **({"image_url": image_url} if image_url else {}),
                         })
                         .execute()
                         .data
@@ -1646,8 +2001,9 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tenant_id = pending.get("tenant_id") or tenant["id"]
 
     # تنفيذ الاستدعاءات المتزامنة داخل thread لعدم حظر الـ Event Loop
+    extra = (pending["image"],) if pending.get("image") else ()
     report = await asyncio.to_thread(
-        process_confirmed_proposals, tenant_id, pid, pending["items"]
+        process_confirmed_proposals, tenant_id, pid, pending["items"], *extra
     )
 
     # طباعة التفاصيل الكاملة للأخطاء في السجلات/الـ console فقط
@@ -1694,19 +2050,23 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not doc:
         return
 
+    fname = (doc.file_name or "").lower()
+    # لو التاجر بعت صورة كملف (Document) بدل صورة عادية: حوّلها لمعالج الصور فوراً
+    if (doc.mime_type or "").startswith("image/") or any(fname.endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp"]):
+        return await handle_photo(update, context)
+
     # فحص حجم الملف (حد 2 ميجا)
     MAX_DOC_SIZE_BYTES = 2 * 1024 * 1024
     if doc.file_size and doc.file_size > MAX_DOC_SIZE_BYTES:
         await update.message.reply_text("❌ حجم الملف كبير جداً! الحد الأقصى المسموح به هو 2 ميجابايت.")
         return
 
-    fname = (doc.file_name or "").lower()
     if not (fname.endswith(".xlsx") or fname.endswith(".csv")):
         await update.message.reply_text(
             "📋 ابعتلي ملف Excel بصيغة (.xlsx) أو CSV بصيغة (.csv) فقط (حتى 2 ميجا و100 صف في الدفعة).\n"
             "الأعمدة المطلوبة:\n"
-            "*اسم المنتج | السعر | المقاس | اللون | الكمية*",
-            parse_mode="Markdown"
+            "اسم المنتج | السعر | المقاس | اللون | الكمية\n\n"
+            "💡 ولو عايز تضيف منتج بصورته: ابعت الصورة وفي الكابشن اكتب مثلاً «وصل 50 ترنج بني مقاس L بـ600»."
         )
         return
 
@@ -1740,14 +2100,17 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"❌ فشل قراءة الملف: {type(e).__name__}")
         return
 
-    # حد 100 صف في الدفعة الواحدة
+    # حد 100 صف في الدفعة الواحدة (بعد شيل الصفوف الفاضية)
     MAX_DOC_ROWS = 100
+    raw_rows = [r for r in raw_rows if any(str(v or "").strip() for v in r.values())]
     if len(raw_rows) > MAX_DOC_ROWS:
         await status_msg.edit_text(
             f"❌ الملف يحتوي على {len(raw_rows)} صف! الحد الأقصى المسموح به في الدفعة الواحدة هو {MAX_DOC_ROWS} صف."
         )
         return
-        return
+
+    # شيل الصفوف الفاضية (إكسيل بيرجّع صفوف فاضية لحد max_row وكانت بتتحسب ضمن حد الـ100)
+    raw_rows = [r for r in raw_rows if any(str(v or "").strip() for v in r.values())]
 
     COL_MAP = {
         "name":  ["اسم المنتج", "المنتج", "الاسم", "name", "product"],
@@ -1758,8 +2121,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     def find_col(row_keys, aliases):
+        wanted = {a.strip().lower() for a in aliases}
         for k in row_keys:
-            if k in aliases:
+            if (k or "").strip().lower() in wanted:
                 return k
         return None
 
@@ -1780,17 +2144,16 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ الأعمدة دي مش موجودة في الشيت: {', '.join(missing)}\n"
             f"الأعمدة اللي عندك: {', '.join(first_keys)}\n\n"
             "الأعمدة المطلوبة:\n"
-            "*اسم المنتج | السعر | المقاس | اللون | الكمية*",
-            parse_mode="Markdown"
+            "اسم المنتج | السعر | المقاس | اللون | الكمية"
         )
         return
 
     for i, row in enumerate(raw_rows, start=2):
-        name  = row.get(col_name, "").strip()
-        price_raw = row.get(col_price, "0").strip().replace(",", "")
-        size  = row.get(col_size, "").strip().upper()
-        color = row.get(col_color, "").strip()
-        qty_raw = row.get(col_qty, "1").strip() if col_qty else "1"
+        name  = (row.get(col_name) or "").strip()
+        price_raw = (row.get(col_price) or "0").strip().replace(",", "")
+        size  = (row.get(col_size) or "").strip().upper()
+        color = (row.get(col_color) or "").strip()
+        qty_raw = (row.get(col_qty) or "1").strip() if col_qty else "1"
 
         if not name or not size or not color:
             errors.append(f"سطر {i}: بيانات ناقصة — تم تخطيه")
@@ -1828,14 +2191,14 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "items": rows_parsed,
     })
 
-    preview_lines = [f"📊 *لقيت {len(rows_parsed)} صنف في الشيت:*\n"]
+    preview_lines = [f"📊 لقيت {len(rows_parsed)} صنف في الشيت:\n"]
     for p in rows_parsed[:12]:
         preview_lines.append(f"• {p['name']} | {p['color']} {p['size']} | {p['price']:.0f}ج | كمية: {p['qty']}")
     if len(rows_parsed) > 12:
         preview_lines.append(f"... و{len(rows_parsed) - 12} صنف تاني")
 
     if errors:
-        preview_lines.append(f"\n⚠️ *{len(errors)} سطر تم تخطيه:*")
+        preview_lines.append(f"\n⚠️ {len(errors)} سطر تم تخطيه:")
         for e in errors[:3]:
             preview_lines.append(f"  - {e}")
 
@@ -1846,7 +2209,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("❌ إلغاء", callback_data=f"no:{pid}"),
     ]])
 
-    await status_msg.edit_text("\n".join(preview_lines), reply_markup=keyboard, parse_mode="Markdown")
+    await status_msg.edit_text("\n".join(preview_lines), reply_markup=keyboard)
 
 
 async def telegram_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1881,6 +2244,8 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("stock", stock_cmd))
+    app.add_handler(CommandHandler("inventory", stock_cmd))
     app.add_handler(CommandHandler("orders", orders_cmd))
     app.add_handler(CommandHandler("today", today_cmd))
     app.add_handler(CommandHandler("dashboard", dashboard_cmd))
@@ -1892,9 +2257,12 @@ def main():
     app.add_handler(CommandHandler("resume_bot", resume_bot_cmd))
     app.add_handler(CommandHandler("delete_tenant", delete_tenant_cmd))
     app.add_handler(CommandHandler("renew", renew_cmd))
+    app.add_handler(CommandHandler("shipping", shipping_cmd))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
+    # الصور (عادية أو مبعوتة كملف) قبل معالج الملفات العام
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_photo))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
     print("بوت التاجر شغال... (Ctrl+C للإيقاف)", flush=True)

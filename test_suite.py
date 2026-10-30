@@ -1460,4 +1460,53 @@ def test_shipping_rates_tool_and_tenant_settings(monkeypatch):
     assert limiter.tenant_daily_comments[tid]["count"] == 3
 
 
+def test_shipping_toggle_and_flat_rate_order(monkeypatch, tmp_path):
+    import orders
+    import merchant_settings
+    import server
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(merchant_settings, "SETTINGS_FILE", str(tmp_path / "test_settings_shipping.json"))
+
+    tid = "t_shipping_test_123"
+
+    # 1. اختبار تشغيل وإيقاف الشحن حتى مع غياب عمود shipping_enabled في Supabase
+    class MockFailingDB:
+        def update(self, *a, **k):
+            raise Exception("Could not find the column 'shipping_enabled' of 'tenants' in the schema cache")
+        def eq(self, *a, **k):
+            return self
+        def execute(self):
+            raise Exception("schema cache error")
+
+    monkeypatch.setattr(orders.supabase, "table", lambda t: MockFailingDB())
+
+    ok, err = orders.set_shipping_enabled(tid, False)
+    assert ok is True
+    assert err is None
+    assert orders.is_shipping_enabled(tid, fresh=True) is False
+
+    ok, err = orders.set_shipping_enabled(tid, True)
+    assert ok is True
+    assert orders.is_shipping_enabled(tid, fresh=True) is True
+
+    # 2. اختبار endpoint /api/dashboard/{id}/toggle-shipping
+    mock_tenant = {
+        "id": tid,
+        "name": "متجر تجريبي",
+        "bot_enabled": True,
+        "facebook_page_id": "123",
+        "telegram_chat_id": 999,
+    }
+    monkeypatch.setattr(server, "resolve_tenant_for_dashboard", lambda i: mock_tenant)
+    client = TestClient(server.app)
+
+    res = client.post(f"/api/dashboard/{tid}/toggle-shipping")
+    assert res.status_code == 200
+    json_data = res.json()
+    assert json_data["status"] == "success"
+    assert "shipping_enabled" in json_data
+
+
+
 

@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import threading
@@ -31,7 +32,7 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
 4. لو العميل ماحددش مقاس أو لون، اسأله بدل ما تخمّن.
 5. لو العميل سأل عن حاجة مالهاش علاقة بالمنتجات، رد بلطف وارجّعه للموضوع.
 6. ممنوع تماماً تذكر أرقام أو كميات المخزون للعميل (ممنوع تقول 'عندنا 50 قطعة' أو 'متاح 10 قطع')! قول 'متاح وجاهز للشحن فوراً'.
-7. لو العميل سأل: "عايز أشوف صورته"، "ممكن صورة"، "وريني الألوان"، وكان الصنف له رابط صورة (image_url) راجع من الأداة: ابعتله رابط الصورة مع وصف جذاب للخامة والشياكة وشجعه يطلب!
+7. لو العميل سأل: "عايز أشوف صورته"، "ممكن صورة"، "وريني الألوان"، وكان الصنف له صورة (image_url غير فاضي) راجعة من check_stock: نادِ send_product_image بكود الصنف (sku) وهتتبعت له الصورة كصورة فعلية تلقائياً بعد ردك. ممنوع تكتب رابط الصورة في الرد. اكتب وصف جذاب للخامة والشياكة وقوله "صورته وصلتلك تحت" وشجعه يطلب! لو الأداة رجعت no_image اعتذر بلطف إن مفيش صورة حالياً. (الأداة متاحة في الشات الخاص بس، مش في التعليقات.)
 
 قواعد الفروع وعناوين المحل:
 1. لو العميل سأل عن مكان المحل، عنوان الفرع، أقرب فرع، أو مواعيد العمل: استدعي أداة get_branches فوراً بالمحافظة أو سيبها فاضية لو ما حددش.
@@ -63,6 +64,8 @@ SYSTEM_PROMPT = """أنت بياع شاطر في براند مصري، بترد 
 3. اعرض ملخص واضح: الأصناف والكميات، سعر القطع، الشحن، الإجمالي، وإن الدفع عند الاستلام.
 4. استنى العميل يأكد صراحة (زي: تمام، أكد، ماشي). ممنوع تسجّل الأوردر قبل التأكيد.
 5. بعد التأكيد نادِ place_order مرة واحدة بس. ممنوع تناديها مرتين لنفس الأوردر.
+   - تنبيه حاسم: لو أداة place_order رجعت status: error، ممنوع تماماً أن تدعي أن الأوردر تم تسجيله أو تبارك للعميل! يجب إخبار العميل بوجود مشكلة بالسبب المذكور واطلب منه مراجعة بياناته برفق.
+   - فقط عندما ترجع place_order حالة status: ok بنجاح، تهنئ العميل وتذكر له تفاصيل طلبه وتؤكد له وصول الأوردر.
 6. لو العميل طلب إلغاء أوردر سابق:
    - اطلب منه رقم الأوردر ورقم الموبايل المسجل به الأوردر لتأكيد هويته (لو ما كانش كاتبهم).
    - استدعِ أداة cancel_customer_order برقم الأوردر ورقم الموبايل للتأكد من هويته ومطابقة البيانات.
@@ -420,11 +423,26 @@ def update_order_address_or_phone_handler(
     return orders.update_order_shipping(tenant_id, order_number, phone=target_phone, address=target_addr)
 
 
+DEFAULT_INSPECTION_POLICY = "متاح المعاينة والقياس مع مندوب الشحن قبل الاستلام والدفع."
+
+PICKUP_ONLY_BLOCK = """
+
+⚠️ تعليمات خاصة وإلزامية لهذا المحل (بتلغي أي قاعدة قبلها بتقول إن الشحن متاح):
+هذا المحل **مفيهوش خدمة شحن أو توصيل نهائياً**. الاستلام من المحل بس والدفع عند الاستلام في المحل.
+- ممنوع تقول أو تلمّح إن في شحن أو توصيل لباب البيت أو مندوب شحن. بدل "جاهز للشحن" قول "جاهز للاستلام من المحل".
+- لو العميل سأل عن الشحن أو التوصيل أو مصاريفه: اعتذر بلطف إن الاستلام من المحل بس، ونادِ get_branches وقوله العنوان ومواعيد العمل ورابط اللوكيشن.
+- خطوات الأوردر: اجمع الاسم ورقم الموبايل بس (ماتسألش عن المحافظة ولا عنوان التوصيل). لو في أكتر من فرع اسأله هيستلم من أنهي فرع.
+- نادِ quote_order بالمحافظة = "استلام من المحل"، ونادِ place_order بنفس القيمة في المحافظة، وفي العنوان اكتب اسم الفرع اللي هيستلم منه (أو "استلام من المحل").
+- ملخص الأوردر: الأصناف والكميات والإجمالي (بدون شحن)، والدفع عند الاستلام في المحل، وإنه يقدر يعاين ويقيس قبل الدفع.
+- بعد تسجيل الأوردر قوله إن الأوردر اتحجزله والمحل هيتواصل معاه لتأكيد ميعاد الاستلام.
+"""
+
+
 def get_tenant_settings(tenant_id: str) -> dict:
     """جلب سياسات وإعدادات المحل (مواعيد العمل، المعاينة، الاسترجاع) من جدول tenant_settings"""
     defaults = {
         "working_hours": "يومياً من الساعة 10:00 صباحاً حتى 11:00 مساءً ما عدا الجمعة من 2:00 ظهراً.",
-        "inspection_policy": "متاح المعاينة والقياس مع مندوب الشحن قبل الاستلام والدفع.",
+        "inspection_policy": DEFAULT_INSPECTION_POLICY,
         "return_policy": "الاستبدال والاسترجاع متاح خلال 14 يوماً من تاريخ الاستلام بشرط سلامة المنتج ووجود الفاتورة.",
     }
     if not tenant_id:
@@ -451,12 +469,18 @@ def build_system_instruction(tenant_id: str, allow_orders: bool = True) -> str:
     inspection = settings["inspection_policy"]
     return_policy = settings["return_policy"]
 
+    shipping_on = orders.is_shipping_enabled(tenant_id)
+    if not shipping_on and inspection == DEFAULT_INSPECTION_POLICY:
+        inspection = "متاح المعاينة والقياس في المحل قبل الدفع."
+
     policies_block = f"""
 قواعد وسياسات ومواعيد المحل المعتمدة (يجب الالتزام بها نصاً في جميع إجاباتك):
 - مواعيد وساعات العمل: {hours}
 - سياسة المعاينة قبل الاستلام: {inspection}
 - سياسة الاستبدال والاسترجاع: {return_policy}
 """
+    if not shipping_on:
+        policies_block += PICKUP_ONLY_BLOCK
 
     if allow_orders:
         return SYSTEM_PROMPT + "\n\n" + policies_block
@@ -576,6 +600,23 @@ def classify_comment(text: str, post_text: str = "") -> str:
     return _rule_based_classify_comment(clean_text, post_text)
 
 
+# ---------------------------------------------------------------
+# 🖼️ صور المنتجات للعملاء: الأداة بتحط الروابط في طابور، والسيرفر بيبعتها كصور فعلية بعد الرد النصي
+# ---------------------------------------------------------------
+PENDING_IMAGES = {}  # session_key -> [image urls]
+PENDING_IMAGES_LOCK = threading.Lock()
+MAX_IMAGES_PER_REPLY = 3
+MAX_PENDING_IMAGE_SESSIONS = 1000
+
+
+def pop_customer_images(tenant_id: str, channel: str, customer_id: str, allow_orders: bool = True) -> list:
+    """بيرجّع (ويفضّي) صور المنتجات اللي البوت قرر يبعتها للعميل في آخر رد."""
+    mode_tag = "orders" if allow_orders else "comments"
+    key = f"{tenant_id}:{channel}:{customer_id}:{mode_tag}"
+    with PENDING_IMAGES_LOCK:
+        return PENDING_IMAGES.pop(key, [])
+
+
 def handle_customer_message(
     tenant_id: str,
     customer_id: str,
@@ -600,6 +641,8 @@ def handle_customer_message(
     mode_tag = "orders" if allow_orders else "comments"
     session_key = f"{tenant_id}:{channel}:{customer_id}:{mode_tag}"
     now = time.time()
+    with PENDING_IMAGES_LOCK:
+        PENDING_IMAGES.pop(session_key, None)  # امسح أي صور قديمة ماتبعتتش
 
     # تعريف أدوات الموديل الخاصة بهذا التاجر تحديداً (عزل تام)
     def check_stock(product_name: str, size: str = "", color: str = "") -> dict:
@@ -626,7 +669,44 @@ def handle_customer_message(
         Returns:
             dict يحتوي على تفاصيل الأسعار، الخصم، الشحن، والإجمالي النهائي وطريقة الدفع.
         """
+        if not orders.is_shipping_enabled(tenant_id):
+            governorate = orders.PICKUP_LABEL
         return orders.quote_order(tenant_id, items, governorate, promo_code=promo_code, session_id=session_key)
+
+    def send_product_image(sku: str) -> dict:
+        """بتجهّز صورة المنتج علشان تتبعت للعميل كصورة فعلية في الشات بعد ردك مباشرة.
+        نادِها لما العميل يطلب يشوف صورة المنتج أو اللون. لازم الـ sku يكون جاي من check_stock.
+
+        Args:
+            sku: كود الصنف (sku) اللي رجع من أداة check_stock
+        """
+        try:
+            rows = (
+                supabase.table("variants")
+                .select("image_url,products!inner(image_url)")
+                .eq("tenant_id", tenant_id)
+                .eq("sku", sku.strip())
+                .execute()
+                .data
+            )
+        except Exception as e:
+            print("فشل جلب صورة الصنف:", type(e).__name__)
+            return {"status": "error", "reason": "حصلت مشكلة مؤقتة في جلب الصورة"}
+        if not rows:
+            return {"status": "error", "reason": "كود الصنف مش موجود"}
+        url = rows[0].get("image_url") or (rows[0].get("products") or {}).get("image_url")
+        if not url or not str(url).startswith("https://"):
+            return {"status": "no_image", "message": "مفيش صورة متسجلة للصنف ده حالياً، اعتذر للعميل بلطف."}
+        with PENDING_IMAGES_LOCK:
+            if len(PENDING_IMAGES) > MAX_PENDING_IMAGE_SESSIONS:
+                PENDING_IMAGES.clear()
+            queue = PENDING_IMAGES.setdefault(session_key, [])
+            if url in queue:
+                return {"status": "queued", "message": "الصورة جاهزة وهتتبعت بعد ردك."}
+            if len(queue) >= MAX_IMAGES_PER_REPLY:
+                return {"status": "limit", "message": f"أقصى عدد صور في الرد الواحد {MAX_IMAGES_PER_REPLY}."}
+            queue.append(str(url))
+        return {"status": "queued", "message": "الصورة هتتبعت للعميل تلقائياً بعد ردك. ماتكتبش الرابط في الرد."}
 
     def get_active_offers() -> dict:
         """بترجّع كل العروض وأكواد الخصم النشطة حالياً للمحل (عروض الشحن المجاني، نسب الخصم، أكواد التخفيض)."""
@@ -649,6 +729,8 @@ def handle_customer_message(
         Returns:
             dict يحتوي على حالة الأوردر ورقم الأوردر المسجل وتفاصيل التأكيد.
         """
+        if not orders.is_shipping_enabled(tenant_id):
+            governorate = orders.PICKUP_LABEL
         if not orders.has_valid_quote(session_key, items, governorate):
             return {
                 "status": "error",
@@ -671,6 +753,11 @@ def handle_customer_message(
             query = query.ilike("governorate", f"%{escape_like(governorate.strip())}%")
         rows = query.execute().data
         if not rows:
+            if not orders.is_shipping_enabled(tenant_id):
+                return {
+                    "status": "no_branches_pickup_only",
+                    "message": "المحل ده بدون شحن والاستلام من المحل بس، ومفيش عنوان مسجل لسه. اعتذر للعميل وقوله إن المحل هيتواصل معاه بالعنوان.",
+                }
             # لو مفيش فروع مسجلة، نرجع إنه متجر أونلاين بشحن فوري
             return {
                 "status": "online_only",
@@ -687,6 +774,8 @@ def handle_customer_message(
         Returns:
             dict يحتوي على أسعار الشحن المتاحة أو سعر شحن المحافظة المطلوبة.
         """
+        if not orders.is_shipping_enabled(tenant_id):
+            return {"status": "no_shipping", "message": "المحل ده مفيهوش شحن، الاستلام من المحل بس. اعتذر للعميل بلطف ووجّهه للفروع."}
         try:
             res = supabase.table("shipping_rates").select("governorate,price").eq("tenant_id", tenant_id).execute()
             rows = res.data or []
@@ -708,6 +797,27 @@ def handle_customer_message(
                             "price": r["price"],
                             "message": f"مصاريف الشحن لمحافظة {r['governorate']} هي {r['price']} جنيه والتوصيل خلال 2-4 أيام عمل مع إمكانية المعاينة قبل الاستلام."
                         }
+                # فحص الشحن الموحد إذا لم تكن المحافظة مسجلة بشكل مخصص
+                for r in rows:
+                    gov_norm = _norm_ar(r.get("governorate", ""))
+                    if gov_norm in ("جميع المحافظات", "شحن موحد", "كل المحافظات", "الكل", "عام"):
+                        return {
+                            "status": "ok",
+                            "governorate": governorate,
+                            "price": r["price"],
+                            "message": f"مصاريف الشحن {r['price']} جنيه لجميع المحافظات والتوصيل خلال 2-4 أيام عمل مع إمكانية المعاينة قبل الاستلام."
+                        }
+
+            # إذا سأل العميل بشكل عام وكان هناك شحن موحد
+            for r in rows:
+                gov_norm = _norm_ar(r.get("governorate", ""))
+                if gov_norm in ("جميع المحافظات", "شحن موحد", "كل المحافظات", "الكل", "عام"):
+                    return {
+                        "status": "ok",
+                        "rates": rows,
+                        "price": r["price"],
+                        "message": f"مصاريف الشحن {r['price']} جنيه لجميع المحافظات والتوصيل خلال 2-4 أيام عمل مع إمكانية المعاينة قبل الاستلام."
+                    }
 
             return {
                 "status": "ok",
@@ -798,21 +908,30 @@ def handle_customer_message(
     history = load_recent_messages(conv_id, limit=14) if conv_id else []
 
     # 3. إنشاء أو استرجاع الجلسة تحت قفل قاموس الجلسات مع تنظيف دوري للذاكرة
+    ship_on = orders.is_shipping_enabled(tenant_id)
     with CHATS_DICT_LOCK:
         cleanup_customer_chats()
+        # لو التاجر غيّر إعداد الشحن، نعيد بناء الجلسة بالتعليمات الجديدة (السجل بيتحمّل من الداتابيز)
+        if session_key in CUSTOMER_CHATS and CUSTOMER_CHATS[session_key].get("shipping_enabled", True) != ship_on:
+            CUSTOMER_CHATS.pop(session_key, None)
         if session_key not in CUSTOMER_CHATS:
             if allow_orders:
                 tools = [
                     check_stock, quote_order, place_order, get_branches,
-                    get_shipping_rates, submit_customer_review, get_google_review_link,
-                    get_active_offers, cancel_customer_order, update_order_address_or_phone
+                    submit_customer_review, get_google_review_link,
+                    get_active_offers, cancel_customer_order, update_order_address_or_phone,
+                    send_product_image
                 ]
+                if ship_on:
+                    tools.append(get_shipping_rates)
             else:
                 # مسار التعليقات: عدم تمرير أدوات الأوردر والتعديل والإلغاء وتوجيه العميل للخاص
                 tools = [
-                    check_stock, get_branches, get_shipping_rates,
+                    check_stock, get_branches,
                     submit_customer_review, get_google_review_link, get_active_offers
                 ]
+                if ship_on:
+                    tools.append(get_shipping_rates)
             sys_inst = build_system_instruction(tenant_id, allow_orders=allow_orders)
 
             config = types.GenerateContentConfig(
@@ -825,6 +944,7 @@ def handle_customer_message(
                 "last_active": now,
                 "conversation_id": conv_id,
                 "lock": threading.Lock(),
+                "shipping_enabled": ship_on,
             }
         else:
             CUSTOMER_CHATS[session_key]["last_active"] = now

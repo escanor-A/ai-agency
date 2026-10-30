@@ -111,18 +111,113 @@ def normalize_phone(raw):
     return None
 
 
+# ---------------------------------------------------------------
+# 🚚 هل التاجر ده بيوفر شحن؟ (tenants.shipping_enabled — الافتراضي true)
+# لو false: الاستلام من المحل بس، والسعر بدون شحن
+# ---------------------------------------------------------------
+PICKUP_LABEL = "استلام من المحل"
+_SHIPPING_CACHE = {}  # tenant_id -> (timestamp, enabled)
+SHIPPING_CACHE_TTL = 30  # ثانية (البوت والسيرفر عمليتين منفصلتين، فالتغيير بيوصل خلال نص دقيقة)
+
+
+def is_shipping_enabled(tenant_id, fresh: bool = False) -> bool:
+    """بيرجّع True لو التاجر بيشحن. لو العمود مش موجود أو حصل خطأ بنفترض إن الشحن متاح (السلوك القديم)."""
+    if not tenant_id:
+        return True
+    now = time.time()
+    cached = _SHIPPING_CACHE.get(tenant_id)
+    if cached and not fresh and now - cached[0] < SHIPPING_CACHE_TTL:
+        return cached[1]
+
+    enabled = None
+    try:
+        rows = (
+            supabase.table("tenants").select("shipping_enabled")
+            .eq("id", tenant_id).execute().data
+        )
+        if rows and rows[0].get("shipping_enabled") is not None:
+            enabled = bool(rows[0]["shipping_enabled"])
+    except Exception:
+        pass
+
+    if enabled is None:
+        try:
+            from merchant_settings import load_merchant_settings
+            ms = load_merchant_settings(tenant_id)
+            if "shipping_enabled" in ms:
+                enabled = bool(ms["shipping_enabled"])
+        except Exception:
+            pass
+
+    if enabled is None:
+        enabled = True
+
+    if len(_SHIPPING_CACHE) > 2000:
+        _SHIPPING_CACHE.clear()
+    _SHIPPING_CACHE[tenant_id] = (now, enabled)
+    return enabled
+
+
+def set_shipping_enabled(tenant_id, enabled: bool):
+    """تشغيل/إيقاف الشحن لتاجر. بيرجّع (True, None) أو (False, سبب الفشل)."""
+    if not tenant_id:
+        return False, "معرّف التاجر غير صالح"
+
+    db_updated = False
+    try:
+        res = (
+            supabase.table("tenants").update({"shipping_enabled": bool(enabled)})
+            .eq("id", tenant_id).execute()
+        )
+        if res.data:
+            db_updated = True
+    except Exception as e:
+        print(f"Notice: could not update tenants.shipping_enabled in DB (fallback to local settings): {e}")
+
+    try:
+        from merchant_settings import save_merchant_settings
+        save_merchant_settings(tenant_id, {"shipping_enabled": bool(enabled)})
+    except Exception as e:
+        print(f"Error saving shipping_enabled to merchant_settings: {e}")
+        if not db_updated:
+            return False, f"فشل حفظ حالة الشحن: {e}"
+
+    _SHIPPING_CACHE.pop(tenant_id, None)
+    return True, None
+
+
 def find_shipping(tenant_id, governorate):
-    rows = (
-        supabase.table("shipping_rates")
-        .select("governorate,price")
-        .eq("tenant_id", tenant_id)
-        .execute()
-        .data
-    )
-    wanted = normalize_text(governorate)
+    if not is_shipping_enabled(tenant_id):
+        return {"governorate": PICKUP_LABEL, "price": 0}
+    try:
+        rows = (
+            supabase.table("shipping_rates")
+            .select("governorate,price")
+            .eq("tenant_id", tenant_id)
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        rows = []
+
+    wanted = normalize_text(governorate) if governorate else ""
+
+    # 1. مطابقة دقيقة باسم المحافظة
+    if wanted:
+        for r in rows:
+            if normalize_text(r.get("governorate", "")) == wanted:
+                return r
+
+    # 2. الشحن الموحد أو "جميع المحافظات"
     for r in rows:
-        if normalize_text(r["governorate"]) == wanted:
-            return r
+        norm = normalize_text(r.get("governorate", ""))
+        if norm in ("جميع المحافظات", "شحن موحد", "كل المحافظات", "الكل", "عام"):
+            return {"governorate": governorate or r.get("governorate"), "price": float(r.get("price", 50.0))}
+
+    # 3. لو التاجر معندوش أي تسعيرة متسجلة، استخدام الافتراضي 50 جنيه
+    if not rows:
+        return {"governorate": governorate or "جميع المحافظات", "price": 50.0}
+
     return None
 
 
@@ -188,13 +283,20 @@ def get_active_promotions(tenant_id):
             .execute()
             .data
         )
-        return rows or []
+        rows = rows or []
+        if not is_shipping_enabled(tenant_id):
+            # التاجر ده مفيهوش شحن: ماينفعش نعرض عروض شحن مجاني
+            rows = [r for r in rows if r.get("promo_type") != "free_shipping"]
+        return rows
     except Exception:
         return []
 
 
 def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
     """حساب السعر والشحن مع تطبيق العروض التلقائية أو أكواد الخصم"""
+    pickup = not is_shipping_enabled(tenant_id)
+    if pickup:
+        governorate = PICKUP_LABEL
     ship = find_shipping(tenant_id, governorate)
     if not ship:
         return {"status": "error", "reason": "unknown_governorate"}
@@ -259,7 +361,8 @@ def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
         "promo_error": promo_error,
         "shipping_fee": fee,
         "total": total,
-        "payment": "الدفع عند الاستلام",
+        "payment": "الدفع عند الاستلام من المحل" if pickup else "الدفع عند الاستلام",
+        "pickup_only": pickup,
     }
     if session_id:
         record_successful_quote(
@@ -356,7 +459,11 @@ def place_order(
     clean_phone = normalize_phone(phone)
     if not clean_phone:
         return {"status": "error", "reason": "رقم الموبايل غلط (لازم 11 رقم مصري)"}
-    if len(address.strip()) < 10:
+    if not is_shipping_enabled(tenant_id):
+        governorate = PICKUP_LABEL
+        if len((address or "").strip()) < 10:
+            address = PICKUP_LABEL  # استلام من المحل: مفيش عنوان مطلوب
+    if len((address or "").strip()) < 10:
         return {"status": "error", "reason": "العنوان ناقص، محتاج تفاصيل أكتر"}
 
     # 1. التأكد من وجود quote_order ناجح في نفس الجلسة بنفس الأصناف والمحافظة خلال 15 دقيقة
@@ -405,6 +512,27 @@ def place_order(
             tenant_id, channel, channel_user_id, name=customer_name.strip(), phone=clean_phone
         )
 
+    # ضمان وجود المحافظة في جدول shipping_rates حتى لا يرفضها إجراء place_order_v3 في Postgres
+    target_gov = ship["governorate"]
+    try:
+        gov_check = (
+            supabase.table("shipping_rates")
+            .select("id")
+            .eq("tenant_id", tenant_id)
+            .eq("governorate", target_gov)
+            .limit(1)
+            .execute()
+        )
+        if not (gov_check.data and len(gov_check.data) > 0):
+            supabase.table("shipping_rates").insert({
+                "tenant_id": tenant_id,
+                "governorate": target_gov,
+                "price": quote["shipping_fee"],
+            }).execute()
+    except Exception as e:
+        print(f"Notice: could not ensure shipping rate row for '{target_gov}': {e}")
+
+    result = None
     try:
         result = supabase.rpc(
             "place_order_v3",
@@ -426,8 +554,47 @@ def place_order(
     except Exception as e:
         if "INSUFFICIENT_STOCK" in str(e):
             return {"status": "error", "reason": "الكمية خلصت في اللحظة الأخيرة"}
-        print("خطأ في تسجيل الأوردر:", e)
-        return {"status": "error", "reason": "system_error"}
+        if "UNKNOWN_GOVERNORATE" in str(e):
+            # محاولة مرنة: استخدام أي محافظة مسجلة في shipping_rates ثم تصحيح العنوان والمحافظة
+            try:
+                any_rates = (
+                    supabase.table("shipping_rates")
+                    .select("governorate")
+                    .eq("tenant_id", tenant_id)
+                    .limit(1)
+                    .execute()
+                    .data
+                )
+                if any_rates:
+                    fallback_gov = any_rates[0]["governorate"]
+                    result = supabase.rpc(
+                        "place_order_v3",
+                        {
+                            "p_tenant": tenant_id,
+                            "p_customer_name": customer_name.strip(),
+                            "p_phone": clean_phone,
+                            "p_governorate": fallback_gov,
+                            "p_address": f"{ship['governorate']} - {address.strip()}",
+                            "p_items": [{"variant_id": l["variant_id"], "qty": l["qty"]} for l in lines],
+                            "p_customer": cust_uuid,
+                            "p_shipping_fee": quote["shipping_fee"],
+                            "p_discount": quote.get("discount", 0.0),
+                            "p_discount_note": quote.get("discount_note") or None,
+                            "p_promo_code": quote.get("applied_code"),
+                            "p_idempotency_key": quote_id,
+                        },
+                    ).execute()
+                    if result.data and result.data.get("order_id"):
+                        try:
+                            supabase.table("orders").update({"governorate": ship["governorate"]}).eq("id", result.data["order_id"]).execute()
+                        except Exception:
+                            pass
+            except Exception as e2:
+                print("خطأ في فولباك تسجيل الأوردر:", e2)
+
+        if not result or not result.data:
+            print("خطأ في تسجيل الأوردر:", e)
+            return {"status": "error", "reason": "system_error"}
 
     order = {"status": "ok", **result.data}
     if quote.get("promo_error"):
