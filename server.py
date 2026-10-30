@@ -1781,7 +1781,18 @@ async def add_promotion_api(identifier: str, payload: PromotionPayload):
         res = supabase.table("promotions").insert(insert_data).execute()
         return {"status": "success", "message": "تمت إضافة العرض الترويجي بنجاح! 🎁", "promo": res.data[0] if res.data else {}}
     except Exception as e:
-        if "min_order_value" in str(e):
+        err_str = str(e)
+        if "promotions_type_check" in err_str:
+            insert_data["promo_type"] = "fixed"
+            if "[كارت هدايا]" not in insert_data["description"] and "كارت" not in insert_data["description"]:
+                insert_data["description"] = f"[كارت هدايا / فاوتشر] {insert_data['description']}"
+            try:
+                res = supabase.table("promotions").insert(insert_data).execute()
+                return {"status": "success", "message": "تمت إضافة العرض الترويجي بنجاح! 🎁", "promo": res.data[0] if res.data else {}}
+            except Exception as e_retry:
+                err_str = str(e_retry)
+
+        if "min_order_value" in err_str:
             insert_data.pop("min_order_value", None)
             try:
                 res = supabase.table("promotions").insert(insert_data).execute()

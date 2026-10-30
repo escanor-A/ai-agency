@@ -1946,7 +1946,17 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
                 try:
                     supabase.table("promotions").insert(p_payload).execute()
                 except Exception as e_col:
-                    if "min_order_value" in str(e_col):
+                    err_s = str(e_col)
+                    if "promotions_type_check" in err_s:
+                        p_payload["promo_type"] = "fixed"
+                        if "[كارت هدايا]" not in p_payload["description"] and "كارت" not in p_payload["description"]:
+                            p_payload["description"] = f"[كارت هدايا] {p_payload['description']}"
+                        try:
+                            supabase.table("promotions").insert(p_payload).execute()
+                        except Exception as e_retry:
+                            err_s = str(e_retry)
+
+                    if "min_order_value" in err_s:
                         p_payload.pop("min_order_value", None)
                         supabase.table("promotions").insert(p_payload).execute()
                     else:

@@ -239,7 +239,8 @@
           <label class="block text-xs font-semibold text-slate-300 mb-1.5">نوع العرض الترويجي *</label>
           <select id="promoTypeSelect" onchange="onPromoTypeChange()" required
             class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-xs sm:text-sm font-semibold">
-            <option value="voucher">🎁 كارت هدايا / فاوتشر للزيارة القادمة (مثال: اشتري بـ 1000ج واحصل على فاوتشر 200ج)</option>
+            <option value="voucher">🎁 كارت هدايا / فاوتشر للزيارة القادمة (مثال: اشتري بـ 1000ج واحصل على فاوتشر 200ج)
+            </option>
             <option value="free_shipping">🚚 شحن مجاني (مثال: شحن مجاني لأي طلب قطعتين أو أكثر)</option>
             <option value="percentage">🏷️ خصم نسبة مئوية (مثال: خصم 20% على إجمالي الأوردر)</option>
             <option value="fixed">💵 خصم مبلغ ثابت (مثال: خصم 50 جنيه على الأوردر)</option>
@@ -248,11 +249,13 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1.5" id="promoDiscountLabel">قيمة الفاوتشر / الهدية *</label>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5" id="promoDiscountLabel">قيمة الفاوتشر /
+              الهدية *</label>
             <div class="relative">
               <input type="number" step="any" min="0" id="promoDiscountValueInput" placeholder="200" required
                 class="w-full px-4 py-2.5 pl-14 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-sm font-mono dir-ltr text-left">
-              <span id="promoUnitSuffix" class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">ج.م</span>
+              <span id="promoUnitSuffix"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">ج.م</span>
             </div>
           </div>
           <div>
@@ -280,7 +283,8 @@
 
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1.5">وصف العرض (يظهر للعميل في الشات) *</label>
-          <textarea id="promoDescInput" rows="2" required placeholder="اشتري بقيمة 1000 جنيه واحصل على كارت هدايا بـ 200 جنيه لطلبك القادم!"
+          <textarea id="promoDescInput" rows="2" required
+            placeholder="اشتري بقيمة 1000 جنيه واحصل على كارت هدايا بـ 200 جنيه لطلبك القادم!"
             class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-xs sm:text-sm resize-none"></textarea>
         </div>
 
@@ -666,7 +670,8 @@
           <span id="shippingStatusBadge" class="text-xs font-semibold px-3 py-1.5 rounded-xl border">
             <!-- Loaded via JS -->
           </span>
-          <label class="relative inline-flex items-center cursor-pointer select-none" dir="ltr" title="تفعيل أو إيقاف الشحن">
+          <label class="relative inline-flex items-center cursor-pointer select-none" dir="ltr"
+            title="تفعيل أو إيقاف الشحن">
             <input type="checkbox" id="shippingToggle" onchange="toggleShippingStatus()" class="sr-only peer">
             <div
               class="w-14 h-8 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-600 transition-colors duration-200 after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:shadow-md after:transition-transform after:duration-200 peer-checked:after:translate-x-6">
@@ -735,7 +740,8 @@
           </div>
           <div>
             <h3 class="text-base font-bold text-white">العروض والخصومات وكروت الهدايا (Offers & Vouchers)</h3>
-            <p class="text-xs text-slate-400">تحفيز العملاء على الشراء وزيادة متوسط قيمة سلة المشتريات (شحن مجاني، كروت هدايا للزيارة القادمة، خصومات)</p>
+            <p class="text-xs text-slate-400">تحفيز العملاء على الشراء وزيادة متوسط قيمة سلة المشتريات (شحن مجاني، كروت
+              هدايا للزيارة القادمة، خصومات)</p>
           </div>
         </div>
 
@@ -760,7 +766,8 @@
           </div>
           <div>
             <h3 class="text-base font-bold text-white">النشر التلقائي الذكي على فيسبوك (AI Auto-Posting)</h3>
-            <p class="text-xs text-slate-400">لو التاجر مشغول ومش بينزل بوستات، الذكاء الاصطناعي بيختار قطعة متوفرة بالمخزن ويكتبلها بوست إعلاني جذاب باللهجة المصرية وينشرها تلقائياً</p>
+            <p class="text-xs text-slate-400">لو التاجر مشغول ومش بينزل بوستات، الذكاء الاصطناعي بيختار قطعة متوفرة
+              بالمخزن ويكتبلها بوست إعلاني جذاب باللهجة المصرية وينشرها تلقائياً</p>
           </div>
         </div>
 
@@ -768,7 +775,8 @@
           <span id="autopostStatusBadge" class="text-xs font-semibold px-3 py-1.5 rounded-xl border">
             <!-- Loaded via JS -->
           </span>
-          <label class="relative inline-flex items-center cursor-pointer select-none" dir="ltr" title="تفعيل أو إيقاف النشر التلقائي">
+          <label class="relative inline-flex items-center cursor-pointer select-none" dir="ltr"
+            title="تفعيل أو إيقاف النشر التلقائي">
             <input type="checkbox" id="autopostToggle" onchange="toggleAutopostStatus()" class="sr-only peer">
             <div
               class="w-14 h-8 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-600 transition-colors duration-200 after:content-[''] after:absolute after:top-1 after:left-1 after:bg-white after:rounded-full after:h-6 after:w-6 after:shadow-md after:transition-transform after:duration-200 peer-checked:after:translate-x-6">
@@ -801,14 +809,16 @@
         </div>
 
         <!-- Immediate Trigger Card -->
-        <div class="lg:col-span-2 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-pink-950/20 to-purple-950/20 border border-pink-900/30 flex flex-col justify-between space-y-4">
+        <div
+          class="lg:col-span-2 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-pink-950/20 to-purple-950/20 border border-pink-900/30 flex flex-col justify-between space-y-4">
           <div>
             <div class="flex items-center gap-2 mb-1.5">
               <span class="text-xl">🚀</span>
               <h4 class="text-sm font-bold text-white">نشر بوست ترويجي الآن فوراً</h4>
             </div>
             <p class="text-xs text-slate-300 leading-relaxed">
-              اختر هذا الزرار لنشر بوست جديد فوراً! سيقوم الذكاء الاصطناعي باختيار منتج به مخزون كافٍ وله صورة، وكتابة كابشن تسويقي يبرز خامة ومقاسات وسعر المنتج ونشره على صفحة فيسبوك في ثوانٍ.
+              اختر هذا الزرار لنشر بوست جديد فوراً! سيقوم الذكاء الاصطناعي باختيار منتج به مخزون كافٍ وله صورة، وكتابة
+              كابشن تسويقي يبرز خامة ومقاسات وسعر المنتج ونشره على صفحة فيسبوك في ثوانٍ.
             </p>
           </div>
 
@@ -845,7 +855,7 @@
       tg.ready();
       try {
         tg.expand();
-      } catch (e) {}
+      } catch (e) { }
 
       // Apply Telegram theme colors if available
       if (tg.themeParams) {
@@ -909,282 +919,282 @@
         input.type = 'password';
         btn.innerText = 'إظهار';
       }
-     // Facebook Token Security & Visibility State
-    let hasSavedToken = false;
+      // Facebook Token Security & Visibility State
+      let hasSavedToken = false;
 
-    function updateTokenUIState(isChanging = false) {
-      const savedContainer = document.getElementById('tokenSavedContainer');
-      const entryContainer = document.getElementById('tokenEntryContainer');
-      const cancelBtn = document.getElementById('cancelChangeTokenBtn');
-      const tokenInput = document.getElementById('facebookTokenInput');
+      function updateTokenUIState(isChanging = false) {
+        const savedContainer = document.getElementById('tokenSavedContainer');
+        const entryContainer = document.getElementById('tokenEntryContainer');
+        const cancelBtn = document.getElementById('cancelChangeTokenBtn');
+        const tokenInput = document.getElementById('facebookTokenInput');
 
-      if (!savedContainer || !entryContainer) return;
+        if (!savedContainer || !entryContainer) return;
 
-      if (hasSavedToken && !isChanging) {
-        savedContainer.classList.remove('hidden');
-        entryContainer.classList.add('hidden');
+        if (hasSavedToken && !isChanging) {
+          savedContainer.classList.remove('hidden');
+          entryContainer.classList.add('hidden');
+          if (tokenInput) tokenInput.value = '';
+        } else {
+          savedContainer.classList.add('hidden');
+          entryContainer.classList.remove('hidden');
+          if (cancelBtn) {
+            if (hasSavedToken && isChanging) {
+              cancelBtn.classList.remove('hidden');
+            } else {
+              cancelBtn.classList.add('hidden');
+            }
+          }
+        }
+      }
+
+      function showChangeTokenInput() {
+        updateTokenUIState(true);
+        const tokenInput = document.getElementById('facebookTokenInput');
+        if (tokenInput) {
+          tokenInput.value = '';
+          tokenInput.focus();
+        }
+      }
+
+      function hideChangeTokenInput() {
+        const tokenInput = document.getElementById('facebookTokenInput');
         if (tokenInput) tokenInput.value = '';
-      } else {
-        savedContainer.classList.add('hidden');
-        entryContainer.classList.remove('hidden');
-        if (cancelBtn) {
-          if (hasSavedToken && isChanging) {
-            cancelBtn.classList.remove('hidden');
-          } else {
-            cancelBtn.classList.add('hidden');
+        updateTokenUIState(false);
+      }
+
+      // Tenant Resolution Logic
+      async function resolveInitialTenant() {
+        // 1. Check URL query params: ?tenant_id=... or ?id=...
+        const params = new URLSearchParams(window.location.search);
+        let tid = params.get('tenant_id') || params.get('id');
+
+        // 2. Check path parameter: /dashboard/{tenant_id}
+        if (!tid) {
+          const pathParts = window.location.pathname.split('/').filter(Boolean);
+          if (pathParts.length >= 2 && pathParts[0] === 'dashboard') {
+            tid = pathParts[1];
           }
         }
-      }
-    }
 
-    function showChangeTokenInput() {
-      updateTokenUIState(true);
-      const tokenInput = document.getElementById('facebookTokenInput');
-      if (tokenInput) {
-        tokenInput.value = '';
-        tokenInput.focus();
-      }
-    }
-
-    function hideChangeTokenInput() {
-      const tokenInput = document.getElementById('facebookTokenInput');
-      if (tokenInput) tokenInput.value = '';
-      updateTokenUIState(false);
-    }
-
-    // Tenant Resolution Logic
-    async function resolveInitialTenant() {
-      // 1. Check URL query params: ?tenant_id=... or ?id=...
-      const params = new URLSearchParams(window.location.search);
-      let tid = params.get('tenant_id') || params.get('id');
-      
-      // 2. Check path parameter: /dashboard/{tenant_id}
-      if (!tid) {
-        const pathParts = window.location.pathname.split('/').filter(Boolean);
-        if (pathParts.length >= 2 && pathParts[0] === 'dashboard') {
-          tid = pathParts[1];
-        }
-      }
-
-      // 3. Check Telegram WebApp initData
-      if (!tid && tg?.initDataUnsafe) {
-        if (tg.initDataUnsafe.start_param) {
-          tid = tg.initDataUnsafe.start_param;
-        } else if (tg.initDataUnsafe.user?.id) {
-          // Attempt lookup by Telegram user ID
-          const chatTid = await lookupByTelegramId(tg.initDataUnsafe.user.id);
-          if (chatTid) {
-            tid = chatTid;
+        // 3. Check Telegram WebApp initData
+        if (!tid && tg?.initDataUnsafe) {
+          if (tg.initDataUnsafe.start_param) {
+            tid = tg.initDataUnsafe.start_param;
+          } else if (tg.initDataUnsafe.user?.id) {
+            // Attempt lookup by Telegram user ID
+            const chatTid = await lookupByTelegramId(tg.initDataUnsafe.user.id);
+            if (chatTid) {
+              tid = chatTid;
+            }
           }
         }
+
+        // 4. Check LocalStorage fallback
+        if (!tid) {
+          tid = localStorage.getItem('agy_dashboard_tenant_id');
+        }
+
+        if (tid) {
+          currentTenantId = tid;
+          loadDashboardData();
+        } else {
+          openChangeStoreModal();
+        }
       }
 
-      // 4. Check LocalStorage fallback
-      if (!tid) {
-        tid = localStorage.getItem('agy_dashboard_tenant_id');
+      async function lookupByTelegramId(chatId) {
+        try {
+          const res = await fetch(`/api/dashboard/by-telegram/${chatId}`);
+          if (res.ok) {
+            const json = await res.json();
+            return json?.data?.id || null;
+          }
+        } catch (e) {
+          console.error('Telegram lookup error:', e);
+        }
+        return null;
       }
 
-      if (tid) {
-        currentTenantId = tid;
+      function openChangeStoreModal() {
+        document.getElementById('loginModal').classList.remove('hidden');
+      }
+
+      function closeChangeStoreModal() {
+        document.getElementById('loginModal').classList.add('hidden');
+      }
+
+      function submitManualTenant() {
+        const input = document.getElementById('manualTenantInput').value.trim();
+        if (!input) {
+          showToast('يرجى كتابة معرّف المتجر (Tenant ID)', 'error');
+          return;
+        }
+        const cleanHex = input.replace(/-/g, '').toLowerCase();
+        if (cleanHex.length < 8 || !/^[0-9a-f]+$/i.test(cleanHex)) {
+          showToast('الدخول متاح فقط بكود المعرّف (Tenant ID) وليس بالاسم لضمان الأمان والخصوصية', 'error');
+          return;
+        }
+        currentTenantId = input;
+        localStorage.setItem('agy_dashboard_tenant_id', input);
+        closeChangeStoreModal();
         loadDashboardData();
-      } else {
-        openChangeStoreModal();
-      }
-    }
-
-    async function lookupByTelegramId(chatId) {
-      try {
-        const res = await fetch(`/api/dashboard/by-telegram/${chatId}`);
-        if (res.ok) {
-          const json = await res.json();
-          return json?.data?.id || null;
-        }
-      } catch (e) {
-        console.error('Telegram lookup error:', e);
-      }
-      return null;
-    }
-
-    function openChangeStoreModal() {
-      document.getElementById('loginModal').classList.remove('hidden');
-    }
-
-    function closeChangeStoreModal() {
-      document.getElementById('loginModal').classList.add('hidden');
-    }
-
-    function submitManualTenant() {
-      const input = document.getElementById('manualTenantInput').value.trim();
-      if (!input) {
-        showToast('يرجى كتابة معرّف المتجر (Tenant ID)', 'error');
-        return;
-      }
-      const cleanHex = input.replace(/-/g, '').toLowerCase();
-      if (cleanHex.length < 8 || !/^[0-9a-f]+$/i.test(cleanHex)) {
-        showToast('الدخول متاح فقط بكود المعرّف (Tenant ID) وليس بالاسم لضمان الأمان والخصوصية', 'error');
-        return;
-      }
-      currentTenantId = input;
-      localStorage.setItem('agy_dashboard_tenant_id', input);
-      closeChangeStoreModal();
-      loadDashboardData();
-    }
-
-    // Load Merchant Data and Stats from Backend
-    async function loadDashboardData() {
-      if (!currentTenantId) {
-        openChangeStoreModal();
-        return;
       }
 
-      const refreshIcon = document.getElementById('refreshIcon');
-      refreshIcon.classList.add('animate-spin');
-
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`);
-        const json = await res.json();
-
-        if (!res.ok || json.status !== 'success') {
-          showToast(json.detail || json.message || 'لم يتم العثور على المتجر', 'error');
+      // Load Merchant Data and Stats from Backend
+      async function loadDashboardData() {
+        if (!currentTenantId) {
           openChangeStoreModal();
           return;
         }
 
-        const data = json.data;
-        currentTenantData = data;
-        currentTenantId = data.id; // Normalize to full UUID
-        localStorage.setItem('agy_dashboard_tenant_id', data.id);
+        const refreshIcon = document.getElementById('refreshIcon');
+        refreshIcon.classList.add('animate-spin');
 
-        // Update Header
-        document.getElementById('merchantName').innerText = data.name || 'متجر غير معرّف';
-        document.getElementById('merchantId').innerText = (data.id || '').substring(0, 8) + '...';
-        document.getElementById('merchantId').setAttribute('title', data.id);
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`);
+          const json = await res.json();
 
-        // Update Bot Status & Toggle
-        const isBotEnabled = Boolean(data.bot_enabled);
-        updateBotStatusUI(isBotEnabled);
+          if (!res.ok || json.status !== 'success') {
+            showToast(json.detail || json.message || 'لم يتم العثور على المتجر', 'error');
+            openChangeStoreModal();
+            return;
+          }
 
-        // Update Stats
-        const stats = data.stats || {};
-        document.getElementById('statMessages').innerText = Number(stats.messages_count || 0).toLocaleString('ar-EG');
-        document.getElementById('statProducts').innerText = Number(stats.products_count || 0).toLocaleString('ar-EG');
-        document.getElementById('statOrders').innerText = Number(stats.orders_count || 0).toLocaleString('ar-EG');
+          const data = json.data;
+          currentTenantData = data;
+          currentTenantId = data.id; // Normalize to full UUID
+          localStorage.setItem('agy_dashboard_tenant_id', data.id);
 
-        // Update Inputs
-        document.getElementById('sheetsUrlInput').value = data.google_sheets_url || '';
-        updateSheetButton(data.google_sheets_url);
+          // Update Header
+          document.getElementById('merchantName').innerText = data.name || 'متجر غير معرّف';
+          document.getElementById('merchantId').innerText = (data.id || '').substring(0, 8) + '...';
+          document.getElementById('merchantId').setAttribute('title', data.id);
 
-        document.getElementById('facebookPageIdInput').value = data.facebook_page_id || '';
-        hasSavedToken = Boolean(data.facebook_page_token);
-        updateTokenUIState();
+          // Update Bot Status & Toggle
+          const isBotEnabled = Boolean(data.bot_enabled);
+          updateBotStatusUI(isBotEnabled);
 
-        // Render Social Channels & Branches
-        renderSocialChannels(data.social_channels);
-        renderBranches(data.branches);
-        renderShippingSection(data.shipping_rates, data.shipping_enabled);
-        renderPromotionsSection(data.promotions || []);
-        renderAutopostSection(data.autopost_enabled, data.autopost_interval_hours, data.autopost_last_at);
+          // Update Stats
+          const stats = data.stats || {};
+          document.getElementById('statMessages').innerText = Number(stats.messages_count || 0).toLocaleString('ar-EG');
+          document.getElementById('statProducts').innerText = Number(stats.products_count || 0).toLocaleString('ar-EG');
+          document.getElementById('statOrders').innerText = Number(stats.orders_count || 0).toLocaleString('ar-EG');
 
-      } catch (err) {
-        console.error('Error loading dashboard data:', err);
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-      } finally {
-        refreshIcon.classList.remove('animate-spin');
+          // Update Inputs
+          document.getElementById('sheetsUrlInput').value = data.google_sheets_url || '';
+          updateSheetButton(data.google_sheets_url);
+
+          document.getElementById('facebookPageIdInput').value = data.facebook_page_id || '';
+          hasSavedToken = Boolean(data.facebook_page_token);
+          updateTokenUIState();
+
+          // Render Social Channels & Branches
+          renderSocialChannels(data.social_channels);
+          renderBranches(data.branches);
+          renderShippingSection(data.shipping_rates, data.shipping_enabled);
+          renderPromotionsSection(data.promotions || []);
+          renderAutopostSection(data.autopost_enabled, data.autopost_interval_hours, data.autopost_last_at);
+
+        } catch (err) {
+          console.error('Error loading dashboard data:', err);
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+        } finally {
+          refreshIcon.classList.remove('animate-spin');
+        }
       }
-    }
 
-    function updateBotStatusUI(enabled) {
-      const badge = document.getElementById('botStatusBadge');
-      const toggle = document.getElementById('botEnabledToggle');
-      const label = document.getElementById('toggleStatusLabel');
-      const statText = document.getElementById('statBotStatus');
-      const quickBtn = document.getElementById('quickToggleBtn');
+      function updateBotStatusUI(enabled) {
+        const badge = document.getElementById('botStatusBadge');
+        const toggle = document.getElementById('botEnabledToggle');
+        const label = document.getElementById('toggleStatusLabel');
+        const statText = document.getElementById('statBotStatus');
+        const quickBtn = document.getElementById('quickToggleBtn');
 
-      toggle.checked = enabled;
+        toggle.checked = enabled;
 
-      if (enabled) {
-        badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 pulse-glow-green';
-        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> رد آلي نشط';
-        label.innerText = 'مفعّل وشغال تمام';
-        label.className = 'text-xs text-emerald-400 font-semibold mt-0.5';
-        statText.innerText = '🟢 نشط';
-        statText.className = 'text-lg sm:text-xl font-black text-emerald-400';
-        quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/40';
-        quickBtn.innerHTML = '<span>⏸️ إيقاف البوت مؤقتاً</span>';
-      } else {
-        badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-950/80 text-rose-400 border border-rose-800/80';
-        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span> متوقف مؤقتاً';
-        label.innerText = 'متوقف مؤقتاً';
-        label.className = 'text-xs text-rose-400 font-semibold mt-0.5';
-        statText.innerText = '⏸️ متوقف';
-        statText.className = 'text-lg sm:text-xl font-black text-amber-400';
-        quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30';
-        quickBtn.innerHTML = '<span>▶️ تفعيل الرد الآلي الآن</span>';
-      }
-    }
-
-    function updateSheetButton(url) {
-      const openBtn = document.getElementById('openSheetBtn');
-      if (url && url.startsWith('http')) {
-        openBtn.href = url;
-        openBtn.classList.remove('hidden');
-        openBtn.classList.add('inline-flex');
-      } else {
-        openBtn.classList.add('hidden');
-        openBtn.classList.remove('inline-flex');
-      }
-    }
-
-    // Toggle Bot State
-    async function toggleBotSwitch() {
-      const toggle = document.getElementById('botEnabledToggle');
-      await executeToggleBot(toggle.checked);
-    }
-
-    async function toggleBotSwitchClick() {
-      const toggle = document.getElementById('botEnabledToggle');
-      toggle.checked = !toggle.checked;
-      await executeToggleBot(toggle.checked);
-    }
-
-    async function executeToggleBot(newState) {
-      if (!currentTenantId) return;
-
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-bot`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bot_enabled: newState })
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          updateBotStatusUI(json.bot_enabled);
-          showToast(json.bot_enabled ? 'تم تفعيل رد البوت بنجاح! 🚀' : 'تم إيقاف رد البوت مؤقتاً ⏸️', 'success');
+        if (enabled) {
+          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 pulse-glow-green';
+          badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> رد آلي نشط';
+          label.innerText = 'مفعّل وشغال تمام';
+          label.className = 'text-xs text-emerald-400 font-semibold mt-0.5';
+          statText.innerText = '🟢 نشط';
+          statText.className = 'text-lg sm:text-xl font-black text-emerald-400';
+          quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/40';
+          quickBtn.innerHTML = '<span>⏸️ إيقاف البوت مؤقتاً</span>';
         } else {
-          showToast(json.detail || 'حدث خطأ أثناء تعديل حالة البوت', 'error');
-          // Revert toggle
+          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-950/80 text-rose-400 border border-rose-800/80';
+          badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span> متوقف مؤقتاً';
+          label.innerText = 'متوقف مؤقتاً';
+          label.className = 'text-xs text-rose-400 font-semibold mt-0.5';
+          statText.innerText = '⏸️ متوقف';
+          statText.className = 'text-lg sm:text-xl font-black text-amber-400';
+          quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30';
+          quickBtn.innerHTML = '<span>▶️ تفعيل الرد الآلي الآن</span>';
+        }
+      }
+
+      function updateSheetButton(url) {
+        const openBtn = document.getElementById('openSheetBtn');
+        if (url && url.startsWith('http')) {
+          openBtn.href = url;
+          openBtn.classList.remove('hidden');
+          openBtn.classList.add('inline-flex');
+        } else {
+          openBtn.classList.add('hidden');
+          openBtn.classList.remove('inline-flex');
+        }
+      }
+
+      // Toggle Bot State
+      async function toggleBotSwitch() {
+        const toggle = document.getElementById('botEnabledToggle');
+        await executeToggleBot(toggle.checked);
+      }
+
+      async function toggleBotSwitchClick() {
+        const toggle = document.getElementById('botEnabledToggle');
+        toggle.checked = !toggle.checked;
+        await executeToggleBot(toggle.checked);
+      }
+
+      async function executeToggleBot(newState) {
+        if (!currentTenantId) return;
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-bot`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bot_enabled: newState })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            updateBotStatusUI(json.bot_enabled);
+            showToast(json.bot_enabled ? 'تم تفعيل رد البوت بنجاح! 🚀' : 'تم إيقاف رد البوت مؤقتاً ⏸️', 'success');
+          } else {
+            showToast(json.detail || 'حدث خطأ أثناء تعديل حالة البوت', 'error');
+            // Revert toggle
+            document.getElementById('botEnabledToggle').checked = !newState;
+          }
+        } catch (e) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
           document.getElementById('botEnabledToggle').checked = !newState;
         }
-      } catch (e) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-        document.getElementById('botEnabledToggle').checked = !newState;
       }
-    }
 
-    // Save Google Sheets URL
-    async function saveSheetsUrl(event) {
-      event.preventDefault();
-      if (!currentTenantId) return;
+      // Save Google Sheets URL
+      async function saveSheetsUrl(event) {
+        event.preventDefault();
+        if (!currentTenantId) return;
 
-      const input = document.getElementById('sheetsUrlInput');
-      const btn = document.getElementById('saveSheetsBtn');
-      const spinner = document.getElementById('saveSheetsSpinner');
-      const url = input.value.trim();
+        const input = document.getElementById('sheetsUrlInput');
+        const btn = document.getElementById('saveSheetsBtn');
+        const spinner = document.getElementById('saveSheetsSpinner');
+        const url = input.value.trim();
 
-      btn.disabled = true;
-      spinner.classList.remove('hidden');
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
 
-      try
+        try
   onst res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1743,7 +1753,7 @@
         }
 
         const codeBadge = p.code ? `<span class="font-mono bg-slate-800 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">كود: ${p.code}</span>` : '<span class="text-slate-500 text-[11px]">تطبيق تلقائي</span>';
-        
+
         let conditionText = '';
         if (p.min_order_value && Number(p.min_order_value) > 0) {
           conditionText = `أوردر بـ ${Number(p.min_order_value).toLocaleString('ar-EG')} ج.م فأكثر`;
