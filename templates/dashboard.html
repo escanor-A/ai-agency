@@ -919,8 +919,10 @@
         input.type = 'password';
         btn.innerText = 'إظهار';
       }
-      // Facebook Token Security & Visibility State
-      let hasSavedToken = false;
+    }
+
+    // Facebook Token Security & Visibility State
+    let hasSavedToken = false;
 
       function updateTokenUIState(isChanging = false) {
         const savedContainer = document.getElementById('tokenSavedContainer');
@@ -969,7 +971,7 @@
         currentTenantId = data.id;
         try {
           localStorage.setItem('agy_dashboard_tenant_id', data.id);
-        } catch (e) {}
+        } catch (e) { }
 
         // Update Header
         const nameEl = document.getElementById('merchantName');
@@ -1018,17 +1020,10 @@
 
       // Tenant Resolution Logic
       async function resolveInitialTenant() {
-        // 0. Server-Side Injected Initial Data (Instantaneous 0ms load)
-        if (window.__INITIAL_DATA__ && window.__INITIAL_DATA__.id) {
-          applyDashboardData(window.__INITIAL_DATA__);
-          return;
-        }
-
-        // 1. Check URL query params: ?tenant_id=... or ?id=...
         const params = new URLSearchParams(window.location.search);
-        let tid = params.get('tenant_id') || params.get('id') || window.__DEFAULT_TENANT_ID__;
+        let tid = params.get('tenant_id') || params.get('id');
 
-        // 2. Check path parameter: /dashboard/{tenant_id}
+        // 1. Check path parameter: /dashboard/{tenant_id}
         if (!tid) {
           const pathParts = window.location.pathname.split('/').filter(Boolean);
           if (pathParts.length >= 2 && pathParts[0] === 'dashboard') {
@@ -1036,55 +1031,73 @@
           }
         }
 
-        // 3. Check Telegram WebApp initData
+        // 2. If explicit tenant_id provided in URL matching server-injected data:
+        if (tid && window.__INITIAL_DATA__ && (window.__INITIAL_DATA__.id === tid || window.__INITIAL_DATA__.id.startsWith(tid))) {
+          applyDashboardData(window.__INITIAL_DATA__);
+          return;
+        }
+
+        // 3. Check Telegram WebApp initData (when opened from Telegram Mini App button)
         if (!tid && tg?.initDataUnsafe) {
           if (tg.initDataUnsafe.start_param) {
             tid = tg.initDataUnsafe.start_param;
           } else if (tg.initDataUnsafe.user?.id) {
-            // Attempt lookup by Telegram user ID
-            const chatTid = await lookupByTelegramId(tg.initDataUnsafe.user.id);
-            if (chatTid) {
-              tid = chatTid;
+            const chatData = await lookupByTelegramId(tg.initDataUnsafe.user.id);
+            if (chatData) {
+              applyDashboardData(chatData);
+              return;
             }
           }
         }
 
-        // 4. Check LocalStorage fallback
-        if (!tid) {
-          try {
-            tid = localStorage.getItem('agy_dashboard_tenant_id');
-          } catch(e) {}
-        }
-
-        // 5. Check default merchant fallback (e.g. ORIK)
-        if (!tid) {
-          try {
-            const defRes = await fetch('/api/dashboard/default');
-            if (defRes.ok) {
-              const defJson = await defRes.json();
-              if (defJson?.data?.id) {
-                tid = defJson.data.id;
-              }
-            }
-          } catch (e) {
-            console.error('Default tenant lookup error:', e);
+        // 4. Server-Side Injected Initial Data (Instantaneous 0ms load)
+        if (window.__INITIAL_DATA__ && window.__INITIAL_DATA__.id) {
+          if (!tid || tid === window.__INITIAL_DATA__.id) {
+            applyDashboardData(window.__INITIAL_DATA__);
+            return;
           }
         }
 
+        // 5. If specific tid is set, load its data
         if (tid) {
           currentTenantId = tid;
-          loadDashboardData();
-        } else {
-          openChangeStoreModal();
+          await loadDashboardData();
+          return;
         }
+
+        // 6. Check LocalStorage fallback
+        try {
+          const storedTid = localStorage.getItem('agy_dashboard_tenant_id');
+          if (storedTid) {
+            currentTenantId = storedTid;
+            await loadDashboardData();
+            return;
+          }
+        } catch (e) { }
+
+        // 7. Check default merchant fallback (e.g. ORIK)
+        try {
+          const defRes = await fetch('/api/dashboard/default');
+          if (defRes.ok) {
+            const defJson = await defRes.json();
+            if (defJson?.data?.id) {
+              applyDashboardData(defJson.data);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('Default tenant lookup error:', e);
+        }
+
+        openChangeStoreModal();
       }
 
       async function lookupByTelegramId(chatId) {
         try {
-          const res = await fetch(`/api/dashboard/by-telegram/${chatId}`);
+          const res = await fetch(`/api/dashboard/by-telegram/${encodeURIComponent(chatId)}`);
           if (res.ok) {
             const json = await res.json();
-            return json?.data?.id || null;
+            return json?.data || null;
           }
         } catch (e) {
           console.error('Telegram lookup error:', e);
@@ -1239,152 +1252,152 @@
 
         try {
           const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ google_sheets_url: url })
-        });
-        const json = await res.json();
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ google_sheets_url: url })
+          });
+          const json = await res.json();
 
-        if (res.ok && json.status === 'success') {
-          showToast('تم حفظ رابط شيت المخزن بنجاح! 📊', 'success');
-          updateSheetButton(url);
-        } else {
-          showToast(json.detail || 'فشل حفظ رابط الشيت', 'error');
-        }
-      } catch (err) {
-        showToast('خطأ في الاتصال أثناء حفظ الشيت', 'error');
-      } finally {
-        btn.disabled = false;
-        spinner.classList.add('hidden');
-      }
-    }
-
-    // Save Facebook Settings
-    async function saveFacebookSettings(event) {
-      event.preventDefault();
-      if (!currentTenantId) return;
-
-      const pageIdInput = document.getElementById('facebookPageIdInput');
-      const tokenInput = document.getElementById('facebookTokenInput');
-      const btn = document.getElementById('saveFacebookBtn');
-      const spinner = document.getElementById('saveFacebookSpinner');
-      const entryContainer = document.getElementById('tokenEntryContainer');
-
-      const pageId = pageIdInput.value.trim();
-      const token = tokenInput ? tokenInput.value.trim() : '';
-
-      btn.disabled = true;
-      spinner.classList.remove('hidden');
-
-      const payload = {
-        facebook_page_id: pageId
-      };
-
-      // Only send token if entry field is active/visible and user typed/pasted a new token
-      const isEntryVisible = entryContainer && !entryContainer.classList.contains('hidden');
-      if (isEntryVisible && token) {
-        payload.facebook_page_token = token;
-      }
-
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const json = await res.json();
-
-        if (res.ok && json.status === 'success') {
-          if (pageId && !token && !hasSavedToken) {
-            showToast('⚠️ تم حفظ رقم الصفحة، ولكن يجب إدخال التوكن (Page Token) لتفعيل الرد التلقائي وإرسال الرسائل.', 'warning');
+          if (res.ok && json.status === 'success') {
+            showToast('تم حفظ رابط شيت المخزن بنجاح! 📊', 'success');
+            updateSheetButton(url);
           } else {
-            showToast('تم حفظ إعدادات فيسبوك وتأمين التوكن بنجاح! 🔒', 'success');
+            showToast(json.detail || 'فشل حفظ رابط الشيت', 'error');
           }
-          if (tokenInput) tokenInput.value = '';
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل تحديث بيانات فيسبوك', 'error');
+        } catch (err) {
+          showToast('خطأ في الاتصال أثناء حفظ الشيت', 'error');
+        } finally {
+          btn.disabled = false;
+          spinner.classList.add('hidden');
         }
-      } catch (err) {
-        showToast('خطأ في الاتصال أثناء حفظ إعدادات فيسبوك', 'error');
-      } finally {
-        btn.disabled = false;
-        spinner.classList.add('hidden');
-      }
-    }
-
-    // Unlink Facebook Page
-    async function unlinkFacebook() {
-      if (!currentTenantId) return;
-      if (!confirm('هل أنت متأكد من رغبتك في إلغاء ربط صفحة فيسبوك؟ سيتوقف البوت عن الرد على رسائل الصفحة.')) {
-        return;
       }
 
-      const btn = document.getElementById('unlinkFacebookBtn');
-      if (btn) btn.disabled = true;
+      // Save Facebook Settings
+      async function saveFacebookSettings(event) {
+        event.preventDefault();
+        if (!currentTenantId) return;
 
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            facebook_page_id: "",
-            facebook_page_token: ""
-          })
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast('تم إلغاء ربط صفحة فيسبوك بنجاح! 🗑️', 'info');
-          const pageIdInput = document.getElementById('facebookPageIdInput');
-          const tokenInput = document.getElementById('facebookTokenInput');
-          if (pageIdInput) pageIdInput.value = '';
-          if (tokenInput) tokenInput.value = '';
-          hasSavedToken = false;
-          updateTokenUIState(false);
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل إلغاء الربط', 'error');
-        }
-      } catch (err) {
-        showToast('خطأ في الاتصال أثناء إلغاء الربط', 'error');
-      } finally {
-        if (btn) btn.disabled = false;
-      }
-    }
+        const pageIdInput = document.getElementById('facebookPageIdInput');
+        const tokenInput = document.getElementById('facebookTokenInput');
+        const btn = document.getElementById('saveFacebookBtn');
+        const spinner = document.getElementById('saveFacebookSpinner');
+        const entryContainer = document.getElementById('tokenEntryContainer');
 
-    // Render Social Media Channels Grid
-    function renderSocialChannels(channels) {
-      const container = document.getElementById('socialChannelsGrid');
-      if (!container) return;
-      if (!channels || Object.keys(channels).length === 0) {
-        container.innerHTML = '<div class="col-span-full text-xs text-slate-500 text-center py-4">لا توجد قنوات مربوطة حالياً.</div>';
-        return;
-      }
+        const pageId = pageIdInput.value.trim();
+        const token = tokenInput ? tokenInput.value.trim() : '';
 
-      let html = '';
-      for (const [key, ch] of Object.entries(channels)) {
-        let borderClass = 'border-slate-800 bg-slate-900/40';
-        let badgeClass = 'bg-slate-800 text-slate-400 border border-slate-700';
-        let badgeText = '⚪ غير مربوط';
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
 
-        if (ch.status === 'connected') {
-          borderClass = 'border-emerald-800/60 bg-emerald-950/20';
-          badgeClass = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
-          badgeText = '🟢 متصل ونشط';
-        } else if (ch.status === 'pending_token') {
-          borderClass = 'border-amber-800/60 bg-amber-950/20';
-          badgeClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/30';
-          badgeText = '⚠️ ناقص التوكن';
+        const payload = {
+          facebook_page_id: pageId
+        };
+
+        // Only send token if entry field is active/visible and user typed/pasted a new token
+        const isEntryVisible = entryContainer && !entryContainer.classList.contains('hidden');
+        if (isEntryVisible && token) {
+          payload.facebook_page_token = token;
         }
 
-        const idDisplay = ch.id ? `<div class="text-[11px] font-mono text-slate-400 truncate mt-1 dir-ltr text-right" title="${ch.id}">ID: ${ch.id}</div>` : '';
-        const visitBtn = (ch.status === 'connected' && ch.url) ? `
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const json = await res.json();
+
+          if (res.ok && json.status === 'success') {
+            if (pageId && !token && !hasSavedToken) {
+              showToast('⚠️ تم حفظ رقم الصفحة، ولكن يجب إدخال التوكن (Page Token) لتفعيل الرد التلقائي وإرسال الرسائل.', 'warning');
+            } else {
+              showToast('تم حفظ إعدادات فيسبوك وتأمين التوكن بنجاح! 🔒', 'success');
+            }
+            if (tokenInput) tokenInput.value = '';
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل تحديث بيانات فيسبوك', 'error');
+          }
+        } catch (err) {
+          showToast('خطأ في الاتصال أثناء حفظ إعدادات فيسبوك', 'error');
+        } finally {
+          btn.disabled = false;
+          spinner.classList.add('hidden');
+        }
+      }
+
+      // Unlink Facebook Page
+      async function unlinkFacebook() {
+        if (!currentTenantId) return;
+        if (!confirm('هل أنت متأكد من رغبتك في إلغاء ربط صفحة فيسبوك؟ سيتوقف البوت عن الرد على رسائل الصفحة.')) {
+          return;
+        }
+
+        const btn = document.getElementById('unlinkFacebookBtn');
+        if (btn) btn.disabled = true;
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              facebook_page_id: "",
+              facebook_page_token: ""
+            })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast('تم إلغاء ربط صفحة فيسبوك بنجاح! 🗑️', 'info');
+            const pageIdInput = document.getElementById('facebookPageIdInput');
+            const tokenInput = document.getElementById('facebookTokenInput');
+            if (pageIdInput) pageIdInput.value = '';
+            if (tokenInput) tokenInput.value = '';
+            hasSavedToken = false;
+            updateTokenUIState(false);
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل إلغاء الربط', 'error');
+          }
+        } catch (err) {
+          showToast('خطأ في الاتصال أثناء إلغاء الربط', 'error');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      }
+
+      // Render Social Media Channels Grid
+      function renderSocialChannels(channels) {
+        const container = document.getElementById('socialChannelsGrid');
+        if (!container) return;
+        if (!channels || Object.keys(channels).length === 0) {
+          container.innerHTML = '<div class="col-span-full text-xs text-slate-500 text-center py-4">لا توجد قنوات مربوطة حالياً.</div>';
+          return;
+        }
+
+        let html = '';
+        for (const [key, ch] of Object.entries(channels)) {
+          let borderClass = 'border-slate-800 bg-slate-900/40';
+          let badgeClass = 'bg-slate-800 text-slate-400 border border-slate-700';
+          let badgeText = '⚪ غير مربوط';
+
+          if (ch.status === 'connected') {
+            borderClass = 'border-emerald-800/60 bg-emerald-950/20';
+            badgeClass = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
+            badgeText = '🟢 متصل ونشط';
+          } else if (ch.status === 'pending_token') {
+            borderClass = 'border-amber-800/60 bg-amber-950/20';
+            badgeClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/30';
+            badgeText = '⚠️ ناقص التوكن';
+          }
+
+          const idDisplay = ch.id ? `<div class="text-[11px] font-mono text-slate-400 truncate mt-1 dir-ltr text-right" title="${ch.id}">ID: ${ch.id}</div>` : '';
+          const visitBtn = (ch.status === 'connected' && ch.url) ? `
           <a href="${ch.url}" target="_blank" class="mt-2 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-1">
             <span>زيارة الرابط</span>
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
           </a>` : '';
 
-        html += `
+          html += `
           <div class="rounded-2xl p-4 border ${borderClass} transition flex flex-col justify-between">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-2">
@@ -1401,16 +1414,16 @@
             </div>
           </div>
         `;
+        }
+        container.innerHTML = html;
       }
-      container.innerHTML = html;
-    }
 
-    // Render Branches
-    function renderBranches(branches) {
-      const container = document.getElementById('branchesContainer');
-      if (!container) return;
-      if (!branches || branches.length === 0) {
-        container.innerHTML = `
+      // Render Branches
+      function renderBranches(branches) {
+        const container = document.getElementById('branchesContainer');
+        if (!container) return;
+        if (!branches || branches.length === 0) {
+          container.innerHTML = `
           <div class="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-slate-400 space-y-2">
             <span class="text-3xl block">🏬</span>
             <div class="text-xs font-bold text-slate-300">لا توجد فروع مسجلة حتى الآن</div>
@@ -1420,18 +1433,18 @@
             </button>
           </div>
         `;
-        return;
-      }
+          return;
+        }
 
-      let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
-      for (const b of branches) {
-        const mapBtn = b.google_maps_url ? `
+        let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
+        for (const b of branches) {
+          const mapBtn = b.google_maps_url ? `
           <a href="${b.google_maps_url}" target="_blank" class="px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 text-xs font-bold transition flex items-center gap-1">
             <span>🗺️ الخريطة</span>
           </a>
         ` : '';
 
-        html += `
+          html += `
           <div class="glass-card rounded-2xl p-4 sm:p-5 border border-slate-800/80 bg-slate-900/60 flex flex-col justify-between gap-3 hover:border-slate-700 transition">
             <div>
               <div class="flex items-start justify-between gap-2">
@@ -1471,123 +1484,123 @@
             </div>
           </div>
         `;
-      }
-      html += '</div>';
-      container.innerHTML = html;
-    }
-
-    function openAddBranchModal() {
-      document.getElementById('addBranchModal').classList.remove('hidden');
-      document.getElementById('branchNameInput').focus();
-    }
-
-    function closeAddBranchModal() {
-      document.getElementById('addBranchModal').classList.add('hidden');
-      document.getElementById('addBranchForm').reset();
-    }
-
-    async function submitAddBranch(e) {
-      e.preventDefault();
-      if (!currentTenantId) return;
-
-      const name = document.getElementById('branchNameInput').value.trim();
-      const governorate = document.getElementById('branchGovInput').value.trim();
-      const address = document.getElementById('branchAddressInput').value.trim();
-      const working_hours = document.getElementById('branchHoursInput').value.trim();
-      const google_maps_url = document.getElementById('branchMapInput').value.trim();
-
-      const btn = document.getElementById('saveBranchBtn');
-      const spinner = document.getElementById('saveBranchSpinner');
-      btn.disabled = true;
-      spinner.classList.remove('hidden');
-
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, governorate, address, working_hours, google_maps_url })
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast('تمت إضافة الفرع بنجاح! 🏬', 'success');
-          closeAddBranchModal();
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل إضافة الفرع', 'error');
         }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-      } finally {
-        btn.disabled = false;
-        spinner.classList.add('hidden');
+        html += '</div>';
+        container.innerHTML = html;
       }
-    }
 
-    async function deleteBranch(branchId, branchName) {
-      if (!confirm(`هل أنت متأكد من حذف ${branchName}؟`)) return;
-      if (!currentTenantId) return;
-
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches/${encodeURIComponent(branchId)}`, {
-          method: 'DELETE'
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast('تم حذف الفرع بنجاح', 'success');
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل حذف الفرع', 'error');
-        }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
+      function openAddBranchModal() {
+        document.getElementById('addBranchModal').classList.remove('hidden');
+        document.getElementById('branchNameInput').focus();
       }
-    }
 
-    // Render Shipping Section
-    function renderShippingSection(rates, enabled) {
-      const badge = document.getElementById('shippingStatusBadge');
-      const toggle = document.getElementById('shippingToggle');
-      const container = document.getElementById('shippingRatesContainer');
-      const flatInput = document.getElementById('flatShippingInput');
+      function closeAddBranchModal() {
+        document.getElementById('addBranchModal').classList.add('hidden');
+        document.getElementById('addBranchForm').reset();
+      }
 
-      const isEnabled = enabled !== false;
-      if (toggle) toggle.checked = isEnabled;
+      async function submitAddBranch(e) {
+        e.preventDefault();
+        if (!currentTenantId) return;
 
-      if (badge) {
-        if (isEnabled) {
-          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-          badge.innerText = '🟢 الشحن مفعّل';
-        } else {
-          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-rose-500/10 text-rose-400 border-rose-500/30';
-          badge.innerText = '🔴 الشحن موقوف';
+        const name = document.getElementById('branchNameInput').value.trim();
+        const governorate = document.getElementById('branchGovInput').value.trim();
+        const address = document.getElementById('branchAddressInput').value.trim();
+        const working_hours = document.getElementById('branchHoursInput').value.trim();
+        const google_maps_url = document.getElementById('branchMapInput').value.trim();
+
+        const btn = document.getElementById('saveBranchBtn');
+        const spinner = document.getElementById('saveBranchSpinner');
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, governorate, address, working_hours, google_maps_url })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast('تمت إضافة الفرع بنجاح! 🏬', 'success');
+            closeAddBranchModal();
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل إضافة الفرع', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+        } finally {
+          btn.disabled = false;
+          spinner.classList.add('hidden');
         }
       }
 
-      if (!container) return;
+      async function deleteBranch(branchId, branchName) {
+        if (!confirm(`هل أنت متأكد من حذف ${branchName}؟`)) return;
+        if (!currentTenantId) return;
 
-      const ratesList = rates || [];
-      // If flat rate exists, prefill the flat input
-      const flatRow = ratesList.find(r => r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد');
-      if (flatRow && flatInput && !flatInput.value) {
-        flatInput.value = flatRow.price;
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches/${encodeURIComponent(branchId)}`, {
+            method: 'DELETE'
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast('تم حذف الفرع بنجاح', 'success');
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل حذف الفرع', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+        }
       }
 
-      if (ratesList.length === 0) {
-        container.innerHTML = `
+      // Render Shipping Section
+      function renderShippingSection(rates, enabled) {
+        const badge = document.getElementById('shippingStatusBadge');
+        const toggle = document.getElementById('shippingToggle');
+        const container = document.getElementById('shippingRatesContainer');
+        const flatInput = document.getElementById('flatShippingInput');
+
+        const isEnabled = enabled !== false;
+        if (toggle) toggle.checked = isEnabled;
+
+        if (badge) {
+          if (isEnabled) {
+            badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+            badge.innerText = '🟢 الشحن مفعّل';
+          } else {
+            badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-rose-500/10 text-rose-400 border-rose-500/30';
+            badge.innerText = '🔴 الشحن موقوف';
+          }
+        }
+
+        if (!container) return;
+
+        const ratesList = rates || [];
+        // If flat rate exists, prefill the flat input
+        const flatRow = ratesList.find(r => r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد');
+        if (flatRow && flatInput && !flatInput.value) {
+          flatInput.value = flatRow.price;
+        }
+
+        if (ratesList.length === 0) {
+          container.innerHTML = `
           <div class="p-4 rounded-xl bg-slate-800/40 border border-dashed border-slate-700/80 text-center space-y-1 text-slate-400 text-xs">
             <div>💡 لم يتم تسجيل أسعار شحن مخصصة بعد.</div>
             <div class="text-[11px] text-slate-500">يعتمد الذكاء الاصطناعي السعر الافتراضي (50 ج.م) أو يمكنك تطبيق شحن موحد الآن ⚡.</div>
           </div>
         `;
-        return;
-      }
+          return;
+        }
 
-      let html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">';
-      for (const r of ratesList) {
-        const isFlat = r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد';
-        const icon = isFlat ? '⚡' : '📍';
-        const cardBg = isFlat ? 'bg-teal-950/20 border-teal-800/40' : 'bg-slate-800/60 border-slate-700/60';
-        html += `
+        let html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">';
+        for (const r of ratesList) {
+          const isFlat = r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد';
+          const icon = isFlat ? '⚡' : '📍';
+          const cardBg = isFlat ? 'bg-teal-950/20 border-teal-800/40' : 'bg-slate-800/60 border-slate-700/60';
+          html += `
           <div class="p-2.5 sm:p-3 rounded-xl border ${cardBg} flex items-center justify-between gap-2 transition hover:border-teal-500/40">
             <div class="flex items-center gap-2 min-w-0">
               <span class="text-base">${icon}</span>
@@ -1601,161 +1614,161 @@
             </button>
           </div>
         `;
+        }
+        html += '</div>';
+        container.innerHTML = html;
       }
-      html += '</div>';
-      container.innerHTML = html;
-    }
 
-    // Toggle Shipping Enabled / Disabled
-    async function toggleShippingStatus() {
-      if (!currentTenantId) return;
-      const toggle = document.getElementById('shippingToggle');
-      const targetState = toggle ? toggle.checked : true;
+      // Toggle Shipping Enabled / Disabled
+      async function toggleShippingStatus() {
+        if (!currentTenantId) return;
+        const toggle = document.getElementById('shippingToggle');
+        const targetState = toggle ? toggle.checked : true;
 
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-shipping`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ shipping_enabled: targetState })
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast(json.message || 'تم تحديث حالة الشحن', 'success');
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل تبديل حالة الشحن', 'error');
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-shipping`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shipping_enabled: targetState })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(json.message || 'تم تحديث حالة الشحن', 'success');
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل تبديل حالة الشحن', 'error');
+            if (toggle) toggle.checked = !targetState;
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
           if (toggle) toggle.checked = !targetState;
         }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-        if (toggle) toggle.checked = !targetState;
-      }
-    }
-
-    // Submit Flat Shipping Rate
-    async function submitFlatShipping(e) {
-      e.preventDefault();
-      if (!currentTenantId) return;
-
-      const input = document.getElementById('flatShippingInput');
-      const btn = document.getElementById('saveFlatShippingBtn');
-      const price = parseFloat(input.value);
-
-      if (isNaN(price) || price < 0) {
-        showToast('يرجى إدخال سعر شحن صحيح', 'warning');
-        return;
       }
 
-      btn.disabled = true;
+      // Submit Flat Shipping Rate
+      async function submitFlatShipping(e) {
+        e.preventDefault();
+        if (!currentTenantId) return;
 
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            governorate: 'جميع المحافظات',
-            price: price,
-            is_flat: true
-          })
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast(`تم تطبيق الشحن الموحد (${price} ج.م) لجميع المحافظات بنجاح! 🚚`, 'success');
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل حفظ الشحن الموحد', 'error');
+        const input = document.getElementById('flatShippingInput');
+        const btn = document.getElementById('saveFlatShippingBtn');
+        const price = parseFloat(input.value);
+
+        if (isNaN(price) || price < 0) {
+          showToast('يرجى إدخال سعر شحن صحيح', 'warning');
+          return;
         }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-      } finally {
-        btn.disabled = false;
-      }
-    }
 
-    // Modal controls for Custom Governorate Rate
-    function openAddShippingRateModal() {
-      document.getElementById('addShippingRateModal').classList.remove('hidden');
-      document.getElementById('shippingGovInput').focus();
-    }
+        btn.disabled = true;
 
-    function closeAddShippingRateModal() {
-      document.getElementById('addShippingRateModal').classList.add('hidden');
-      document.getElementById('addShippingRateForm').reset();
-    }
-
-    async function submitAddShippingRate(e) {
-      e.preventDefault();
-      if (!currentTenantId) return;
-
-      const gov = document.getElementById('shippingGovInput').value.trim();
-      const price = parseFloat(document.getElementById('shippingPriceInput').value);
-
-      if (!gov || isNaN(price) || price < 0) {
-        showToast('يرجى ملء الحقول بشكل صحيح', 'warning');
-        return;
-      }
-
-      const btn = document.getElementById('saveShippingRateBtn');
-      const spinner = document.getElementById('saveShippingRateSpinner');
-      btn.disabled = true;
-      spinner.classList.remove('hidden');
-
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            governorate: gov,
-            price: price,
-            is_flat: false
-          })
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast(`تم حفظ تسعيرة شحن ${gov} بنجاح! 🚚`, 'success');
-          closeAddShippingRateModal();
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل حفظ تسعيرة الشحن', 'error');
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              governorate: 'جميع المحافظات',
+              price: price,
+              is_flat: true
+            })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(`تم تطبيق الشحن الموحد (${price} ج.م) لجميع المحافظات بنجاح! 🚚`, 'success');
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل حفظ الشحن الموحد', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+        } finally {
+          btn.disabled = false;
         }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-      } finally {
-        btn.disabled = false;
-        spinner.classList.add('hidden');
       }
-    }
 
-    async function deleteShippingRate(rateId, govName) {
-      if (!confirm(`هل أنت متأكد من حذف تسعيرة شحن ${govName}؟`)) return;
-      if (!currentTenantId) return;
+      // Modal controls for Custom Governorate Rate
+      function openAddShippingRateModal() {
+        document.getElementById('addShippingRateModal').classList.remove('hidden');
+        document.getElementById('shippingGovInput').focus();
+      }
 
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates/${encodeURIComponent(rateId)}`, {
-          method: 'DELETE'
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast('تم حذف تسعيرة الشحن بنجاح', 'success');
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل حذف تسعيرة الشحن', 'error');
+      function closeAddShippingRateModal() {
+        document.getElementById('addShippingRateModal').classList.add('hidden');
+        document.getElementById('addShippingRateForm').reset();
+      }
+
+      async function submitAddShippingRate(e) {
+        e.preventDefault();
+        if (!currentTenantId) return;
+
+        const gov = document.getElementById('shippingGovInput').value.trim();
+        const price = parseFloat(document.getElementById('shippingPriceInput').value);
+
+        if (!gov || isNaN(price) || price < 0) {
+          showToast('يرجى ملء الحقول بشكل صحيح', 'warning');
+          return;
         }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
+
+        const btn = document.getElementById('saveShippingRateBtn');
+        const spinner = document.getElementById('saveShippingRateSpinner');
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              governorate: gov,
+              price: price,
+              is_flat: false
+            })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(`تم حفظ تسعيرة شحن ${gov} بنجاح! 🚚`, 'success');
+            closeAddShippingRateModal();
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل حفظ تسعيرة الشحن', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+        } finally {
+          btn.disabled = false;
+          spinner.classList.add('hidden');
+        }
       }
-    }
 
-    // ==========================================
-    // Promotions & Vouchers Management
-    // ==========================================
-    function renderPromotionsSection(promos) {
-      const container = document.getElementById('promotionsContainer');
-      if (!container) return;
+      async function deleteShippingRate(rateId, govName) {
+        if (!confirm(`هل أنت متأكد من حذف تسعيرة شحن ${govName}؟`)) return;
+        if (!currentTenantId) return;
 
-      const list = promos || [];
-      if (list.length === 0) {
-        container.innerHTML = `
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates/${encodeURIComponent(rateId)}`, {
+            method: 'DELETE'
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast('تم حذف تسعيرة الشحن بنجاح', 'success');
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل حذف تسعيرة الشحن', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+        }
+      }
+
+      // ==========================================
+      // Promotions & Vouchers Management
+      // ==========================================
+      function renderPromotionsSection(promos) {
+        const container = document.getElementById('promotionsContainer');
+        if (!container) return;
+
+        const list = promos || [];
+        if (list.length === 0) {
+          container.innerHTML = `
           <div class="p-5 rounded-2xl bg-slate-900/50 border border-dashed border-slate-800 text-center space-y-2 text-slate-400 text-xs">
             <div class="text-2xl">🎁</div>
             <div class="font-bold text-slate-300">لم يتم تفعيل أي عروض ترويجية أو كروت هدايا بعد</div>
@@ -1767,57 +1780,57 @@
             </button>
           </div>
         `;
-        return;
-      }
-
-      let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
-      for (const p of list) {
-        const type = (p.promo_type || 'percentage').toLowerCase();
-        let typeBadge = '';
-        let typeColor = 'purple';
-        let icon = '🎁';
-
-        if (type === 'voucher' || type === 'gift_card') {
-          typeBadge = 'كارت هدايا / فاوتشر';
-          icon = '💳';
-          typeColor = 'purple';
-        } else if (type === 'free_shipping') {
-          typeBadge = 'شحن مجاني';
-          icon = '🚚';
-          typeColor = 'teal';
-        } else if (type === 'percentage') {
-          typeBadge = 'خصم مئوي %';
-          icon = '🏷️';
-          typeColor = 'indigo';
-        } else {
-          typeBadge = 'خصم مباشر';
-          icon = '💵';
-          typeColor = 'blue';
+          return;
         }
 
-        const codeBadge = p.code ? `<span class="font-mono bg-slate-800 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">كود: ${p.code}</span>` : '<span class="text-slate-500 text-[11px]">تطبيق تلقائي</span>';
+        let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
+        for (const p of list) {
+          const type = (p.promo_type || 'percentage').toLowerCase();
+          let typeBadge = '';
+          let typeColor = 'purple';
+          let icon = '🎁';
 
-        let conditionText = '';
-        if (p.min_order_value && Number(p.min_order_value) > 0) {
-          conditionText = `أوردر بـ ${Number(p.min_order_value).toLocaleString('ar-EG')} ج.م فأكثر`;
-        } else if (p.min_order_items && Number(p.min_order_items) > 1) {
-          conditionText = `${p.min_order_items} قطع فأكثر`;
-        } else {
-          conditionText = 'أي طلب';
-        }
+          if (type === 'voucher' || type === 'gift_card') {
+            typeBadge = 'كارت هدايا / فاوتشر';
+            icon = '💳';
+            typeColor = 'purple';
+          } else if (type === 'free_shipping') {
+            typeBadge = 'شحن مجاني';
+            icon = '🚚';
+            typeColor = 'teal';
+          } else if (type === 'percentage') {
+            typeBadge = 'خصم مئوي %';
+            icon = '🏷️';
+            typeColor = 'indigo';
+          } else {
+            typeBadge = 'خصم مباشر';
+            icon = '💵';
+            typeColor = 'blue';
+          }
 
-        let valueText = '';
-        if (type === 'voucher' || type === 'gift_card') {
-          valueText = `هدية: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
-        } else if (type === 'percentage') {
-          valueText = `خصم: ${p.discount_value}%`;
-        } else if (type === 'fixed') {
-          valueText = `خصم: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
-        } else {
-          valueText = 'شحن 0 ج.م';
-        }
+          const codeBadge = p.code ? `<span class="font-mono bg-slate-800 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">كود: ${p.code}</span>` : '<span class="text-slate-500 text-[11px]">تطبيق تلقائي</span>';
 
-        html += `
+          let conditionText = '';
+          if (p.min_order_value && Number(p.min_order_value) > 0) {
+            conditionText = `أوردر بـ ${Number(p.min_order_value).toLocaleString('ar-EG')} ج.م فأكثر`;
+          } else if (p.min_order_items && Number(p.min_order_items) > 1) {
+            conditionText = `${p.min_order_items} قطع فأكثر`;
+          } else {
+            conditionText = 'أي طلب';
+          }
+
+          let valueText = '';
+          if (type === 'voucher' || type === 'gift_card') {
+            valueText = `هدية: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
+          } else if (type === 'percentage') {
+            valueText = `خصم: ${p.discount_value}%`;
+          } else if (type === 'fixed') {
+            valueText = `خصم: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
+          } else {
+            valueText = 'شحن 0 ج.م';
+          }
+
+          html += `
           <div class="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 hover:border-purple-500/30 transition flex flex-col justify-between space-y-3">
             <div class="space-y-2">
               <div class="flex items-center justify-between gap-2">
@@ -1843,259 +1856,259 @@
             </div>
           </div>
         `;
-      }
-      html += '</div>';
-      container.innerHTML = html;
-    }
-
-    function openAddPromotionModal() {
-      document.getElementById('addPromotionModal').classList.remove('hidden');
-      onPromoTypeChange();
-    }
-
-    function closeAddPromotionModal() {
-      document.getElementById('addPromotionModal').classList.add('hidden');
-      document.getElementById('addPromotionForm').reset();
-    }
-
-    function onPromoTypeChange() {
-      const type = document.getElementById('promoTypeSelect').value;
-      const discountLabel = document.getElementById('promoDiscountLabel');
-      const unitSuffix = document.getElementById('promoUnitSuffix');
-      const discountInput = document.getElementById('promoDiscountValueInput');
-      const minValueCol = document.getElementById('promoMinValueCol');
-      const descInput = document.getElementById('promoDescInput');
-
-      if (type === 'voucher') {
-        discountLabel.innerText = 'قيمة الفاوتشر / كارت الهدية *';
-        unitSuffix.innerText = 'ج.م';
-        discountInput.placeholder = '200';
-        minValueCol.classList.remove('hidden');
-        if (!descInput.value || descInput.value.includes('خصم')) {
-          descInput.value = 'اشتري بقيمة 1000 جنيه واحصل على كارت هدايا بـ 200 جنيه لطلبك القادم!';
         }
-      } else if (type === 'free_shipping') {
-        discountLabel.innerText = 'قيمة التخفيض *';
-        unitSuffix.innerText = 'ج.م';
-        discountInput.value = '0';
-        discountInput.placeholder = '0';
-        if (!descInput.value || descInput.value.includes('كارت هدايا')) {
-          descInput.value = 'شحن مجاني لجميع المحافظات عند طلب قطعتين أو أكثر!';
-        }
-      } else if (type === 'percentage') {
-        discountLabel.innerText = 'نسبة الخصم المئوية *';
-        unitSuffix.innerText = '%';
-        discountInput.placeholder = '20';
-        if (!descInput.value) {
-          descInput.value = 'خصم خاص 20% على إجمالي مشترياتك لفترة محدودة!';
-        }
-      } else if (type === 'fixed') {
-        discountLabel.innerText = 'مبلغ الخصم المباشر *';
-        unitSuffix.innerText = 'ج.م';
-        discountInput.placeholder = '50';
-        if (!descInput.value) {
-          descInput.value = 'خصم فوري بقيمة 50 جنيه على الأوردر!';
-        }
-      }
-    }
-
-    async function submitAddPromotion(e) {
-      e.preventDefault();
-      if (!currentTenantId) return;
-
-      const pType = document.getElementById('promoTypeSelect').value;
-      const pVal = parseFloat(document.getElementById('promoDiscountValueInput').value || 0);
-      const pCode = document.getElementById('promoCodeInput').value.trim();
-      const pMinVal = parseFloat(document.getElementById('promoMinValueInput').value || 0);
-      const pMinItems = parseInt(document.getElementById('promoMinItemsInput').value || 1);
-      const pDesc = document.getElementById('promoDescInput').value.trim();
-
-      if (!pDesc) {
-        showToast('يرجى كتابة وصف العرض', 'warning');
-        return;
+        html += '</div>';
+        container.innerHTML = html;
       }
 
-      const btn = document.getElementById('savePromoBtn');
-      const spinner = document.getElementById('savePromoSpinner');
-      btn.disabled = true;
-      spinner.classList.remove('hidden');
-
-      try {
-        const payload = {
-          promo_type: pType,
-          discount_value: pVal,
-          code: pCode || null,
-          min_order_items: pMinItems,
-          min_order_value: pMinVal,
-          description: pDesc
-        };
-
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast('تمت إضافة العرض بنجاح! 🎁', 'success');
-          closeAddPromotionModal();
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل إضافة العرض', 'error');
-        }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-      } finally {
-        btn.disabled = false;
-        spinner.classList.add('hidden');
-      }
-    }
-
-    async function deletePromotion(promoId) {
-      if (!confirm('هل أنت متأكد من حذف هذا العرض الترويجي؟')) return;
-      if (!currentTenantId) return;
-
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions/${encodeURIComponent(promoId)}`, {
-          method: 'DELETE'
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast('تم حذف العرض الترويجي', 'success');
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل حذف العرض', 'error');
-        }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-      }
-    }
-
-    // ==========================================
-    // Auto-Posting Management
-    // ==========================================
-    function renderAutopostSection(enabled, intervalHours, lastAt) {
-      const badge = document.getElementById('autopostStatusBadge');
-      const toggle = document.getElementById('autopostToggle');
-      const select = document.getElementById('autopostIntervalSelect');
-      const lastLabel = document.getElementById('autopostLastAtLabel');
-
-      const isEnabled = Boolean(enabled);
-      if (toggle) toggle.checked = isEnabled;
-
-      if (badge) {
-        if (isEnabled) {
-          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-          badge.innerText = '🟢 النشر التلقائي مفعّل';
-        } else {
-          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-slate-800 text-slate-400 border-slate-700';
-          badge.innerText = '⚪ النشر التلقائي متوقف';
-        }
+      function openAddPromotionModal() {
+        document.getElementById('addPromotionModal').classList.remove('hidden');
+        onPromoTypeChange();
       }
 
-      if (select && intervalHours) {
-        select.value = String(intervalHours);
+      function closeAddPromotionModal() {
+        document.getElementById('addPromotionModal').classList.add('hidden');
+        document.getElementById('addPromotionForm').reset();
       }
 
-      if (lastLabel) {
-        if (lastAt && lastAt !== 'None' && lastAt !== '') {
-          try {
-            const d = new Date(lastAt);
-            lastLabel.innerText = d.toLocaleString('ar-EG');
-          } catch (e) {
-            lastLabel.innerText = lastAt;
+      function onPromoTypeChange() {
+        const type = document.getElementById('promoTypeSelect').value;
+        const discountLabel = document.getElementById('promoDiscountLabel');
+        const unitSuffix = document.getElementById('promoUnitSuffix');
+        const discountInput = document.getElementById('promoDiscountValueInput');
+        const minValueCol = document.getElementById('promoMinValueCol');
+        const descInput = document.getElementById('promoDescInput');
+
+        if (type === 'voucher') {
+          discountLabel.innerText = 'قيمة الفاوتشر / كارت الهدية *';
+          unitSuffix.innerText = 'ج.م';
+          discountInput.placeholder = '200';
+          minValueCol.classList.remove('hidden');
+          if (!descInput.value || descInput.value.includes('خصم')) {
+            descInput.value = 'اشتري بقيمة 1000 جنيه واحصل على كارت هدايا بـ 200 جنيه لطلبك القادم!';
           }
-        } else {
-          lastLabel.innerText = 'لم يتم النشر بعد';
+        } else if (type === 'free_shipping') {
+          discountLabel.innerText = 'قيمة التخفيض *';
+          unitSuffix.innerText = 'ج.م';
+          discountInput.value = '0';
+          discountInput.placeholder = '0';
+          if (!descInput.value || descInput.value.includes('كارت هدايا')) {
+            descInput.value = 'شحن مجاني لجميع المحافظات عند طلب قطعتين أو أكثر!';
+          }
+        } else if (type === 'percentage') {
+          discountLabel.innerText = 'نسبة الخصم المئوية *';
+          unitSuffix.innerText = '%';
+          discountInput.placeholder = '20';
+          if (!descInput.value) {
+            descInput.value = 'خصم خاص 20% على إجمالي مشترياتك لفترة محدودة!';
+          }
+        } else if (type === 'fixed') {
+          discountLabel.innerText = 'مبلغ الخصم المباشر *';
+          unitSuffix.innerText = 'ج.م';
+          discountInput.placeholder = '50';
+          if (!descInput.value) {
+            descInput.value = 'خصم فوري بقيمة 50 جنيه على الأوردر!';
+          }
         }
       }
-    }
 
-    async function toggleAutopostStatus() {
-      if (!currentTenantId) return;
-      const toggle = document.getElementById('autopostToggle');
-      const targetState = toggle ? toggle.checked : false;
+      async function submitAddPromotion(e) {
+        e.preventDefault();
+        if (!currentTenantId) return;
 
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autopost_enabled: targetState })
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast(targetState ? 'تم تفعيل النشر التلقائي 📢' : 'تم إيقاف النشر التلقائي', 'success');
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل تحديث حالة النشر', 'error');
+        const pType = document.getElementById('promoTypeSelect').value;
+        const pVal = parseFloat(document.getElementById('promoDiscountValueInput').value || 0);
+        const pCode = document.getElementById('promoCodeInput').value.trim();
+        const pMinVal = parseFloat(document.getElementById('promoMinValueInput').value || 0);
+        const pMinItems = parseInt(document.getElementById('promoMinItemsInput').value || 1);
+        const pDesc = document.getElementById('promoDescInput').value.trim();
+
+        if (!pDesc) {
+          showToast('يرجى كتابة وصف العرض', 'warning');
+          return;
+        }
+
+        const btn = document.getElementById('savePromoBtn');
+        const spinner = document.getElementById('savePromoSpinner');
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
+
+        try {
+          const payload = {
+            promo_type: pType,
+            discount_value: pVal,
+            code: pCode || null,
+            min_order_items: pMinItems,
+            min_order_value: pMinVal,
+            description: pDesc
+          };
+
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast('تمت إضافة العرض بنجاح! 🎁', 'success');
+            closeAddPromotionModal();
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل إضافة العرض', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+        } finally {
+          btn.disabled = false;
+          spinner.classList.add('hidden');
+        }
+      }
+
+      async function deletePromotion(promoId) {
+        if (!confirm('هل أنت متأكد من حذف هذا العرض الترويجي؟')) return;
+        if (!currentTenantId) return;
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions/${encodeURIComponent(promoId)}`, {
+            method: 'DELETE'
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast('تم حذف العرض الترويجي', 'success');
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل حذف العرض', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+        }
+      }
+
+      // ==========================================
+      // Auto-Posting Management
+      // ==========================================
+      function renderAutopostSection(enabled, intervalHours, lastAt) {
+        const badge = document.getElementById('autopostStatusBadge');
+        const toggle = document.getElementById('autopostToggle');
+        const select = document.getElementById('autopostIntervalSelect');
+        const lastLabel = document.getElementById('autopostLastAtLabel');
+
+        const isEnabled = Boolean(enabled);
+        if (toggle) toggle.checked = isEnabled;
+
+        if (badge) {
+          if (isEnabled) {
+            badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+            badge.innerText = '🟢 النشر التلقائي مفعّل';
+          } else {
+            badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-slate-800 text-slate-400 border-slate-700';
+            badge.innerText = '⚪ النشر التلقائي متوقف';
+          }
+        }
+
+        if (select && intervalHours) {
+          select.value = String(intervalHours);
+        }
+
+        if (lastLabel) {
+          if (lastAt && lastAt !== 'None' && lastAt !== '') {
+            try {
+              const d = new Date(lastAt);
+              lastLabel.innerText = d.toLocaleString('ar-EG');
+            } catch (e) {
+              lastLabel.innerText = lastAt;
+            }
+          } else {
+            lastLabel.innerText = 'لم يتم النشر بعد';
+          }
+        }
+      }
+
+      async function toggleAutopostStatus() {
+        if (!currentTenantId) return;
+        const toggle = document.getElementById('autopostToggle');
+        const targetState = toggle ? toggle.checked : false;
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ autopost_enabled: targetState })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(targetState ? 'تم تفعيل النشر التلقائي 📢' : 'تم إيقاف النشر التلقائي', 'success');
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل تحديث حالة النشر', 'error');
+            if (toggle) toggle.checked = !targetState;
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
           if (toggle) toggle.checked = !targetState;
         }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-        if (toggle) toggle.checked = !targetState;
       }
-    }
 
-    async function changeAutopostInterval() {
-      if (!currentTenantId) return;
-      const select = document.getElementById('autopostIntervalSelect');
-      const val = parseInt(select.value);
+      async function changeAutopostInterval() {
+        if (!currentTenantId) return;
+        const select = document.getElementById('autopostIntervalSelect');
+        const val = parseInt(select.value);
 
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autopost_interval_hours: val })
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast(`تم ضبط معدل النشر: كل ${val} ساعة`, 'success');
-        } else {
-          showToast(json.detail || 'فشل تحديث معدل النشر', 'error');
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ autopost_interval_hours: val })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(`تم ضبط معدل النشر: كل ${val} ساعة`, 'success');
+          } else {
+            showToast(json.detail || 'فشل تحديث معدل النشر', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
         }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
       }
-    }
 
-    async function triggerAutoPostNow() {
-      if (!currentTenantId) return;
-      const btn = document.getElementById('triggerAutopostBtn');
-      const spinner = document.getElementById('triggerAutopostSpinner');
-      const feedback = document.getElementById('autopostFeedback');
+      async function triggerAutoPostNow() {
+        if (!currentTenantId) return;
+        const btn = document.getElementById('triggerAutopostBtn');
+        const spinner = document.getElementById('triggerAutopostSpinner');
+        const feedback = document.getElementById('autopostFeedback');
 
-      btn.disabled = true;
-      spinner.classList.remove('hidden');
-      if (feedback) feedback.innerText = 'جاري اختيار منتج وصياغة البوست والنشر... ⏳';
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
+        if (feedback) feedback.innerText = 'جاري اختيار منتج وصياغة البوست والنشر... ⏳';
 
-      try {
-        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-trigger`, {
-          method: 'POST'
-        });
-        const json = await res.json();
-        if (res.ok && json.status === 'success') {
-          showToast(`تم نشر بوست «${json.product_name || 'المنتج'}» بنجاح على فيسبوك! 🚀`, 'success');
-          if (feedback) feedback.innerText = `تم النشر بنجاح لمنتج «${json.product_name || ''}» 📸`;
-          loadDashboardData();
-        } else {
-          showToast(json.detail || 'فشل نشر البوست الترويجي', 'error');
-          if (feedback) feedback.innerText = `خطأ: ${json.detail || 'فشل النشر'}`;
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-trigger`, {
+            method: 'POST'
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(`تم نشر بوست «${json.product_name || 'المنتج'}» بنجاح على فيسبوك! 🚀`, 'success');
+            if (feedback) feedback.innerText = `تم النشر بنجاح لمنتج «${json.product_name || ''}» 📸`;
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل نشر البوست الترويجي', 'error');
+            if (feedback) feedback.innerText = `خطأ: ${json.detail || 'فشل النشر'}`;
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
+          if (feedback) feedback.innerText = 'تعذر الاتصال بالسيرفر';
+        } finally {
+          btn.disabled = false;
+          spinner.classList.add('hidden');
         }
-      } catch (err) {
-        showToast('تعذر الاتصال بالسيرفر', 'error');
-        if (feedback) feedback.innerText = 'تعذر الاتصال بالسيرفر';
-      } finally {
-        btn.disabled = false;
-        spinner.classList.add('hidden');
       }
-    }
 
-    // Initialize on page load immediately or on DOM ready
-    if (document.readyState === 'loading') {
-      window.addEventListener('DOMContentLoaded', resolveInitialTenant);
-    } else {
-      resolveInitialTenant();
-    }
+      // Initialize on page load immediately or on DOM ready
+      if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', resolveInitialTenant);
+      } else {
+        resolveInitialTenant();
+      }
   </script>
 </body>
 
