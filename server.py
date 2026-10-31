@@ -10,9 +10,10 @@ import httpx
 from contextlib import asynccontextmanager
 from typing import Optional
 from fastapi import FastAPI, Request, Response, Query, BackgroundTasks, HTTPException, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import urllib.parse
 
 from check_stock import supabase
 from customer_agent import handle_customer_message, RATE_LIMITER, classify_comment, pop_customer_images, purge_old_chat_messages
@@ -1862,6 +1863,147 @@ async def terms_page():
 <p>باستخدامك لخدمات المراسلة الآلية عبر صفحتنا، فإنك توافق على شروط الخدمة. الخدمة مقدمة لتسهيل الرد على الاستفسارات وتوفير تجربة تسوق سريعة ومريحة.</p>
 </body>
 </html>""")
+
+
+# ===============================================================
+# 🔐 Facebook Login for Business (OAuth One-Click Connection)
+# ===============================================================
+
+@app.get("/auth/facebook/login")
+async def facebook_oauth_login(tenant_id: str, request: Request):
+    """توجيه التاجر لصفحة فيسبوك الرسمية لمنح الصلاحيات بضغطة زر واحدة"""
+    app_id = os.environ.get("META_APP_ID", "2549386585573918")
+    base_url = os.environ.get("BASE_URL") or os.environ.get("DASHBOARD_URL") or str(request.base_url).rstrip("/")
+    if base_url.startswith("http://") and "azurewebsites.net" in base_url:
+        base_url = base_url.replace("http://", "https://", 1)
+    redirect_uri = f"{base_url}/auth/facebook/callback"
+
+    scope = "pages_show_list,pages_messaging,pages_read_engagement,pages_manage_engagement,pages_manage_posts"
+    oauth_url = (
+        f"https://www.facebook.com/v21.0/dialog/oauth?"
+        f"client_id={app_id}&redirect_uri={urllib.parse.quote(redirect_uri)}&state={tenant_id}&scope={scope}&response_type=code"
+    )
+    return RedirectResponse(oauth_url)
+
+
+@app.get("/auth/facebook/callback")
+async def facebook_oauth_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+):
+    """استقبال رمز فيسبوك وتوليد توكن دائم وربط الصفحة والويب هوك تلقائياً"""
+    tenant_id = state
+    base_url = os.environ.get("BASE_URL") or os.environ.get("DASHBOARD_URL") or str(request.base_url).rstrip("/")
+    if base_url.startswith("http://") and "azurewebsites.net" in base_url:
+        base_url = base_url.replace("http://", "https://", 1)
+
+    if error or not code:
+        err_msg = error_description or "تم إلغاء عملية الربط أو رفض الإذن من فيسبوك."
+        return HTMLResponse(f"""
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head><meta charset="UTF-8"><title>فشل الربط</title></head>
+        <body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f172a;color:#f87171;">
+          <h2>❌ تعذر إكمال الربط مع فيسبوك</h2>
+          <p style="color:#94a3b8;">{err_msg}</p>
+          <a href="/dashboard?tenant_id={tenant_id or ''}" style="display:inline-block;margin-top:20px;padding:12px 24px;background:#4f46e5;color:white;border-radius:12px;text-decoration:none;font-weight:bold;">العودة للوحة التحكم</a>
+        </body></html>
+        """)
+
+    tenant = resolve_tenant_for_dashboard(tenant_id)
+    if not tenant:
+        return HTMLResponse("<h3>المتجر غير موجود أو المعرّف غير صحيح</h3>", status_code=404)
+
+    app_id = os.environ.get("META_APP_ID", "2549386585573918")
+    app_secret = os.environ.get("META_APP_SECRET", "15576a7e986e654188f2f3ea0ce01a58")
+    redirect_uri = f"{base_url}/auth/facebook/callback"
+
+    async with httpx.AsyncClient() as client:
+        # 1. استبدال code بـ User Access Token
+        token_url = "https://graph.facebook.com/v21.0/oauth/access_token"
+        token_params = {
+            "client_id": app_id,
+            "client_secret": app_secret,
+            "redirect_uri": redirect_uri,
+            "code": code,
+        }
+        resp = await client.get(token_url, params=token_params)
+        token_data = resp.json()
+        short_token = token_data.get("access_token")
+
+        if not short_token:
+            err = token_data.get("error", {}).get("message", "فشل استخراج التوكن من فيسبوك")
+            return HTMLResponse(f"<h3 style='color:red;'>خطأ فيسبوك: {err}</h3>", status_code=400)
+
+        # 2. ترقية التوكن إلى Long-lived User Token (صلاحية 60 يوماً ويولد Page Token دائم لا ينتهي أبداً)
+        exchange_params = {
+            "grant_type": "fb_exchange_token",
+            "client_id": app_id,
+            "client_secret": app_secret,
+            "fb_exchange_token": short_token,
+        }
+        resp_long = await client.get(token_url, params=exchange_params)
+        long_user_token = resp_long.json().get("access_token", short_token)
+
+        # 3. جلب صفحات التاجر وحساب إنستجرام المرتبط
+        accounts_url = "https://graph.facebook.com/v21.0/me/accounts"
+        acc_params = {
+            "access_token": long_user_token,
+            "fields": "id,name,access_token,instagram_business_account",
+        }
+        acc_resp = await client.get(accounts_url, params=acc_params)
+        acc_data = acc_resp.json()
+        pages = acc_data.get("data", [])
+
+        if not pages:
+            return HTMLResponse("""
+            <!DOCTYPE html>
+            <html lang="ar" dir="rtl">
+            <head><meta charset="UTF-8"><title>لا توجد صفحات</title></head>
+            <body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f172a;color:#f8fafc;">
+              <h2>⚠️ لم يتم العثور على أي صفحة فيسبوك تديرها</h2>
+              <p style="color:#94a3b8;">تأكد من أنك تملك صلاحية الأدمن (Admin) على الصفحة المطلوبة، ومنحت تطبيقنا الصلاحية عند تسجيل الدخول.</p>
+              <a href="/dashboard" style="display:inline-block;margin-top:20px;padding:12px 24px;background:#4f46e5;color:white;border-radius:12px;text-decoration:none;font-weight:bold;">العودة للوحة التحكم</a>
+            </body></html>
+            """)
+
+        # نختار الصفحة الأولى تلقائياً أو التي تتطابق مع التاجر
+        chosen_page = pages[0]
+        page_id = str(chosen_page["id"])
+        page_name = chosen_page.get("name", "الصفحة")
+        page_token = chosen_page["access_token"]  # هذا التوكن دائم لا ينتهي أبداً Never-expiring
+        ig_obj = chosen_page.get("instagram_business_account") or {}
+        ig_id = str(ig_obj.get("id")) if ig_obj.get("id") else None
+
+        # 4. الاشتراك التلقائي في الويب هوك (Auto-subscribe to Page Webhooks)
+        try:
+            sub_url = f"https://graph.facebook.com/v21.0/{page_id}/subscribed_apps"
+            sub_payload = {
+                "subscribed_fields": "messages,messaging_postbacks,feed,message_reads",
+                "access_token": page_token,
+            }
+            await client.post(sub_url, data=sub_payload)
+            print(f"✅ تم اشتراك صفحة «{page_name}» ({page_id}) في Webhooks تلقائياً!")
+        except Exception as e:
+            print(f"⚠️ تحذير: تعذر الاشتراك التلقائي بالويب هوك: {e}")
+
+        # 5. تحديث بيانات التاجر في Supabase
+        update_data = {
+            "facebook_page_id": page_id,
+            "facebook_page_token": page_token,
+        }
+        if ig_id:
+            update_data["instagram_account_id"] = ig_id
+
+        supabase.table("tenants").update(update_data).eq("id", tenant["id"]).execute()
+        print(f"🎉 تم ربط صفحة «{page_name}» بالتاجر «{tenant['name']}» بضغطة زر بنجاح!")
+
+        # 6. إعادة التوجيه للداشبورد مع إشعار نجاح
+        dest = f"/dashboard?tenant_id={tenant['id']}&oauth_success=1&page_name={urllib.parse.quote(page_name)}"
+        return RedirectResponse(dest)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
