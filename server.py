@@ -1825,6 +1825,45 @@ def get_dashboard_html() -> Optional[str]:
     return None
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+@app.get("/privacy-policy", response_class=HTMLResponse)
+async def privacy_policy_page():
+    return HTMLResponse("""<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><title>سياسة الخصوصية | Privacy Policy</title>
+<style>body{font-family:sans-serif;padding:40px;line-height:1.8;max-width:800px;margin:auto;color:#333;}</style>
+</head>
+<body>
+<h1>سياسة الخصوصية (Privacy Policy)</h1>
+<p>نحن نحترم خصوصيتك وملتزمون بحماية بيانات المستخدمين والعملاء. يقوم تطبيقنا بمعالجة الرسائل والتعليقات الواردة إلى صفحة فيسبوك لغرض الرد الآلي على استفسارات المنتجات وإدارة الطلبات فقط.</p>
+<h2>جمع البيانات واستخدامها</h2>
+<p>لا نقوم ببيع أو مشاركة بياناتك مع أي أطراف ثالثة. يتم استخدام معرفات المستخدم والرسائل فقط لتقديم خدمة الرد الآلي وتأكيد الطلبات للتاجر.</p>
+<h2>حذف البيانات (Data Deletion)</h2>
+<p>يمكن لأي مستخدم طلب حذف سجل محادثاته وبياناته في أي وقت عبر مراسلة الصفحة بطلب حذف البيانات أو عبر التواصل مع الدعم الفني: apdoo0x0@gmail.com.</p>
+<hr>
+<h3>English Summary</h3>
+<p>This application processes Facebook page messages and comments solely to provide automated customer support and order processing. We do not sell or share user data. To request data deletion, contact support at apdoo0x0@gmail.com.</p>
+</body>
+</html>""")
+
+
+@app.get("/terms", response_class=HTMLResponse)
+@app.get("/terms-of-service", response_class=HTMLResponse)
+async def terms_page():
+    return HTMLResponse("""<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><title>شروط الاستخدام | Terms of Service</title>
+<style>body{font-family:sans-serif;padding:40px;line-height:1.8;max-width:800px;margin:auto;color:#333;}</style>
+</head>
+<body>
+<h1>شروط الاستخدام (Terms of Service)</h1>
+<p>باستخدامك لخدمات المراسلة الآلية عبر صفحتنا، فإنك توافق على شروط الخدمة. الخدمة مقدمة لتسهيل الرد على الاستفسارات وتوفير تجربة تسوق سريعة ومريحة.</p>
+</body>
+</html>""")
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 @app.get("/dashboard/{tenant_id}", response_class=HTMLResponse)
 async def serve_merchant_dashboard(tenant_id: Optional[str] = None):
