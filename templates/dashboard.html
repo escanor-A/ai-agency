@@ -962,11 +962,71 @@
         updateTokenUIState(false);
       }
 
+      // Apply Dashboard Data Directly to UI
+      function applyDashboardData(data) {
+        if (!data || !data.id) return;
+        currentTenantData = data;
+        currentTenantId = data.id;
+        try {
+          localStorage.setItem('agy_dashboard_tenant_id', data.id);
+        } catch (e) {}
+
+        // Update Header
+        const nameEl = document.getElementById('merchantName');
+        if (nameEl) nameEl.innerText = data.name || 'متجر ORIK';
+
+        const idEl = document.getElementById('merchantId');
+        if (idEl) {
+          idEl.innerText = (data.id || '').substring(0, 8) + '...';
+          idEl.setAttribute('title', data.id);
+        }
+
+        // Update Bot Status & Toggle
+        const isBotEnabled = Boolean(data.bot_enabled);
+        updateBotStatusUI(isBotEnabled);
+
+        // Update Stats
+        const stats = data.stats || {};
+        const msgEl = document.getElementById('statMessages');
+        if (msgEl) msgEl.innerText = Number(stats.messages_count || 0).toLocaleString('ar-EG');
+
+        const prodEl = document.getElementById('statProducts');
+        if (prodEl) prodEl.innerText = Number(stats.products_count || 0).toLocaleString('ar-EG');
+
+        const ordEl = document.getElementById('statOrders');
+        if (ordEl) ordEl.innerText = Number(stats.orders_count || 0).toLocaleString('ar-EG');
+
+        // Update Inputs
+        const sheetsInput = document.getElementById('sheetsUrlInput');
+        if (sheetsInput) {
+          sheetsInput.value = data.google_sheets_url || '';
+          updateSheetButton(data.google_sheets_url);
+        }
+
+        const fbInput = document.getElementById('facebookPageIdInput');
+        if (fbInput) fbInput.value = data.facebook_page_id || '';
+        hasSavedToken = Boolean(data.facebook_page_token);
+        updateTokenUIState();
+
+        // Render Social Channels & Branches
+        try { renderSocialChannels(data.social_channels); } catch (e) { console.error(e); }
+        try { renderBranches(data.branches); } catch (e) { console.error(e); }
+        try { renderShippingSection(data.shipping_rates, data.shipping_enabled); } catch (e) { console.error(e); }
+        try { renderPromotionsSection(data.promotions || []); } catch (e) { console.error(e); }
+        try { renderAutopostSection(data.autopost_enabled, data.autopost_interval_hours, data.autopost_last_at); } catch (e) { console.error(e); }
+      }
+
       // Tenant Resolution Logic
       async function resolveInitialTenant() {
+        // 0. Server-Side Injected Initial Data (Instantaneous 0ms load)
+        if (window.__INITIAL_DATA__ && window.__INITIAL_DATA__.id) {
+          applyDashboardData(window.__INITIAL_DATA__);
+          return;
+        }
+
         // 1. Check URL query params: ?tenant_id=... or ?id=...
         const params = new URLSearchParams(window.location.search);
-        let tid = params.get('tenant_id') || params.get('id');
+        let tid = params.get('tenant_id') || params.get('id') || window.__DEFAULT_TENANT_ID__;
 
         // 2. Check path parameter: /dashboard/{tenant_id}
         if (!tid) {
@@ -991,7 +1051,24 @@
 
         // 4. Check LocalStorage fallback
         if (!tid) {
-          tid = localStorage.getItem('agy_dashboard_tenant_id');
+          try {
+            tid = localStorage.getItem('agy_dashboard_tenant_id');
+          } catch(e) {}
+        }
+
+        // 5. Check default merchant fallback (e.g. ORIK)
+        if (!tid) {
+          try {
+            const defRes = await fetch('/api/dashboard/default');
+            if (defRes.ok) {
+              const defJson = await defRes.json();
+              if (defJson?.data?.id) {
+                tid = defJson.data.id;
+              }
+            }
+          } catch (e) {
+            console.error('Default tenant lookup error:', e);
+          }
         }
 
         if (tid) {
@@ -1060,41 +1137,7 @@
             return;
           }
 
-          const data = json.data;
-          currentTenantData = data;
-          currentTenantId = data.id; // Normalize to full UUID
-          localStorage.setItem('agy_dashboard_tenant_id', data.id);
-
-          // Update Header
-          document.getElementById('merchantName').innerText = data.name || 'متجر غير معرّف';
-          document.getElementById('merchantId').innerText = (data.id || '').substring(0, 8) + '...';
-          document.getElementById('merchantId').setAttribute('title', data.id);
-
-          // Update Bot Status & Toggle
-          const isBotEnabled = Boolean(data.bot_enabled);
-          updateBotStatusUI(isBotEnabled);
-
-          // Update Stats
-          const stats = data.stats || {};
-          document.getElementById('statMessages').innerText = Number(stats.messages_count || 0).toLocaleString('ar-EG');
-          document.getElementById('statProducts').innerText = Number(stats.products_count || 0).toLocaleString('ar-EG');
-          document.getElementById('statOrders').innerText = Number(stats.orders_count || 0).toLocaleString('ar-EG');
-
-          // Update Inputs
-          document.getElementById('sheetsUrlInput').value = data.google_sheets_url || '';
-          updateSheetButton(data.google_sheets_url);
-
-          document.getElementById('facebookPageIdInput').value = data.facebook_page_id || '';
-          hasSavedToken = Boolean(data.facebook_page_token);
-          updateTokenUIState();
-
-          // Render Social Channels & Branches
-          renderSocialChannels(data.social_channels);
-          renderBranches(data.branches);
-          renderShippingSection(data.shipping_rates, data.shipping_enabled);
-          renderPromotionsSection(data.promotions || []);
-          renderAutopostSection(data.autopost_enabled, data.autopost_interval_hours, data.autopost_last_at);
-
+          applyDashboardData(json.data);
         } catch (err) {
           console.error('Error loading dashboard data:', err);
           showToast('تعذر الاتصال بالسيرفر', 'error');
@@ -1194,8 +1237,8 @@
         btn.disabled = true;
         spinner.classList.remove('hidden');
 
-        try
-  onst res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ google_sheets_url: url })
@@ -2047,8 +2090,12 @@
       }
     }
 
-    // Initialize on page load
-    window.addEventListener('DOMContentLoaded', resolveInitialTenant);
+    // Initialize on page load immediately or on DOM ready
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', resolveInitialTenant);
+    } else {
+      resolveInitialTenant();
+    }
   </script>
 </body>
 

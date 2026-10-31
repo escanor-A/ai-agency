@@ -1801,17 +1801,74 @@ def format_tenant_dashboard_data(tenant_row: dict) -> dict:
     }
 
 
+def get_dashboard_html() -> Optional[str]:
+    candidates = [
+        DASHBOARD_TEMPLATE_PATH,
+        os.path.join(os.path.dirname(__file__), "templates", "dashboard.html"),
+        os.path.join(os.getcwd(), "templates", "dashboard.html"),
+        os.path.join(os.path.dirname(__file__), "templates/dashboard.html"),
+        os.path.join(os.path.dirname(__file__), "templates\\dashboard.html"),
+        os.path.join("/home/site/wwwroot", "templates", "dashboard.html"),
+        os.path.join("/home/site/wwwroot", "templates/dashboard.html"),
+        os.path.join("/home/site/wwwroot", "templates\\dashboard.html"),
+        "templates/dashboard.html",
+        "templates\\dashboard.html",
+        "dashboard.html",
+    ]
+    for path in candidates:
+        if path and os.path.exists(path) and os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception as e:
+                print(f"Error reading template from {path}: {e}")
+    return None
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 @app.get("/dashboard/{tenant_id}", response_class=HTMLResponse)
 async def serve_merchant_dashboard(tenant_id: Optional[str] = None):
-    """عرض صفحة لوحة التحكم المتوافقة مع المتصفح و Telegram Web App"""
-    if os.path.exists(DASHBOARD_TEMPLATE_PATH):
+    """عرض صفحة لوحة التحكم المتوافقة مع المتصفح و Telegram Web App مع حقن مسبق للبيانات"""
+    content = get_dashboard_html()
+    if not content:
+        return HTMLResponse("<h3>قالب لوحة التحكم غير موجود</h3>", status_code=404)
+
+    # 1. تحديد التاجر المستهدف
+    tenant_obj = None
+    if tenant_id:
+        tenant_obj = resolve_tenant_for_dashboard(tenant_id)
+
+    if not tenant_obj:
         try:
-            with open(DASHBOARD_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
+            res = supabase.table("tenants").select("*").eq("name", "ORIK").limit(1).execute()
+            if res.data:
+                tenant_obj = res.data[0]
+            else:
+                res = supabase.table("tenants").select("*").order("created_at", desc=False).limit(1).execute()
+                if res.data:
+                    tenant_obj = res.data[0]
         except Exception as e:
-            return HTMLResponse(f"<h3>خطأ أثناء قراءة القالب: {e}</h3>", status_code=500)
-    return HTMLResponse("<h3>قالب لوحة التحكم غير موجود</h3>", status_code=404)
+            print("Error finding fallback tenant:", e)
+
+    # 2. حقن بيانات المتجر مسبقاً (SSR Injection) لظهور البيانات فوراً بدون أي تأخير
+    if tenant_obj:
+        try:
+            formatted_data = format_tenant_dashboard_data(tenant_obj)
+            data_json = json.dumps(formatted_data, ensure_ascii=False)
+            injection = f"""<script>
+window.__INITIAL_DATA__ = {data_json};
+window.__DEFAULT_TENANT_ID__ = "{formatted_data['id']}";
+</script>"""
+            content = content.replace("</head>", f"{injection}\n</head>")
+        except Exception as e:
+            print("Error injecting initial dashboard data:", e)
+
+    headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
+    return HTMLResponse(content=content, headers=headers)
 
 
 @app.get("/api/dashboard/{identifier}")
@@ -2138,6 +2195,22 @@ async def delete_promotion_api(identifier: str, promo_id: str):
         raise HTTPException(status_code=500, detail=f"فشل حذف العرض: {e}")
 
 
+@app.get("/api/dashboard/default")
+@app.get("/api/merchant/default")
+async def get_default_dashboard_merchant():
+    """جلب المتجر الافتراضي للوحة التحكم (مثل متجر ORIK)"""
+    try:
+        res = supabase.table("tenants").select("*").eq("name", "ORIK").limit(1).execute()
+        if not res.data:
+            res = supabase.table("tenants").select("*").order("created_at", desc=False).limit(1).execute()
+        if res.data:
+            data = format_tenant_dashboard_data(res.data[0])
+            return {"status": "success", "data": data}
+    except Exception as e:
+        print("Error fetching default merchant:", e)
+    raise HTTPException(status_code=404, detail="لم يتم العثور على أي متجر مسجل")
+
+
 @app.get("/api/dashboard/by-telegram/{chat_id}")
 @app.get("/api/merchant/by-telegram/{chat_id}")
 async def get_merchant_by_telegram_chat_id(chat_id: str):
@@ -2157,6 +2230,17 @@ async def get_merchant_by_telegram_chat_id(chat_id: str):
             if res.data:
                 data = format_tenant_dashboard_data(res.data[0])
                 return {"status": "success", "data": data}
+    except Exception:
+        pass
+
+    # إذا لم يُعثر على المتجر (مثل السوبر أدمن أو تجربة البوت)، نرجع المتجر الافتراضي ORIK
+    try:
+        res = supabase.table("tenants").select("*").eq("name", "ORIK").limit(1).execute()
+        if not res.data:
+            res = supabase.table("tenants").select("*").order("created_at", desc=False).limit(1).execute()
+        if res.data:
+            data = format_tenant_dashboard_data(res.data[0])
+            return {"status": "success", "data": data}
     except Exception:
         pass
 

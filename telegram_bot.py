@@ -50,6 +50,7 @@ BOT_USERNAME = os.environ.get("BOT_USERNAME", "ORIK_1_bot").lstrip("@")
 if "SUPER_ADMIN_CHAT_ID" not in os.environ or not os.environ["SUPER_ADMIN_CHAT_ID"].strip():
     raise ValueError("⚠️ المتغير SUPER_ADMIN_CHAT_ID إجباري ويجب ضبطه في ملف .env لحماية النظام!")
 SUPER_ADMIN_CHAT_ID = int(os.environ["SUPER_ADMIN_CHAT_ID"].strip())
+SUPER_ADMIN_IDS = {SUPER_ADMIN_CHAT_ID}
 
 SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مصري، بتتكلم معاه على تليجرام.
 أسلوبك: لهجة مصرية بسيطة، ردود قصيرة جداً.
@@ -91,7 +92,23 @@ def get_owner_tenant(chat_id):
         .execute()
         .data
     )
-    return rows[0] if rows else None
+    if rows:
+        return rows[0]
+    
+    # دعم السوبر أدمن أو متجر ORIK الافتراضي
+    super_admin_id = os.environ.get("SUPER_ADMIN_CHAT_ID", "").strip()
+    if super_admin_id and str(chat_id).strip() == super_admin_id:
+        def_rows = supabase.table("tenants").select("id,name").eq("name", "ORIK").limit(1).execute().data
+        if not def_rows:
+            def_rows = supabase.table("tenants").select("id,name").order("created_at", desc=False).limit(1).execute().data
+        if def_rows:
+            return def_rows[0]
+            
+    return None
+
+
+# تعريف الاسم البديل لتفادي خطأ NameError
+get_merchant_by_telegram = get_owner_tenant
 
 
 # سجل محاولات الربط مع سقف أقصى لمنع استهلاك الذاكرة
@@ -652,7 +669,7 @@ async def shipping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def autopost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """التحكم في النشر التلقائي الذكي على فيسبوك: /autopost on/off أو /autopost 24"""
     chat_id = update.effective_chat.id
-    owner = await asyncio.to_thread(get_merchant_by_telegram, chat_id)
+    owner = await asyncio.to_thread(get_owner_tenant, chat_id)
     is_admin = chat_id in SUPER_ADMIN_IDS
 
     if not owner and not is_admin:
@@ -726,7 +743,7 @@ async def autopost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_now_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نشر بوست ترويجي فوراً على صفحة الفيسبوك من المخزون"""
     chat_id = update.effective_chat.id
-    owner = await asyncio.to_thread(get_merchant_by_telegram, chat_id)
+    owner = await asyncio.to_thread(get_owner_tenant, chat_id)
     is_admin = chat_id in SUPER_ADMIN_IDS
 
     if not owner and not is_admin:
@@ -768,7 +785,7 @@ async def post_now_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def offers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض وإدارة العروض الترويجية وكروت الهدايا: /offers"""
     chat_id = update.effective_chat.id
-    owner = await asyncio.to_thread(get_merchant_by_telegram, chat_id)
+    owner = await asyncio.to_thread(get_owner_tenant, chat_id)
     is_admin = chat_id in SUPER_ADMIN_IDS
 
     if not owner and not is_admin:
