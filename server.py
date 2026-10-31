@@ -1878,7 +1878,7 @@ async def facebook_oauth_login(tenant_id: str, request: Request):
         base_url = base_url.replace("http://", "https://", 1)
     redirect_uri = f"{base_url}/auth/facebook/callback"
 
-    scope = "pages_show_list,pages_messaging,pages_read_engagement,pages_manage_engagement,pages_manage_posts"
+    scope = "pages_show_list,pages_messaging,pages_read_engagement,pages_manage_engagement,pages_manage_posts,instagram_basic,instagram_manage_messages,instagram_manage_comments"
     oauth_url = (
         f"https://www.facebook.com/v21.0/dialog/oauth?"
         f"client_id={app_id}&redirect_uri={urllib.parse.quote(redirect_uri)}&state={tenant_id}&scope={scope}&response_type=code"
@@ -2003,6 +2003,199 @@ async def facebook_oauth_callback(
 
         # 6. إعادة التوجيه للداشبورد مع إشعار نجاح
         dest = f"/dashboard?tenant_id={tenant['id']}&oauth_success=1&page_name={urllib.parse.quote(page_name)}"
+        return RedirectResponse(dest)
+
+
+# ===============================================================
+# 🎵 TikTok OAuth One-Click Connection
+# ===============================================================
+
+@app.get("/auth/tiktok/login")
+async def tiktok_oauth_login(tenant_id: str, request: Request):
+    """توجيه التاجر لصفحة تيك توك الرسمية للربط بضغطة زر واحدة"""
+    client_key = os.environ.get("TIKTOK_CLIENT_KEY") or os.environ.get("TIKTOK_APP_ID") or "aw5233agency"
+    base_url = os.environ.get("BASE_URL") or os.environ.get("DASHBOARD_URL") or str(request.base_url).rstrip("/")
+    if base_url.startswith("http://") and "azurewebsites.net" in base_url:
+        base_url = base_url.replace("http://", "https://", 1)
+    redirect_uri = f"{base_url}/auth/tiktok/callback"
+
+    scope = "user.info.basic,video.list,comment.list,comment.list.manage"
+    oauth_url = (
+        f"https://www.tiktok.com/v2/auth/authorize/?"
+        f"client_key={client_key}&scope={scope}&response_type=code"
+        f"&redirect_uri={urllib.parse.quote(redirect_uri)}&state={tenant_id}"
+    )
+    return RedirectResponse(oauth_url)
+
+
+@app.get("/auth/tiktok/callback")
+async def tiktok_oauth_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+):
+    """استقبال رمز تيك توك وتوليد التوكن وحفظ الحساب في Supabase"""
+    tenant_id = state
+    base_url = os.environ.get("BASE_URL") or os.environ.get("DASHBOARD_URL") or str(request.base_url).rstrip("/")
+    if base_url.startswith("http://") and "azurewebsites.net" in base_url:
+        base_url = base_url.replace("http://", "https://", 1)
+
+    if error or not code:
+        err_msg = error_description or "تم إلغاء عملية الربط أو رفض الإذن من تيك توك."
+        return HTMLResponse(f"""
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head><meta charset="UTF-8"><title>فشل الربط</title></head>
+        <body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f172a;color:#f87171;">
+          <h2>❌ تعذر إكمال الربط مع تيك توك</h2>
+          <p style="color:#94a3b8;">{err_msg}</p>
+          <a href="/dashboard?tenant_id={tenant_id or ''}" style="display:inline-block;margin-top:20px;padding:12px 24px;background:#4f46e5;color:white;border-radius:12px;text-decoration:none;font-weight:bold;">العودة للوحة التحكم</a>
+        </body></html>
+        """)
+
+    tenant = resolve_tenant_for_dashboard(tenant_id)
+    if not tenant:
+        return HTMLResponse("<h3>المتجر غير موجود أو المعرّف غير صحيح</h3>", status_code=404)
+
+    client_key = os.environ.get("TIKTOK_CLIENT_KEY") or os.environ.get("TIKTOK_APP_ID") or "aw5233agency"
+    client_secret = os.environ.get("TIKTOK_APP_SECRET", "")
+    redirect_uri = f"{base_url}/auth/tiktok/callback"
+
+    async with httpx.AsyncClient() as client:
+        token_url = "https://open.tiktokapis.com/v2/oauth/token/"
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "client_key": client_key,
+            "client_secret": client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri,
+        }
+        try:
+            resp = await client.post(token_url, data=data, headers=headers, timeout=12)
+            res_json = resp.json()
+            token_data = res_json.get("data") or res_json
+            access_token = token_data.get("access_token")
+            open_id = token_data.get("open_id") or token_data.get("creator_username") or "tiktok_channel"
+        except Exception as e:
+            return HTMLResponse(f"<h3 style='color:red;'>خطأ في الاتصال بخوادم تيك توك: {e}</h3>", status_code=500)
+
+        if not access_token:
+            err = res_json.get("error", {}).get("message") or res_json.get("message", "فشل استخراج التوكن من تيك توك")
+            return HTMLResponse(f"<h3 style='color:red;'>خطأ تيك توك: {err}</h3>", status_code=400)
+
+        # تحديث بيانات التاجر في Supabase
+        supabase.table("tenants").update({
+            "tiktok_account_id": str(open_id),
+            "tiktok_access_token": str(access_token)
+        }).eq("id", tenant["id"]).execute()
+
+        dest = f"/dashboard?tenant_id={tenant['id']}&tiktok_success=1"
+        return RedirectResponse(dest)
+
+
+# ===============================================================
+# 🟢 WhatsApp Cloud API One-Click OAuth & Quick Connect
+# ===============================================================
+
+@app.get("/auth/whatsapp/login")
+async def whatsapp_oauth_login(tenant_id: str, request: Request):
+    """توجيه التاجر لربط رقم واتساب التجاري بضغطة زر واحدة عبر Meta"""
+    app_id = os.environ.get("META_APP_ID", "2549386585573918")
+    base_url = os.environ.get("BASE_URL") or os.environ.get("DASHBOARD_URL") or str(request.base_url).rstrip("/")
+    if base_url.startswith("http://") and "azurewebsites.net" in base_url:
+        base_url = base_url.replace("http://", "https://", 1)
+    redirect_uri = f"{base_url}/auth/whatsapp/callback"
+
+    scope = "whatsapp_business_management,whatsapp_business_messaging"
+    oauth_url = (
+        f"https://www.facebook.com/v21.0/dialog/oauth?"
+        f"client_id={app_id}&redirect_uri={urllib.parse.quote(redirect_uri)}&state={tenant_id}&scope={scope}&response_type=code"
+    )
+    return RedirectResponse(oauth_url)
+
+
+@app.get("/auth/whatsapp/callback")
+async def whatsapp_oauth_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+):
+    """استقبال رمز واتساب من ميتا واستخراج معرّف الهاتف والاشتراك بالويب هوك"""
+    tenant_id = state
+    base_url = os.environ.get("BASE_URL") or os.environ.get("DASHBOARD_URL") or str(request.base_url).rstrip("/")
+    if base_url.startswith("http://") and "azurewebsites.net" in base_url:
+        base_url = base_url.replace("http://", "https://", 1)
+
+    if error or not code:
+        err_msg = error_description or "تم إلغاء عملية الربط أو رفض الإذن من ميتا."
+        return HTMLResponse(f"""
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head><meta charset="UTF-8"><title>فشل الربط</title></head>
+        <body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f172a;color:#f87171;">
+          <h2>❌ تعذر إكمال الربط مع واتساب</h2>
+          <p style="color:#94a3b8;">{err_msg}</p>
+          <a href="/dashboard?tenant_id={tenant_id or ''}" style="display:inline-block;margin-top:20px;padding:12px 24px;background:#4f46e5;color:white;border-radius:12px;text-decoration:none;font-weight:bold;">العودة للوحة التحكم</a>
+        </body></html>
+        """)
+
+    tenant = resolve_tenant_for_dashboard(tenant_id)
+    if not tenant:
+        return HTMLResponse("<h3>المتجر غير موجود أو المعرّف غير صحيح</h3>", status_code=404)
+
+    app_id = os.environ.get("META_APP_ID", "2549386585573918")
+    app_secret = os.environ.get("META_APP_SECRET", "15576a7e986e654188f2f3ea0ce01a58")
+    redirect_uri = f"{base_url}/auth/whatsapp/callback"
+
+    async with httpx.AsyncClient() as client:
+        token_url = "https://graph.facebook.com/v21.0/oauth/access_token"
+        token_params = {
+            "client_id": app_id,
+            "client_secret": app_secret,
+            "redirect_uri": redirect_uri,
+            "code": code,
+        }
+        resp = await client.get(token_url, params=token_params)
+        token_data = resp.json()
+        short_token = token_data.get("access_token")
+
+        if not short_token:
+            err = token_data.get("error", {}).get("message", "فشل استخراج التوكن من ميتا")
+            return HTMLResponse(f"<h3 style='color:red;'>خطأ ميتا: {err}</h3>", status_code=400)
+
+        # ترقية التوكن لتوكن دائم
+        exchange_params = {
+            "grant_type": "fb_exchange_token",
+            "client_id": app_id,
+            "client_secret": app_secret,
+            "fb_exchange_token": short_token,
+        }
+        resp_long = await client.get(token_url, params=exchange_params)
+        long_token = resp_long.json().get("access_token", short_token)
+
+        update_data = {
+            "whatsapp_access_token": str(long_token)
+        }
+
+        # جلب WABA وأرقام الهواتف المرتبطة
+        try:
+            phone_url = "https://graph.facebook.com/v21.0/me?fields=phone_numbers"
+            pr = await client.get(phone_url, params={"access_token": long_token})
+            pdata = pr.json().get("phone_numbers", {}).get("data", [])
+            if pdata:
+                update_data["whatsapp_phone_number_id"] = str(pdata[0]["id"])
+        except Exception as e:
+            print("Error fetching WhatsApp phone number ID:", e)
+
+        supabase.table("tenants").update(update_data).eq("id", tenant["id"]).execute()
+        print(f"🎉 تم ربط واتساب بالتاجر «{tenant['name']}» بضغطة زر بنجاح!")
+
+        dest = f"/dashboard?tenant_id={tenant['id']}&whatsapp_success=1"
         return RedirectResponse(dest)
 
 
