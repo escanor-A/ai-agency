@@ -1794,6 +1794,68 @@ def test_maintenance_purge_api(monkeypatch):
     assert data["deleted"] == 15
 
 
+# ============================================================================
+# 32. اختبار التحكم في اشتراكات قنوات السوشيال ميديا (فيس، إنستا، تيك توك، واتساب)
+# ============================================================================
+
+def test_social_channels_subscription_control():
+    from merchant_settings import (
+        get_merchant_channels,
+        set_merchant_channels,
+        is_channel_allowed,
+        normalize_channel_name,
+        check_and_increment_whatsapp_usage,
+    )
+
+    tid = "test-merchant-sub-control"
+
+    # 1. اختبار توحيد الأسماء
+    assert normalize_channel_name("فيس") == "facebook"
+    assert normalize_channel_name("انستا") == "instagram"
+    assert normalize_channel_name("تيكتوك") == "tiktok"
+    assert normalize_channel_name("واتس") == "whatsapp"
+
+    # 2. افتراضياً: فيسبوك متاح، والواتساب غير متاح لحماية تكاليف الميتا
+    init_ch = get_merchant_channels(tid, fresh=True)
+    assert init_ch["facebook"] is True
+    assert init_ch["whatsapp"] is False
+
+    assert is_channel_allowed(tid, "facebook") is True
+    assert is_channel_allowed(tid, "whatsapp") is False
+
+    # 3. تعديل القنوات: فيس وإنستا فقط
+    set_merchant_channels(tid, {"facebook": True, "instagram": True, "tiktok": False, "whatsapp": False})
+    assert is_channel_allowed(tid, "fb") is True
+    assert is_channel_allowed(tid, "ig") is True
+    assert is_channel_allowed(tid, "tiktok") is False
+    assert is_channel_allowed(tid, "wa") is False
+
+    # 4. تفعيل تيك توك وواتساب مع كوتة محادثات محددة
+    set_merchant_channels(tid, {
+        "tiktok": True,
+        "whatsapp": True,
+        "whatsapp_monthly_limit": 2,
+        "whatsapp_used_conversations": 0,
+    })
+    assert is_channel_allowed(tid, "tt") is True
+    assert is_channel_allowed(tid, "wa") is True
+
+    # 5. اختبار استهلاك واحتساب كوتة الواتساب
+    ok1, used1, limit1 = check_and_increment_whatsapp_usage(tid)
+    assert ok1 is True
+    assert used1 == 1
+
+    ok2, used2, limit2 = check_and_increment_whatsapp_usage(tid)
+    assert ok2 is True
+    assert used2 == 2
+
+    # المحادثة الثالثة تتخطى الحد (2) فيتم المنع لحماية التكلفة
+    ok3, used3, limit3 = check_and_increment_whatsapp_usage(tid)
+    assert ok3 is False
+    assert used3 == 2
+
+
+
 
 
 

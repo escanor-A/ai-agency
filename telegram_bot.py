@@ -34,6 +34,13 @@ from subscriptions import (
     check_and_update_subscriptions,
     get_tenant_subscription,
 )
+from merchant_settings import (
+    get_merchant_channels,
+    set_merchant_channels,
+    normalize_channel_name,
+    SUPPORTED_CHANNELS,
+    CHANNEL_ALIASES,
+)
 
 sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 load_dotenv()
@@ -236,6 +243,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• `/shipping on|off <الرقم أو الاسم>` — تشغيل/إيقاف الشحن لتاجر\n"
             "• `/tenants` — عرض قائمة التجار وحالة اشتراكاتهم\n"
             "• `/renew <الرقم أو الاسم> [1m|3m|6m|1y]` — تجديد اشتراك تاجر وتفعيل البوت\n"
+            "• `/channels <الرقم> [fb,ig,wa,tt]` — إدارة قنوات السوشيال ميديا للتاجر وكوتة الواتساب\n"
             "• `/pause_bot <الرقم>` — إيقاف بوت تاجر مؤقتاً\n"
             "• `/resume_bot <الرقم>` — إعادة تشغيل بوت تاجر\n"
             "• `/delete_tenant <id8> [confirm]` — حذف تاجر بأول 8 حروف من معرّفه نهائياً\n"
@@ -259,7 +267,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/orders` — آخر 5 أوردرات وتفاصيلها\n"
         "• `/today` — تقرير ملخص مبيعات اليوم\n"
         "• `/cancel <رقم_الأوردر>` — إلغاء أوردر وإرجاع بضاعته للمخزن\n"
-        "• `/shipping` — حالة الشحن، و`/shipping off` لو محلك استلام من المحل بس، و`/shipping on` لتشغيله\n\n"
+        "• `/shipping` — حالة الشحن، و`/shipping off` لو محلك استلام من المحل بس، و`/shipping on` لتشغيله\n"
+        "• `/channels` — قنوات السوشيال ميديا المفعلة في باقتك (فيس، إنستا، تيك توك، واتساب)\n\n"
         "📁 *إضافة وتحديث المخزن:*\n"
         "• *بصورة المنتج:* ابعت صورة الموديل واكتب معاه كابشن: «وصل 50 ترنج شتوي بني مقاس L بـ600» وهسجله بالصورة فوراً!\n"
         "• *بشيت إكسيل:* ابعت أي ملف Excel (.xlsx) أو CSV فيه بضاعتك، وهقرأه وأحدث المخزن فوراً!"
@@ -666,6 +675,156 @@ async def shipping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def channels_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """التحكم في قنوات السوشيال ميديا المسموحة للتاجر (فيسبوك، إنستجرام، تيك توك، واتساب) وكوتة الواتساب"""
+    chat_id = update.effective_chat.id
+    owner = await asyncio.to_thread(get_owner_tenant, chat_id)
+    is_admin = chat_id in SUPER_ADMIN_IDS
+
+    if not owner and not is_admin:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    args = context.args or []
+    target = owner
+    channel_args = []
+
+    # لو أدمن وبيحدد تاجر
+    if is_admin:
+        if args:
+            possible_target = args[0]
+            # فحص إذا كان أول وسيط هو تاجر
+            t, _ = await asyncio.to_thread(resolve_tenant_strict, possible_target)
+            if not t:
+                t = await asyncio.to_thread(resolve_tenant, possible_target)
+            if t:
+                target = t
+                channel_args = args[1:]
+            else:
+                channel_args = args
+        elif not target:
+            await update.message.reply_text("📋 حدد التاجر أولاً:\n`/channels <رقم أو اسم التاجر>`\nمثال: `/channels 1 fb,ig`", parse_mode="Markdown")
+            return
+    else:
+        channel_args = args
+
+    if not target:
+        await update.message.reply_text("❌ لم أتمكن من تحديد التاجر.")
+        return
+
+    tid, name = target["id"], target["name"]
+
+    # 1. لو في تعديل (للأدمن فقط)
+    if channel_args:
+        if not is_admin:
+            await update.message.reply_text("⛔ تعديل باقات وقنوات الاشتراك متاح فقط لإدارة المنصة (Super Admin).")
+            return
+
+        arg_str = " ".join(channel_args).lower()
+        cur_channels = await asyncio.to_thread(get_merchant_channels, tid, None, True)
+        new_channels = dict(cur_channels)
+        modified = False
+
+        # أ) all / الكل
+        if any(w in arg_str for w in ("all", "الكل", "كل")):
+            for ch in SUPPORTED_CHANNELS:
+                new_channels[ch] = True
+            modified = True
+
+        # ب) تحديد كوتة الواتساب: limit 1000 أو سقف 1000
+        limit_match = re.search(r"(?:limit|سقف|باقة)\s*[:=]?\s*(\d+)", arg_str)
+        if limit_match:
+            new_channels["whatsapp_monthly_limit"] = int(limit_match.group(1))
+            modified = True
+
+        # ج) تصفير عداد الواتساب: reset أو تصفير
+        if "reset" in arg_str or "تصفير" in arg_str:
+            new_channels["whatsapp_used_conversations"] = 0
+            modified = True
+
+        # د) تعيين قائمة محددة مثل "fb,ig" أو "فيس وانستا"
+        has_add_sub = any(c in arg_str for c in ("+", "-", "on", "off", "limit", "reset", "all", "الكل", "كل"))
+        if not has_add_sub and not limit_match and "reset" not in arg_str:
+            raw_tokens = re.split(r"[,+\s&]+", arg_str)
+            found_channels = set()
+            for tok in raw_tokens:
+                norm = normalize_channel_name(tok)
+                if norm in SUPPORTED_CHANNELS:
+                    found_channels.add(norm)
+
+            if found_channels:
+                for ch in SUPPORTED_CHANNELS:
+                    new_channels[ch] = (ch in found_channels)
+                modified = True
+        else:
+            # تعديل نسبي (+ أو - أو on/off)
+            for tok in channel_args:
+                clean_tok = tok.strip().lower()
+                if clean_tok.startswith("+"):
+                    norm = normalize_channel_name(clean_tok[1:])
+                    if norm in SUPPORTED_CHANNELS:
+                        new_channels[norm] = True
+                        modified = True
+                elif clean_tok.startswith("-"):
+                    norm = normalize_channel_name(clean_tok[1:])
+                    if norm in SUPPORTED_CHANNELS:
+                        new_channels[norm] = False
+                        modified = True
+
+            for ch in SUPPORTED_CHANNELS:
+                for alias, real_ch in CHANNEL_ALIASES.items():
+                    if real_ch == ch:
+                        if f"{alias} on" in arg_str or f"{alias} تفعيل" in arg_str or f"تفعيل {alias}" in arg_str:
+                            new_channels[ch] = True
+                            modified = True
+                        elif f"{alias} off" in arg_str or f"{alias} تعطيل" in arg_str or f"إيقاف {alias}" in arg_str:
+                            new_channels[ch] = False
+                            modified = True
+
+        if modified:
+            await asyncio.to_thread(set_merchant_channels, tid, new_channels)
+            await update.message.reply_text(f"✅ تم تحديث قنوات اشتراك «{name}» بنجاح! 🎉")
+
+    # 2. عرض الحالة الحالية للقنوات
+    cur_channels = await asyncio.to_thread(get_merchant_channels, tid, None, True)
+
+    fb_status = "🟢 مفعّل" if cur_channels.get("facebook") else "⚪ غير مفعّل"
+    ig_status = "🟢 مفعّل" if cur_channels.get("instagram") else "⚪ غير مفعّل"
+    tt_status = "🟢 مفعّل" if cur_channels.get("tiktok") else "⚪ غير مفعّل"
+
+    wa_on = cur_channels.get("whatsapp")
+    wa_used = cur_channels.get("whatsapp_used_conversations", 0)
+    wa_limit = cur_channels.get("whatsapp_monthly_limit", 500)
+
+    if wa_on:
+        limit_text = f"({wa_used} / {wa_limit} محادثة)" if wa_limit > 0 else f"({wa_used} محادثة - بلا حدود)"
+        wa_status = f"🟢 مفعّل {limit_text}"
+    else:
+        wa_status = "⚪ غير مفعّل (باقة إضافية)"
+
+    help_admin_text = ""
+    if is_admin:
+        help_admin_text = (
+            "\n━━━━━━━━━━━━━━━━━━━━\n"
+            "⚙️ *أوامر تعديل الباقات والقنوات (للأدمن):*\n"
+            "• تحديد قنوات الباقة: `/channels <التاجر> fb,ig`\n"
+            "• تفعيل كل القنوات: `/channels <التاجر> all`\n"
+            "• تفعيل/تعطيل قناة: `/channels <التاجر> +wa` أو `-tiktok`\n"
+            "• تحديد باقة الواتساب: `/channels <التاجر> limit 1000`\n"
+            "• تصفير عداد الواتساب: `/channels <التاجر> reset`"
+        )
+
+    await update.message.reply_text(
+        f"📱 *قنوات السوشيال ميديا لمتجر «{name}»:*\n\n"
+        f"• 📘 *فيسبوك (ماسينجر وكومنتات):* {fb_status}\n"
+        f"• 📸 *إنستجرام (DM وكومنتات):* {ig_status}\n"
+        f"• 🎵 *تيك توك (DM وكومنتات):* {tt_status}\n"
+        f"• 🟢 *واتساب (WhatsApp API):* {wa_status}\n"
+        f"{help_admin_text}",
+        parse_mode="Markdown"
+    )
+
+
 async def autopost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """التحكم في النشر التلقائي الذكي على فيسبوك: /autopost on/off أو /autopost 24"""
     chat_id = update.effective_chat.id
@@ -947,15 +1106,17 @@ async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             sub_str = "📅 غير محدد (جدده بـ /renew)"
 
+        ch_settings = get_merchant_channels(t["id"])
         channels = []
         if t.get("facebook_page_id"):
-            channels.append("📘 فيسبوك")
+            channels.append("📘 فيسبوك" if ch_settings.get("facebook") else "📘 فيسبوك (معطل)")
         if t.get("instagram_account_id"):
-            channels.append("📸 إنستا")
-        if t.get("whatsapp_phone_number_id"):
-            channels.append("🟢 واتساب")
+            channels.append("📸 إنستا" if ch_settings.get("instagram") else "📸 إنستا (معطل)")
         if t.get("tiktok_account_id"):
-            channels.append("🎵 تيك توك")
+            channels.append("🎵 تيك توك" if ch_settings.get("tiktok") else "🎵 تيك توك (معطل)")
+        if t.get("whatsapp_phone_number_id"):
+            wa_badge = f"🟢 واتساب ({ch_settings.get('whatsapp_used_conversations', 0)}/{ch_settings.get('whatsapp_monthly_limit', 500)})" if ch_settings.get("whatsapp") else "🟢 واتساب (معطل)"
+            channels.append(wa_badge)
         if t.get("telegram_chat_id"):
             channels.append("✈️ تليجرام")
 
@@ -971,6 +1132,7 @@ async def list_tenants_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("━━━━━━━━━━━━━━━━━━━━")
     lines.append("⚡ *التحكم السريع في التجار:*")
     lines.append("• تجديد اشتراك: `/renew <الرقم أو الاسم> [1m|3m|6m|1y]`")
+    lines.append("• إدارة القنوات: `/channels <الرقم أو الاسم> [fb,ig,wa,tt]`")
     lines.append("• إيقاف مؤقت: `/pause_bot <الرقم>`")
     lines.append("• إعادة تشغيل: `/resume_bot <الرقم>`")
     lines.append("• حذف تاجر نهائياً: `/delete_tenant <id8>`")
@@ -2520,6 +2682,7 @@ def main():
     app.add_handler(CommandHandler("delete_tenant", delete_tenant_cmd))
     app.add_handler(CommandHandler("renew", renew_cmd))
     app.add_handler(CommandHandler("shipping", shipping_cmd))
+    app.add_handler(CommandHandler("channels", channels_cmd))
     app.add_handler(CommandHandler("autopost", autopost_cmd))
     app.add_handler(CommandHandler("post_now", post_now_cmd))
     app.add_handler(CommandHandler("offers", offers_cmd))

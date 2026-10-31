@@ -19,7 +19,12 @@ from check_stock import supabase
 from customer_agent import handle_customer_message, RATE_LIMITER, classify_comment, pop_customer_images, purge_old_chat_messages
 import orders
 from orders import is_shipping_enabled
-from merchant_settings import load_merchant_settings, save_merchant_settings
+from merchant_settings import (
+    load_merchant_settings,
+    save_merchant_settings,
+    is_channel_allowed,
+    check_and_increment_whatsapp_usage,
+)
 from notify import send_complaint_notification, submit_praise_review
 
 import threading
@@ -638,11 +643,16 @@ async def process_meta_event(data: dict):
                 print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» (لم يدفع الاشتراك) — تم تجاهل الرسالة")
                 continue
 
+            meta_channel = "instagram" if str(tenant.get("instagram_account_id") or "") == str(recipient_id) else "messenger"
+            channel_name = "instagram" if meta_channel == "instagram" else "facebook"
+            if not is_channel_allowed(tenant["id"], channel_name, tenant):
+                print(f"⏸️ قناة {channel_name} غير مفعّلة في اشتراك التاجر «{tenant['name']}» — تم تجاهل الرسالة")
+                continue
+
             page_token = tenant.get("facebook_page_token", "")
             print(f"📩 رسالة جديدة للتاجر «{tenant['name']}» من العميل {sender_id}: {text}")
 
             # تشغيل الذكاء الاصطناعي بشكل غير معطل للـ Event Loop (non-blocking)
-            meta_channel = "instagram" if str(tenant.get("instagram_account_id") or "") == str(recipient_id) else "messenger"
             reply = await asyncio.to_thread(handle_customer_message, tenant["id"], sender_id, text, channel=meta_channel)
             print(f"🤖 رد البوت: {reply}")
 
@@ -700,6 +710,10 @@ async def process_meta_event(data: dict):
                 tenant = rows[0]
                 if not tenant.get("bot_enabled", True):
                     print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل تعليق فيسبوك")
+                    continue
+
+                if not is_channel_allowed(tenant["id"], "facebook", tenant):
+                    print(f"⏸️ قناة فيسبوك غير مفعّلة في اشتراك التاجر «{tenant['name']}» — تم تجاهل تعليق فيسبوك")
                     continue
 
                 page_token = tenant.get("facebook_page_token", "")
@@ -893,6 +907,10 @@ async def process_meta_event(data: dict):
                     print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل تعليق إنستجرام")
                     continue
 
+                if not is_channel_allowed(tenant["id"], "instagram", tenant):
+                    print(f"⏸️ قناة إنستجرام غير مفعّلة في اشتراك التاجر «{tenant['name']}» — تم تجاهل تعليق إنستجرام")
+                    continue
+
                 page_token = tenant.get("facebook_page_token", "")
                 if not page_token:
                     print(f"⚠️ التاجر «{tenant['name']}» مش عنده page_token")
@@ -1042,6 +1060,16 @@ async def process_meta_event(data: dict):
                             if not tenant.get("bot_enabled", True):
                                 print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل رسالة واتساب")
                                 continue
+
+                            if not is_channel_allowed(tenant["id"], "whatsapp", tenant):
+                                print(f"⏸️ قناة الواتساب غير مفعّلة في اشتراك التاجر «{tenant['name']}» — تم تجاهل رسالة واتساب")
+                                continue
+
+                            wa_allowed, wa_used, wa_limit = check_and_increment_whatsapp_usage(tenant["id"], tenant)
+                            if not wa_allowed:
+                                print(f"⚠️ التاجر «{tenant['name']}» استهلك باقة الواتساب بالكامل ({wa_used}/{wa_limit})")
+                                continue
+
                             wa_token = tenant.get("whatsapp_access_token", "")
                             # تشغيل الـ AI بشكل غير معطل للـ Event Loop
                             reply = await asyncio.to_thread(handle_customer_message, tenant["id"], wa_from, wa_text, channel="whatsapp")
@@ -1068,6 +1096,8 @@ async def process_meta_event(data: dict):
                         if rows:
                             tenant = rows[0]
                             if not tenant.get("bot_enabled", True):
+                                continue
+                            if not is_channel_allowed(tenant["id"], "whatsapp", tenant):
                                 continue
                             wa_token = tenant.get("whatsapp_access_token", "")
                             if wa_token and phone_number_id and wa_from:
@@ -1197,6 +1227,10 @@ async def process_tiktok_event(data: dict):
         tenant = rows[0]
         if not tenant.get("bot_enabled", True):
             print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل كومنت تيك توك")
+            return
+
+        if not is_channel_allowed(tenant["id"], "tiktok", tenant):
+            print(f"⏸️ قناة تيك توك غير مفعّلة في اشتراك التاجر «{tenant['name']}» — تم تجاهل كومنت تيك توك")
             return
 
         # منع تكرار كومنت تيك توك
@@ -1334,6 +1368,10 @@ async def process_tiktok_event(data: dict):
         tenant = rows[0]
         if not tenant.get("bot_enabled", True):
             print(f"⏸️ البوت موقوف للتاجر «{tenant['name']}» — تم تجاهل DM تيك توك")
+            return
+
+        if not is_channel_allowed(tenant["id"], "tiktok", tenant):
+            print(f"⏸️ قناة تيك توك غير مفعّلة في اشتراك التاجر «{tenant['name']}» — تم تجاهل DM تيك توك")
             return
 
         tiktok_token = tenant.get("tiktok_access_token", "")
