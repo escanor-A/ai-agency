@@ -421,6 +421,13 @@ POST_TEXT_CACHE = {}  # post_id -> (text, timestamp)
 PARENT_PAGE_CACHE = {}  # parent_id -> (is_page, timestamp)
 
 
+def _store_bounded_cache(cache_dict: dict, key: str, value: tuple, max_size: int = 3000):
+    if len(cache_dict) >= max_size and key not in cache_dict:
+        oldest_key = min(cache_dict.keys(), key=lambda k: cache_dict[k][1])
+        del cache_dict[oldest_key]
+    cache_dict[key] = value
+
+
 async def fetch_post_text(post_id: str, page_access_token: str) -> str:
     """جلب نص البوست من Graph API مع كاش ساعة لتسريع الردود وتوفير الطلبات"""
     if not post_id or not page_access_token:
@@ -439,7 +446,7 @@ async def fetch_post_text(post_id: str, page_access_token: str) -> str:
             if resp.status_code == 200:
                 data = resp.json()
                 msg = (data.get("message") or data.get("story") or data.get("caption") or "").strip()
-                POST_TEXT_CACHE[post_id] = (msg, now)
+                _store_bounded_cache(POST_TEXT_CACHE, post_id, (msg, now))
                 return msg
     except Exception as e:
         print(f"Error fetching post text for {post_id}: {type(e).__name__}")
@@ -501,7 +508,7 @@ async def is_parent_comment_from_page(parent_id: str, page_id: str, page_access_
                 data = resp.json()
                 from_id = data.get("from", {}).get("id") if isinstance(data.get("from"), dict) else None
                 is_page = str(from_id).strip() == str(page_id).strip()
-                PARENT_PAGE_CACHE[parent_id] = (is_page, now)
+                _store_bounded_cache(PARENT_PAGE_CACHE, parent_id, (is_page, now))
                 return is_page
     except Exception as e:
         print(f"Error checking parent comment {parent_id}: {type(e).__name__}")
