@@ -222,7 +222,7 @@
 
   <!-- Add Stock / New Product Modal (تحديث المخزون وإضافة قطع جديدة) -->
   <div id="addStockModal"
-    class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
     <div
       class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl text-right max-h-[90vh] overflow-y-auto space-y-4">
       <div class="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -568,6 +568,152 @@
     </div>
   </div>
 
+  <!-- Orders Management Modal (متابعة وإدارة الطلبات في نافذة مخصصة) -->
+  <div id="ordersModal"
+    class="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 hidden transition-opacity">
+    <div
+      class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 max-w-5xl w-full shadow-2xl text-right max-h-[90vh] flex flex-col space-y-4 ring-1 ring-purple-500/20">
+      
+      <!-- Modal Header -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl">
+            🛒
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base sm:text-lg font-bold text-white">طلبات وأوردرات المتجر (Orders)</h3>
+              <span id="ordersCountBadge"
+                class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">0 طلب</span>
+            </div>
+            <p class="text-xs text-slate-400">متابعة الأصناف المطلوبة، فحص تفاصيل العميل، وتحديد علامة الشحن أو البيع والتسليم</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="loadOrdersData()"
+            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
+            <span id="ordersRefreshSpinner" class="hidden animate-spin">🔄</span>
+            <span>تحديث الطلبات</span>
+          </button>
+          <button type="button" onclick="closeOrdersModal()"
+            class="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition text-lg leading-none">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters & Search Toolbar -->
+      <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between shrink-0">
+        <!-- Status Tabs / Filter Pills -->
+        <div class="flex flex-wrap gap-1.5 p-1 bg-slate-900/80 rounded-2xl border border-slate-800 text-xs">
+          <button type="button" onclick="filterOrders('all')" id="orderTab-all"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold bg-purple-600 text-white transition">الكل</button>
+          <button type="button" onclick="filterOrders('new')" id="orderTab-new"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🆕 قيد التجهيز</button>
+          <button type="button" onclick="filterOrders('shipped')" id="orderTab-shipped"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🚚 تم الشحن</button>
+          <button type="button" onclick="filterOrders('delivered')" id="orderTab-delivered"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">✅ تم البيع والتسليم</button>
+          <button type="button" onclick="filterOrders('cancelled')" id="orderTab-cancelled"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">❌ ملغي</button>
+        </div>
+
+        <!-- Search Input -->
+        <div class="relative flex-1 sm:max-w-xs">
+          <input type="text" id="orderSearchInput" oninput="handleOrderSearch()"
+            placeholder="بحث برقم الطلب، الاسم، أو الموبايل..."
+            class="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition">
+        </div>
+      </div>
+
+      <!-- Orders Grid (Scrollable Container) -->
+      <div class="overflow-y-auto flex-1 min-h-[220px] max-h-[62vh] pr-1">
+        <div id="ordersContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex justify-end pt-2 border-t border-slate-800 shrink-0">
+        <button type="button" onclick="closeOrdersModal()"
+          class="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition">
+          إغلاق النافذة
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Products & Images Modal (منتجات المخزن وصور المعروضات في نافذة مخصصة) -->
+  <div id="productsModal"
+    class="fixed inset-0 z-40 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 hidden transition-opacity">
+    <div
+      class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 max-w-6xl w-full shadow-2xl text-right max-h-[90vh] flex flex-col space-y-4 ring-1 ring-blue-500/20">
+
+      <!-- Modal Header -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xl">
+            📦
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base sm:text-lg font-bold text-white">منتجات المخزن وصور المعروضات (Products & Images)</h3>
+              <span id="productsCountBadge"
+                class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">0 صنف</span>
+            </div>
+            <p class="text-xs text-slate-400">استعراض الأصناف، ضبط حجم الصور وضغطها تلقائياً، وتغيير أو استبدال صورة أي منتج</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="openAddStockModal()"
+            class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/20 transition transform active:scale-95">
+            <span>➕ إضافة قطع / صنف للمخزن</span>
+          </button>
+          <button type="button" onclick="loadProductsData()"
+            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
+            <span id="productsRefreshSpinner" class="hidden animate-spin">🔄</span>
+            <span>تحديث المنتجات</span>
+          </button>
+          <button type="button" onclick="closeProductsModal()"
+            class="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition text-lg leading-none">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Search Toolbar -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
+        <div class="relative flex-1 max-w-sm">
+          <input type="text" id="productSearchInput" oninput="handleProductSearch()"
+            placeholder="بحث باسم الصنف أو الخامة..."
+            class="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition">
+        </div>
+        <div class="text-[11px] text-slate-400 bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
+          💡 الصور تُضغط وتُعدل أبعادها تلقائياً لتنزيل فوري وسريع على هاتف العميل
+        </div>
+      </div>
+
+      <!-- Products Grid (Scrollable Container) -->
+      <div class="overflow-y-auto flex-1 min-h-[220px] max-h-[62vh] pr-1">
+        <div id="productsContainer" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pt-1">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex justify-end pt-2 border-t border-slate-800 shrink-0">
+        <button type="button" onclick="closeProductsModal()"
+          class="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition">
+          إغلاق النافذة
+        </button>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Main Container -->
   <div class="max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex-1 flex flex-col gap-6">
 
@@ -638,7 +784,7 @@
       </div>
 
       <!-- Card 3: Products -->
-      <div onclick="scrollToSection('productsSection')"
+      <div onclick="openProductsModal()"
         class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-blue-500/50 hover:bg-slate-800/40 transition cursor-pointer group shadow-lg">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-slate-400 group-hover:text-blue-400 transition">المنتجات
@@ -655,7 +801,7 @@
       </div>
 
       <!-- Card 4: Orders -->
-      <div onclick="scrollToSection('ordersSection')"
+      <div onclick="openOrdersModal()"
         class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-purple-500/50 hover:bg-slate-800/40 transition cursor-pointer group shadow-lg shadow-purple-950/20 ring-1 ring-purple-500/20">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-slate-400 group-hover:text-purple-400 transition">إجمالي
@@ -909,120 +1055,6 @@
 
       </div>
 
-    </div>
-
-    <!-- Section: Store Orders Management (متابعة وإدارة الطلبات) -->
-    <div id="ordersSection"
-      class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5 scroll-mt-6 transition-all duration-300">
-      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl">
-            🛒
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h3 class="text-base font-bold text-white">طلبات وأوردرات المتجر (Orders)</h3>
-              <span id="ordersCountBadge"
-                class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">0
-                طلب</span>
-            </div>
-            <p class="text-xs text-slate-400">متابعة الأصناف المطلوبة، فحص تفاصيل العميل، وتحديد علامة الشحن أو البيع
-              والتسليم</p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <button type="button" onclick="loadOrdersData()"
-            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
-            <span id="ordersRefreshSpinner" class="hidden animate-spin">🔄</span>
-            <span>تحديث الطلبات</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Filters & Search Toolbar -->
-      <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-        <!-- Status Tabs / Filter Pills -->
-        <div class="flex flex-wrap gap-1.5 p-1 bg-slate-900/80 rounded-2xl border border-slate-800 text-xs">
-          <button type="button" onclick="filterOrders('all')" id="orderTab-all"
-            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold bg-purple-600 text-white transition">الكل</button>
-          <button type="button" onclick="filterOrders('new')" id="orderTab-new"
-            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🆕 قيد
-            التجهيز</button>
-          <button type="button" onclick="filterOrders('shipped')" id="orderTab-shipped"
-            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🚚 تم
-            الشحن</button>
-          <button type="button" onclick="filterOrders('delivered')" id="orderTab-delivered"
-            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">✅ تم
-            البيع والتسليم</button>
-          <button type="button" onclick="filterOrders('cancelled')" id="orderTab-cancelled"
-            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">❌
-            ملغي</button>
-        </div>
-
-        <!-- Search Input -->
-        <div class="relative flex-1 sm:max-w-xs">
-          <input type="text" id="orderSearchInput" oninput="handleOrderSearch()"
-            placeholder="بحث برقم الطلب، الاسم، أو الموبايل..."
-            class="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition">
-        </div>
-      </div>
-
-      <!-- Orders Grid (مربعات الطلبات) -->
-      <div id="ordersContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
-        <!-- Rendered via JS -->
-      </div>
-    </div>
-
-    <!-- Section: Products & Images (منتجات المخزن وصور المعروضات) -->
-    <div id="productsSection"
-      class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5 scroll-mt-6 transition-all duration-300">
-      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xl">
-            📦
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h3 class="text-base font-bold text-white">منتجات المخزن وصور المعروضات (Products & Images)</h3>
-              <span id="productsCountBadge"
-                class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">0
-                صنف</span>
-            </div>
-            <p class="text-xs text-slate-400">استعراض الأصناف، ضبط حجم الصور وضغطها تلقائياً، وتغيير أو استبدال صورة أي
-              منتج</p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <button type="button" onclick="openAddStockModal()"
-            class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/20 transition transform active:scale-95">
-            <span>➕ إضافة قطع / صنف للمخزن</span>
-          </button>
-          <button type="button" onclick="loadProductsData()"
-            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
-            <span id="productsRefreshSpinner" class="hidden animate-spin">🔄</span>
-            <span>تحديث المنتجات</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Search Toolbar -->
-      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div class="relative flex-1 max-w-sm">
-          <input type="text" id="productSearchInput" oninput="handleProductSearch()"
-            placeholder="بحث باسم الصنف أو الخامة..."
-            class="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition">
-        </div>
-        <div class="text-[11px] text-slate-400 bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
-          💡 الصور تُضغط وتُعدل أبعادها تلقائياً لتنزيل فوري وسريع على هاتف العميل
-        </div>
-      </div>
-
-      <!-- Products Grid -->
-      <div id="productsContainer" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pt-1">
-        <!-- Rendered via JS -->
-      </div>
     </div>
 
     <!-- Section 3: Social Media Channels (قنوات السوشيال ميديا والتواصل) -->
@@ -2651,9 +2683,43 @@
     }
 
     // -----------------------------------------------------------------
-    // Scroll to Section Helper
+    // Modals & Navigation Helpers (فتح وإغلاق نوافذ الطلبات والمنتجات)
     // -----------------------------------------------------------------
+    function openOrdersModal() {
+      const modal = document.getElementById('ordersModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        loadOrdersData();
+      }
+    }
+
+    function closeOrdersModal() {
+      const modal = document.getElementById('ordersModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function openProductsModal() {
+      const modal = document.getElementById('productsModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        loadProductsData();
+      }
+    }
+
+    function closeProductsModal() {
+      const modal = document.getElementById('productsModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
     function scrollToSection(id) {
+      if (id === 'ordersSection') {
+        openOrdersModal();
+        return;
+      }
+      if (id === 'productsSection') {
+        openProductsModal();
+        return;
+      }
       const el = document.getElementById(id);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
