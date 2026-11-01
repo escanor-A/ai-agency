@@ -1855,6 +1855,57 @@ def test_social_channels_subscription_control():
     assert used3 == 2
 
 
+# ============================================================================
+# 33. اختبار شروط العروض للأصناف والأطقم المركبة (Combos) والتحقق من الفاوتشر
+# ============================================================================
+
+def test_promotions_target_items_and_combo():
+    from orders import evaluate_target_items, verify_voucher_eligibility
+
+    # سلة 1: تيشيرت فقط
+    cart_tshirt_only = [
+        {"name": "تيشيرت أوفر سايز أسود", "category": "تيشيرت", "qty": 2}
+    ]
+
+    # سلة 2: تيشيرت + بنطلون (كومبو)
+    cart_combo = [
+        {"name": "تيشيرت أوفر سايز أسود", "category": "تيشيرت", "qty": 1},
+        {"name": "بنطلون ميلتون كاجوال", "category": "بنطلون", "qty": 1},
+    ]
+
+    # 1. عرض عام بدون شروط أصناف (الكل)
+    ok, reason, qty = evaluate_target_items(cart_tshirt_only, None, min_order_items=2)
+    assert ok is True
+    assert qty == 2
+
+    # 2. عرض طقم مركب بالزائد (تيشيرت + بنطلون)
+    # أ) سلة فيها تيشيرت بس -> تفشل
+    ok_fail, reason_fail, _ = evaluate_target_items(cart_tshirt_only, "تيشيرت + بنطلون", min_order_items=1)
+    assert ok_fail is False
+    assert "بنطلون" in reason_fail
+
+    # ب) سلة الكومبو فيها الاتنين -> تنجح
+    ok_combo, _, _ = evaluate_target_items(cart_combo, "تيشيرت + بنطلون", min_order_items=1)
+    assert ok_combo is True
+
+    # 3. عرض أصناف بديلة بالفواصل (هودي، ترنج)
+    # سلة فيها تيشيرت بس -> تفشل
+    ok_alt_fail, _, _ = evaluate_target_items(cart_tshirt_only, "هودي, ترنج", min_order_items=1)
+    assert ok_alt_fail is False
+
+    # سلة فيها هودي وبنطلون
+    cart_hoodie = [{"name": "هودي شتوي بيزيك", "category": "هودي", "qty": 2}]
+    ok_alt_pass, _, q = evaluate_target_items(cart_hoodie, "هودي, ترنج", min_order_items=2)
+    assert ok_alt_pass is True
+    assert q == 2
+
+    # 4. اختبار التحقق من رقم موبايل الفاوتشر
+    # رقم غير صالح
+    v_bad, _ = verify_voucher_eligibility("tid", "0123", 1000, "GIFT200")
+    assert v_bad is False
+
+
+
 
 
 

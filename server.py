@@ -1604,6 +1604,7 @@ class PromotionPayload(BaseModel):
     discount_value: Optional[float] = 0.0
     min_order_items: Optional[int] = 1
     min_order_value: Optional[float] = 0.0
+    target_items: Optional[str] = ""
     description: str
 
 
@@ -2567,11 +2568,22 @@ async def add_promotion_api(identifier: str, payload: PromotionPayload):
     if payload.min_order_value and payload.min_order_value > 0:
         insert_data["min_order_value"] = float(payload.min_order_value)
 
+    if payload.target_items and payload.target_items.strip():
+        insert_data["target_items"] = payload.target_items.strip()
+
     try:
         res = supabase.table("promotions").insert(insert_data).execute()
         return {"status": "success", "message": "تمت إضافة العرض الترويجي بنجاح! 🎁", "promo": res.data[0] if res.data else {}}
     except Exception as e:
         err_str = str(e)
+        if "target_items" in err_str:
+            insert_data.pop("target_items", None)
+            try:
+                res = supabase.table("promotions").insert(insert_data).execute()
+                return {"status": "success", "message": "تمت إضافة العرض الترويجي بنجاح! 🎁", "promo": res.data[0] if res.data else {}}
+            except Exception as e_ti:
+                err_str = str(e_ti)
+
         if "promotions_type_check" in err_str:
             insert_data["promo_type"] = "fixed"
             if "[كارت هدايا]" not in insert_data["description"] and "كارت" not in insert_data["description"]:

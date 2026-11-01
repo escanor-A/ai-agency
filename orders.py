@@ -240,7 +240,7 @@ def load_items(tenant_id, items):
 
     rows = (
         supabase.table("variants")
-        .select("id,sku,size,color,available,products!inner(name,price,material)")
+        .select("id,sku,size,color,available,products!inner(name,price,material,category)")
         .eq("tenant_id", tenant_id)
         .eq("active", True)
         .in_("sku", list(wanted))
@@ -265,6 +265,7 @@ def load_items(tenant_id, items):
                 "color": r["color"],
                 "size": r["size"],
                 "material": r["products"].get("material") or "",
+                "category": r["products"].get("category") or "",
                 "qty": qty,
                 "unit_price": price,
                 "line_total": price * qty,
@@ -277,24 +278,21 @@ def get_active_promotions(tenant_id):
     """بترجع كل العروض والخصومات وكروت الهدايا النشطة الخاصة بالتاجر"""
     try:
         cols = "id,code,promo_type,discount_value,min_order_items,description"
-        try:
-            rows = (
-                supabase.table("promotions")
-                .select(cols + ",min_order_value")
-                .eq("tenant_id", tenant_id)
-                .eq("is_active", True)
-                .execute()
-                .data
-            )
-        except Exception:
-            rows = (
-                supabase.table("promotions")
-                .select(cols)
-                .eq("tenant_id", tenant_id)
-                .eq("is_active", True)
-                .execute()
-                .data
-            )
+        rows = None
+        for attempt_cols in (cols + ",min_order_value,target_items", cols + ",min_order_value", cols):
+            try:
+                res = (
+                    supabase.table("promotions")
+                    .select(attempt_cols)
+                    .eq("tenant_id", tenant_id)
+                    .eq("is_active", True)
+                    .execute()
+                )
+                if res and res.data is not None:
+                    rows = res.data
+                    break
+            except Exception:
+                continue
         rows = rows or []
         if not is_shipping_enabled(tenant_id):
             rows = [r for r in rows if r.get("promo_type") != "free_shipping"]
@@ -303,8 +301,112 @@ def get_active_promotions(tenant_id):
         return []
 
 
-def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
-    """حساب السعر والشحن مع تطبيق العروض التلقائية، أكواد الخصم، وكروت الهدايا/الفاوتشر"""
+def evaluate_target_items(lines: list, target_items: str = None, min_order_items: int = 1) -> tuple:
+    """
+    التحقق من مطابقة أصناف سلة العميل لشروط العرض (أطقم مركبة، أصناف معينة، أو كمية قطع).
+    ترجع: (is_valid: bool, reason: str, matching_qty: int)
+    """
+    total_cart_qty = sum(l.get("qty", 1) for l in lines)
+    min_qty = max(1, int(min_order_items or 1))
+
+    if not target_items or str(target_items).strip().lower() in ("", "الكل", "all", "*"):
+        if total_cart_qty >= min_qty:
+            return True, "", total_cart_qty
+        return False, f"الحد الأدنى لتفعيل العرض هو {min_qty} قطع (موجود بالسلة {total_cart_qty})", total_cart_qty
+
+    raw_target = str(target_items).strip()
+
+    # 1. حالة الطقم المركب / الكومبو الإجباري (وجود علامة +)
+    # مثال: "تيشيرت + بنطلون" أو "هودي + كاب"
+    if "+" in raw_target:
+        parts = [p.strip() for p in raw_target.split("+") if p.strip()]
+        missing_parts = []
+        for part in parts:
+            norm_part = normalize_text(part)
+            found = any(
+                norm_part in normalize_text(l.get("name", "")) or 
+                norm_part in normalize_text(l.get("category", "") or "")
+                for l in lines
+            )
+            if not found:
+                missing_parts.append(part)
+
+        if missing_parts:
+            req_str = " مع ".join(parts)
+            miss_str = " و ".join(missing_parts)
+            return False, f"العرض يتطلب طقم مركب يحتوي على ({req_str}) معاً في السلة (ناقص: {miss_str})", 0
+
+        return True, "", total_cart_qty
+
+    # 2. حالة الأصناف المحددة أو البدائل المسموحة (فواصل , أو صنف واحد)
+    # مثال: "تيشيرت, هودي" أو "تيشيرت أوفر سايز"
+    parts = [p.strip() for p in raw_target.replace("،", ",").split(",") if p.strip()]
+    matching_qty = 0
+    for l in lines:
+        l_name = normalize_text(l.get("name", ""))
+        l_cat = normalize_text(l.get("category", "") or "")
+        if any(normalize_text(part) in l_name or normalize_text(part) in l_cat for part in parts):
+            matching_qty += l.get("qty", 1)
+
+    if matching_qty >= min_qty:
+        return True, "", matching_qty
+
+    opts_str = " أو ".join(parts)
+    return False, f"العرض ساري عند شراء {min_qty} قطع على الأقل من ({opts_str}) - متوفر بالسلة {matching_qty}", matching_qty
+
+
+def verify_voucher_eligibility(tenant_id: str, phone: str, min_order_value: float = 0.0, promo_code: str = "") -> tuple:
+    """
+    التحقق من أحقية العميل في كارت الهدية / الفاوتشر:
+    1. التأكد من عدم استخدام هذا الكود / الفاوتشر مسبقاً لنفس رقم الموبايل.
+    2. التأكد من وجود أوردر سابق للعميل بقيمة لا تقل عن min_order_value إن كانت مشروطة.
+    ترجع: (is_eligible: bool, reason: str)
+    """
+    clean_p = normalize_phone(phone)
+    if not clean_p:
+        return False, "رقم الموبايل غير صالح للتحقق من كارت الهدية"
+
+    try:
+        # 1. فحص هل سبق استخدام هذا الكوبون/الفاوتشر لنفس رقم الموبايل
+        if promo_code:
+            used_orders = (
+                supabase.table("orders")
+                .select("order_number, created_at, status")
+                .eq("tenant_id", tenant_id)
+                .eq("phone", clean_p)
+                .ilike("promo_code", promo_code.strip())
+                .neq("status", "cancelled")
+                .limit(1)
+                .execute()
+                .data or []
+            )
+            if used_orders:
+                prev_ord = used_orders[0].get("order_number", "")
+                return False, f"تم استخدام كارت الهدية '{promo_code}' مسبقاً لهذا الرقم في الطلب #{prev_ord}"
+
+        # 2. فحص هل للعميل أوردر سابق محقق للحد الأدنى المطلوب
+        if min_order_value and float(min_order_value) > 0:
+            past_orders = (
+                supabase.table("orders")
+                .select("order_number, total, status")
+                .eq("tenant_id", tenant_id)
+                .eq("phone", clean_p)
+                .neq("status", "cancelled")
+                .execute()
+                .data or []
+            )
+            qualifying = [o for o in past_orders if float(o.get("total") or 0) >= float(min_order_value)]
+            if not qualifying:
+                return False, f"كارت الهدية مخصص للعملاء أصحاب الطلبات السابقة بقيمة {min_order_value:g} ج.م أو أكثر"
+
+        return True, "كارت الهدية صالح ومؤهل للاستخدام"
+    except Exception as e:
+        print(f"Notice: error verifying voucher eligibility: {e}")
+        return True, "تم قبول الكارت"
+
+
+def quote_order(tenant_id, items, governorate, promo_code="", session_id=None, phone=None):
+    """حساب السعر والشحن مع تطبيق العروض التلقائية، أكواد الخصم، وكروت الهدايا/الفاوتشر والتحقق من الأصناف والتركيبات"""
     pickup = not is_shipping_enabled(tenant_id)
     if pickup:
         governorate = PICKUP_LABEL
@@ -328,18 +430,22 @@ def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
     promos = get_active_promotions(tenant_id)
     clean_code = (promo_code or "").strip().upper()
 
-    # 1. تطبيق العروض التلقائية (شحن مجاني على قطعتين، أو كارت هدايا عند الوصول لمبلغ معين)
+    # 1. تطبيق العروض التلقائية (شحن مجاني، أو كارت هدايا عند الوصول لمبلغ أو أصناف معينة)
     for p in promos:
         ptype = p.get("promo_type")
+        target_items = p.get("target_items")
+        min_items = int(p.get("min_order_items") or 1)
+        is_items_ok, items_reason, _ = evaluate_target_items(lines, target_items, min_items)
+
         if not p.get("code") and ptype == "free_shipping":
-            if total_qty >= int(p.get("min_order_items") or 1):
+            if is_items_ok:
                 fee = 0.0
                 discount_note = p.get("description", "عرض شحن مجاني")
                 break
         elif not p.get("code") and ptype in ("voucher", "gift_card"):
-            # التحقق من الحد الأدنى للطلب (min_order_value أو min_order_items كبديل)
+            # التحقق من الحد الأدنى للطلب (min_order_value) ومطابقة الأصناف
             min_val = float(p.get("min_order_value") or (p.get("min_order_items") if (p.get("min_order_items") or 0) > 10 else 0) or 0)
-            if min_val <= 0 or subtotal >= min_val:
+            if (min_val <= 0 or subtotal >= min_val) and is_items_ok:
                 val = float(p.get("discount_value") or 0)
                 voucher_reward = f"🎁 مبروك! طلبك حقق عرض كارت هدايا بقيمة {val:.0f} جنيه لطلبك القادم! ({p.get('description', '')})"
                 if not discount_note:
@@ -349,21 +455,40 @@ def quote_order(tenant_id, items, governorate, promo_code="", session_id=None):
     if clean_code:
         matched = next((p for p in promos if (p.get("code") or "").upper() == clean_code), None)
         if matched:
-            applied_code = clean_code
-            ptype = matched.get("promo_type")
-            val = float(matched.get("discount_value") or 0)
-            if ptype == "percentage":
-                discount = subtotal * (val / 100.0)
-                discount_note = f"كود خصم {clean_code} (-{val:.0f}%)"
-            elif ptype == "fixed":
-                discount = min(subtotal, val)
-                discount_note = f"كود خصم {clean_code} (-{val:.0f} جنيه)"
-            elif ptype == "free_shipping":
-                fee = 0.0
-                discount_note = f"كود خصم {clean_code} (شحن مجاني)"
-            elif ptype in ("voucher", "gift_card"):
-                discount = min(subtotal, val)
-                discount_note = f"قسيمة شراء/كارت هدايا {clean_code} (-{val:.0f} جنيه)"
+            target_items = matched.get("target_items")
+            min_items = int(matched.get("min_order_items") or 1)
+            is_items_ok, items_reason, _ = evaluate_target_items(lines, target_items, min_items)
+
+            if not is_items_ok:
+                promo_error = f"كود الخصم '{promo_code}' غير منطبق: {items_reason}"
+            else:
+                ptype = matched.get("promo_type")
+                val = float(matched.get("discount_value") or 0)
+                min_val = float(matched.get("min_order_value") or 0)
+
+                if min_val > 0 and subtotal < min_val:
+                    promo_error = f"كود الخصم '{promo_code}' يتطلب حداً أدنى للطلب بقيمة {min_val:g} ج.م (قيمة سلتك {subtotal:g} ج.م)"
+                else:
+                    voucher_ok = True
+                    if ptype in ("voucher", "gift_card") and phone:
+                        voucher_ok, voucher_reason = verify_voucher_eligibility(tenant_id, phone, min_val, clean_code)
+                        if not voucher_ok:
+                            promo_error = f"كود الخصم '{promo_code}': {voucher_reason}"
+
+                    if voucher_ok:
+                        applied_code = clean_code
+                        if ptype == "percentage":
+                            discount = subtotal * (val / 100.0)
+                            discount_note = f"كود خصم {clean_code} (-{val:.0f}%)"
+                        elif ptype == "fixed":
+                            discount = min(subtotal, val)
+                            discount_note = f"كود خصم {clean_code} (-{val:.0f} جنيه)"
+                        elif ptype == "free_shipping":
+                            fee = 0.0
+                            discount_note = f"كود خصم {clean_code} (شحن مجاني)"
+                        elif ptype in ("voucher", "gift_card"):
+                            discount = min(subtotal, val)
+                            discount_note = f"قسيمة شراء/كارت هدايا {clean_code} (-{val:.0f} جنيه)"
         else:
             promo_error = f"كود الخصم '{promo_code}' غير صالح أو منتهي"
 
@@ -510,8 +635,21 @@ def place_order(
     stored_code = valid_quote.get("applied_code") or ""
     stored_total = valid_quote.get("total", 0.0)
 
+    # التحقق الصارم من أحقية كارت الهدية / الفاوتشر لرقم هاتف العميل
+    if stored_code:
+        promos = get_active_promotions(tenant_id)
+        matched = next((p for p in promos if (p.get("code") or "").upper() == stored_code.upper()), None)
+        if matched and matched.get("promo_type") in ("voucher", "gift_card"):
+            min_val = float(matched.get("min_order_value") or 0)
+            v_ok, v_reason = verify_voucher_eligibility(tenant_id, clean_phone, min_val, stored_code)
+            if not v_ok:
+                return {
+                    "status": "error",
+                    "reason": f"كارت الهدية غير سارٍ: {v_reason}"
+                }
+
     # 2. إعادة حساب الفاتورة بالكود المخزن (تجاهل أي كود مرره الموديل) والتحقق من تطابق الإجمالي
-    quote = quote_order(tenant_id, items, governorate, promo_code=stored_code, session_id=None)
+    quote = quote_order(tenant_id, items, governorate, promo_code=stored_code, session_id=None, phone=clean_phone)
     if quote.get("status") != "ok":
         return quote
 

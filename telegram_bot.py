@@ -982,9 +982,10 @@ async def offers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         min_v = p.get("min_order_value")
         min_i = p.get("min_order_items", 1)
         cond = f"شرط: أوردر بقيمة {min_v:g} ج.م" if min_v and min_v > 0 else (f"شرط: {min_i} قطع" if min_i > 1 else "بدون حد أدنى")
+        target_str = f"\n   • 🎯 الأصناف: `{p['target_items']}`" if p.get("target_items") else ""
 
         type_lbl = "كارت هدايا / فاوتشر" if ptype in ("voucher", "gift_card") else ("شحن مجاني" if ptype == "free_shipping" else "خصم")
-        lines.append(f"{i}. *{p.get('description', 'عرض')}*\n   • النوع: {type_lbl}{code}\n   • {cond}")
+        lines.append(f"{i}. *{p.get('description', 'عرض')}*\n   • النوع: {type_lbl}{code}\n   • {cond}{target_str}")
 
     lines.append("\n💡 للتحكم الكامل أو إضافة/حذف أي عرض، افتح /dashboard")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
