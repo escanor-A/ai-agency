@@ -2224,7 +2224,7 @@ async def facebook_oauth_callback(
 @app.get("/auth/tiktok/login")
 async def tiktok_oauth_login(tenant_id: str, request: Request):
     """توجيه التاجر لصفحة تيك توك الرسمية للربط بضغطة زر واحدة"""
-    client_key = os.environ.get("TIKTOK_CLIENT_KEY") or os.environ.get("TIKTOK_APP_ID") or "aw5233agency"
+    client_key = os.environ.get("TIKTOK_CLIENT_KEY") or os.environ.get("TIKTOK_APP_ID") or "awjnwbxeazog719x"
     base_url = os.environ.get("BASE_URL") or os.environ.get("DASHBOARD_URL") or str(request.base_url).rstrip("/")
     if base_url.startswith("http://") and "azurewebsites.net" in base_url:
         base_url = base_url.replace("http://", "https://", 1)
@@ -2270,7 +2270,7 @@ async def tiktok_oauth_callback(
     if not tenant:
         return HTMLResponse("<h3>المتجر غير موجود أو المعرّف غير صحيح</h3>", status_code=404)
 
-    client_key = os.environ.get("TIKTOK_CLIENT_KEY") or os.environ.get("TIKTOK_APP_ID") or "aw5233agency"
+    client_key = os.environ.get("TIKTOK_CLIENT_KEY") or os.environ.get("TIKTOK_APP_ID") or "awjnwbxeazog719x"
     client_secret = os.environ.get("TIKTOK_APP_SECRET", "")
     redirect_uri = f"{base_url}/auth/tiktok/callback"
 
