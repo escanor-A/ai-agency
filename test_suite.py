@@ -1966,6 +1966,85 @@ def test_dashboard_orders_and_products_management():
     assert "هودي شتوي" in summary
 
 
+def test_promotions_branch_support():
+    """اختبار دعم تخصيص الفرع في العروض الترويجية والفاوتشر"""
+    from server import PromotionPayload
+
+    # 1. فحص النموذج بفرع افتراضي وبفرع مخصص
+    p_def = PromotionPayload(
+        promo_type="voucher",
+        discount_value=200,
+        description="كارت هدايا 200ج",
+    )
+    assert p_def.branch == "كل الفروع"
+
+    p_branch = PromotionPayload(
+        promo_type="percentage",
+        discount_value=15,
+        branch="فرع المعادي",
+        description="خصم 15% خاص بفرع المعادي",
+    )
+    assert p_branch.branch == "فرع المعادي"
+
+
+def test_product_category_material_and_stock_add():
+    """اختبار استخراج الفئة (رجالي/حريمي/أطفالي) والخامة وإضافة القطع للمخزون"""
+    import telegram_bot
+    from server import StockAddPayload, _norm_ar_srv, _generate_sku_srv
+
+    # 1. فحص propose_new_product مع الفئة والخامة
+    proposals = []
+    tools = telegram_bot.build_tools("mock-tenant", proposals, has_image=False)
+    propose_fn = next(t for t in tools if t.__name__ == "propose_new_product")
+    
+    res = propose_fn(
+        name="ترنج صيفي أبيض",
+        price=450,
+        size="L",
+        color="أبيض",
+        qty=5,
+        material="قطن ميلتون",
+        category="رجالي"
+    )
+    assert res["status"] == "waiting_confirmation"
+    assert len(proposals) == 1
+    p = proposals[0]
+    assert p["name"] == "ترنج صيفي أبيض"
+    assert p["material"] == "قطن ميلتون"
+    assert p["category"] == "رجالي"
+    assert p["qty"] == 5
+
+    # 2. فحص صياغة ملخص التأكيد
+    summary = telegram_bot.build_proposals_summary(proposals)
+    assert "ترنج صيفي أبيض" in summary
+    assert "قسم: رجالي" in summary
+    assert "خامة: قطن ميلتون" in summary
+    assert "الكمية: 5" in summary
+
+    # 3. فحص نموذج إضافة وتحديث المخزون في الداشبورد
+    stock_payload = StockAddPayload(
+        product_name="هودي قطن",
+        category="أطفالي",
+        material="صوف",
+        price=350.0,
+        size="M",
+        color="كحلي",
+        qty=10
+    )
+    assert stock_payload.product_name == "هودي قطن"
+    assert stock_payload.category == "أطفالي"
+    assert stock_payload.material == "صوف"
+    assert stock_payload.qty == 10
+
+    # 4. فحص دوال التطبيع وتوليد SKU اللاتيني
+    assert _norm_ar_srv("أبيض") == "ابيض"
+    sku = _generate_sku_srv()
+    assert sku.startswith("P")
+    assert len(sku) == 7
+    assert sku[1:].isupper()
+
+
+
 
 
 

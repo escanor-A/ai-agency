@@ -6,6 +6,8 @@ import json
 import os
 import re
 import sys
+import secrets
+import string
 import time
 import httpx
 from contextlib import asynccontextmanager
@@ -1607,7 +1609,21 @@ class PromotionPayload(BaseModel):
     min_order_items: Optional[int] = 1
     min_order_value: Optional[float] = 0.0
     target_items: Optional[str] = ""
+    branch: Optional[str] = "كل الفروع"
     description: str
+
+
+class StockAddPayload(BaseModel):
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    category: Optional[str] = "رجالي"
+    material: Optional[str] = ""
+    price: Optional[float] = 0.0
+    size: str
+    color: str
+    qty: int = 1
+    image_data: Optional[str] = None
+
 
 
 class BranchPayload(BaseModel):
@@ -2583,11 +2599,24 @@ async def add_promotion_api(identifier: str, payload: PromotionPayload):
     if payload.target_items and payload.target_items.strip():
         insert_data["target_items"] = payload.target_items.strip()
 
+    if payload.branch and payload.branch.strip() and payload.branch.strip() != "كل الفروع":
+        insert_data["branch"] = payload.branch.strip()
+
     try:
         res = supabase.table("promotions").insert(insert_data).execute()
         return {"status": "success", "message": "تمت إضافة العرض الترويجي بنجاح! 🎁", "promo": res.data[0] if res.data else {}}
     except Exception as e:
         err_str = str(e)
+        if "branch" in err_str:
+            b_val = insert_data.pop("branch", None)
+            if b_val and f"[الفرع: {b_val}]" not in insert_data["description"]:
+                insert_data["description"] = f"[الفرع: {b_val}] {insert_data['description']}"
+            try:
+                res = supabase.table("promotions").insert(insert_data).execute()
+                return {"status": "success", "message": "تمت إضافة العرض الترويجي بنجاح! 🎁", "promo": res.data[0] if res.data else {}}
+            except Exception as e_br:
+                err_str = str(e_br)
+
         if "target_items" in err_str:
             insert_data.pop("target_items", None)
             try:
@@ -2656,7 +2685,7 @@ async def get_dashboard_products_api(identifier: str):
 
         vars_res = (
             supabase.table("variants")
-            .select("product_id, available, stock, reserved, active")
+            .select("id, product_id, sku, size, color, available, stock, reserved, active")
             .eq("tenant_id", tid)
             .eq("active", True)
             .execute()
@@ -2664,18 +2693,31 @@ async def get_dashboard_products_api(identifier: str):
         vars_data = vars_res.data or []
         stock_by_prod = {}
         variants_by_prod = {}
+        vars_list_by_prod = {}
         for v in vars_data:
             pid = v.get("product_id")
             avail = v.get("available")
             if avail is None:
                 avail = (v.get("stock") or 0) - (v.get("reserved") or 0)
-            stock_by_prod[pid] = stock_by_prod.get(pid, 0) + max(0, int(avail or 0))
+            avail_int = max(0, int(avail or 0))
+            stock_by_prod[pid] = stock_by_prod.get(pid, 0) + avail_int
             variants_by_prod[pid] = variants_by_prod.get(pid, 0) + 1
+            if pid not in vars_list_by_prod:
+                vars_list_by_prod[pid] = []
+            vars_list_by_prod[pid].append({
+                "id": v.get("id"),
+                "sku": v.get("sku"),
+                "size": v.get("size"),
+                "color": v.get("color"),
+                "stock": v.get("stock") or 0,
+                "available": avail_int,
+            })
 
         for p in prods:
             pid = p["id"]
             p["total_stock"] = stock_by_prod.get(pid, 0)
             p["variants_count"] = variants_by_prod.get(pid, 0)
+            p["variants"] = vars_list_by_prod.get(pid, [])
 
         return {"status": "success", "products": prods}
     except Exception as e:
@@ -2775,6 +2817,217 @@ async def delete_product_image_api(identifier: str, product_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"فشل حذف الصورة: {e}")
+
+
+def _norm_ar_srv(s: str) -> str:
+    if not s:
+        return ""
+    s = s.strip()
+    s = re.sub(r"[أإآ]", "ا", s)
+    s = re.sub(r"ة", "ه", s)
+    s = re.sub(r"ى", "ي", s)
+    return s.lower()
+
+
+def _generate_sku_srv() -> str:
+    """توليد كود صنف بحروف لاتينية فقط (P + 6 حروف عشوائية)"""
+    letters = "".join(secrets.choice(string.ascii_uppercase) for _ in range(6))
+    return f"P{letters}"
+
+
+@app.post("/api/dashboard/{identifier}/stock/add")
+@app.post("/api/merchant/{identifier}/stock/add")
+async def add_stock_api(identifier: str, payload: StockAddPayload):
+    """إضافة قطع جديدة للمخزون أو تسجيل صنف جديد بكامل تفاصيله (فئة، خامة، صورة)"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = str(tenant["id"])
+
+    if payload.qty <= 0:
+        raise HTTPException(status_code=400, detail="الكمية المضافة يجب أن تكون 1 أو أكثر")
+
+    size = payload.size.strip().upper()
+    color = payload.color.strip()
+    if not size or not color:
+        raise HTTPException(status_code=400, detail="المقاس واللون مطلوبان لتحديد القطع المضافة بدقة")
+
+    # معالجة الصورة في حال تم إرسالها base64
+    uploaded_image_url = None
+    if payload.image_data and payload.image_data.strip():
+        raw_str = payload.image_data.strip()
+        mime = "image/jpeg"
+        if "," in raw_str:
+            header, encoded = raw_str.split(",", 1)
+            if "data:" in header and ";" in header:
+                mime = header.split("data:")[1].split(";")[0]
+        else:
+            encoded = raw_str
+
+        try:
+            img_bytes = base64.b64decode(encoded)
+            uploaded_image_url = upload_product_image_to_storage(
+                tid,
+                img_bytes,
+                filename=f"stock_{(payload.product_name or 'prod')[:15]}",
+                mime=mime,
+            )
+        except Exception as e:
+            print(f"Warning: Failed to optimize/upload image during stock add: {e}")
+
+    product_id = payload.product_id
+    prod_name = payload.product_name or ""
+
+    # 1. إذا تم تحديد product_id:
+    if product_id:
+        p_check = (
+            supabase.table("products")
+            .select("id, name, price, material, category, image_url")
+            .eq("tenant_id", tid)
+            .eq("id", product_id)
+            .execute()
+        )
+        if not p_check.data:
+            raise HTTPException(status_code=404, detail="المنتج غير موجود")
+        current_p = p_check.data[0]
+        prod_name = current_p["name"]
+
+        # تحديث بيانات المنتج إذا توافرت خامة أو فئة أو صورة
+        prod_updates = {}
+        if uploaded_image_url:
+            prod_updates["image_url"] = uploaded_image_url
+        if payload.material and payload.material.strip() and not current_p.get("material"):
+            prod_updates["material"] = payload.material.strip()
+        if payload.category and payload.category.strip() and not current_p.get("category"):
+            prod_updates["category"] = payload.category.strip()
+        if payload.price and payload.price > 0 and float(current_p.get("price") or 0) <= 0:
+            prod_updates["price"] = float(payload.price)
+        if prod_updates:
+            try:
+                supabase.table("products").update(prod_updates).eq("id", product_id).execute()
+            except Exception as e:
+                print("Warning updating product:", e)
+
+    else:
+        # 2. إذا تم تحديد اسم المنتج (إضافة صنف جديد أو البحث بالاسم):
+        if not prod_name.strip():
+            raise HTTPException(status_code=400, detail="يرجى كتابة اسم الصنف أو اختيار منتج موجود")
+
+        prod_norm = _norm_ar_srv(prod_name)
+        existing_prods = (
+            supabase.table("products")
+            .select("id, name, price, material, category, image_url")
+            .eq("tenant_id", tid)
+            .execute()
+            .data or []
+        )
+        matched = None
+        for ep in existing_prods:
+            if _norm_ar_srv(ep.get("name", "")) == prod_norm:
+                matched = ep
+                break
+
+        if matched:
+            product_id = matched["id"]
+            prod_name = matched["name"]
+            prod_updates = {}
+            if uploaded_image_url and not matched.get("image_url"):
+                prod_updates["image_url"] = uploaded_image_url
+            if payload.material and payload.material.strip() and not matched.get("material"):
+                prod_updates["material"] = payload.material.strip()
+            if payload.category and payload.category.strip() and not matched.get("category"):
+                prod_updates["category"] = payload.category.strip()
+            if prod_updates:
+                try:
+                    supabase.table("products").update(prod_updates).eq("id", product_id).execute()
+                except Exception as e:
+                    print("Warning updating matched product:", e)
+        else:
+            # إنشاء منتج جديد في قاعدة البيانات
+            new_prod_data = {
+                "tenant_id": tid,
+                "name": prod_name.strip(),
+                "price": float(payload.price or 0),
+                "category": (payload.category or "رجالي").strip(),
+                "material": (payload.material or "").strip(),
+                "active": True,
+                **({"image_url": uploaded_image_url} if uploaded_image_url else {}),
+            }
+            try:
+                new_p_res = supabase.table("products").insert(new_prod_data).execute()
+                if not new_p_res.data:
+                    raise RuntimeError("لم يتم إرجاع بيانات المنتج بعد إنشائه")
+                product_id = new_p_res.data[0]["id"]
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"فشل إنشاء المنتج: {e}")
+
+    # 3. فحص أو إنشاء الـ Variant وتحديث الكميات:
+    var_rows = (
+        supabase.table("variants")
+        .select("id, sku, size, color, stock, reserved, available")
+        .eq("tenant_id", tid)
+        .eq("product_id", product_id)
+        .execute()
+        .data or []
+    )
+    target_color_norm = _norm_ar_srv(color)
+    matched_var = None
+    for vr in var_rows:
+        if vr.get("size", "").strip().upper() == size and _norm_ar_srv(vr.get("color", "")) == target_color_norm:
+            matched_var = vr
+            break
+
+    if matched_var:
+        current_stock = int(matched_var.get("stock") or 0)
+        reserved = int(matched_var.get("reserved") or 0)
+        new_stock = current_stock + payload.qty
+        new_avail = max(0, new_stock - reserved)
+        var_updates = {"stock": new_stock, "available": new_avail}
+        if uploaded_image_url and not matched_var.get("image_url"):
+            var_updates["image_url"] = uploaded_image_url
+        try:
+            supabase.table("variants").update(var_updates).eq("id", matched_var["id"]).execute()
+            sku = matched_var.get("sku", "")
+            return {
+                "status": "success",
+                "message": f"تمت إضافة {payload.qty} قطعة إلى «{prod_name}» ({color} - {size})! المخزون الحالي: {new_stock} قطعة 📦",
+                "product_id": product_id,
+                "product_name": prod_name,
+                "variant_id": matched_var["id"],
+                "sku": sku,
+                "new_stock": new_stock,
+                "available": new_avail,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"فشل تحديث مخزون الصنف: {e}")
+    else:
+        new_sku = _generate_sku_srv()
+        new_var_data = {
+            "tenant_id": tid,
+            "product_id": product_id,
+            "sku": new_sku,
+            "size": size,
+            "color": color,
+            "stock": payload.qty,
+            "available": payload.qty,
+            "reserved": 0,
+            "active": True,
+            **({"image_url": uploaded_image_url} if uploaded_image_url else {}),
+        }
+        try:
+            new_v_res = supabase.table("variants").insert(new_var_data).execute()
+            return {
+                "status": "success",
+                "message": f"تم تسجيل صنف جديد بنجاح: «{prod_name}» ({color} - {size}) برصيد {payload.qty} قطعة! 📦",
+                "product_id": product_id,
+                "product_name": prod_name,
+                "variant_id": new_v_res.data[0]["id"] if new_v_res.data else None,
+                "sku": new_sku,
+                "new_stock": payload.qty,
+                "available": payload.qty,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"فشل إضافة صنف المخزون: {e}")
 
 
 # =====================================================================

@@ -145,15 +145,26 @@ def _format_variant_item(r: dict, reveal_qty: bool = False) -> dict:
 
 def _query_variants(tenant_id, search_term):
     escaped = escape_like(search_term)
-    return (
-        supabase.table("variants")
-        .select("sku,size,color,available,image_url,products!inner(name,price,image_url,material)")
-        .eq("tenant_id", tenant_id)
-        .eq("active", True)
-        .ilike("products.name", f"%{escaped}%")
-        .execute()
-        .data
-    )
+    try:
+        return (
+            supabase.table("variants")
+            .select("sku,size,color,available,image_url,products!inner(name,price,image_url,material,category)")
+            .eq("tenant_id", tenant_id)
+            .eq("active", True)
+            .ilike("products.name", f"%{escaped}%")
+            .execute()
+            .data
+        )
+    except Exception:
+        return (
+            supabase.table("variants")
+            .select("sku,size,color,available,image_url,products!inner(name,price,image_url,material)")
+            .eq("tenant_id", tenant_id)
+            .eq("active", True)
+            .ilike("products.name", f"%{escaped}%")
+            .execute()
+            .data
+        )
 
 
 def check_stock(tenant_id, product_name, size=None, color=None, reveal_qty=False):
@@ -193,14 +204,24 @@ def check_stock(tenant_id, product_name, size=None, color=None, reveal_qty=False
 
     # 4️⃣ لو لسه مفيش — رجّع الكتالوج للـ AI يقارن ذكياً
     if not rows:
-        prods = (
-            supabase.table("products")
-            .select("name,price,material")
-            .eq("tenant_id", tenant_id)
-            .eq("active", True)
-            .execute()
-            .data
-        )
+        try:
+            prods = (
+                supabase.table("products")
+                .select("name,price,material,category")
+                .eq("tenant_id", tenant_id)
+                .eq("active", True)
+                .execute()
+                .data
+            )
+        except Exception:
+            prods = (
+                supabase.table("products")
+                .select("name,price,material")
+                .eq("tenant_id", tenant_id)
+                .eq("active", True)
+                .execute()
+                .data
+            )
         return {
             "status": "not_found",
             "searched": clean_name,

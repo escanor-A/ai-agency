@@ -220,6 +220,136 @@
     </div>
   </div>
 
+  <!-- Add Stock / New Product Modal (تحديث المخزون وإضافة قطع جديدة) -->
+  <div id="addStockModal"
+    class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div
+      class="glass-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl text-right max-h-[90vh] overflow-y-auto space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">📦</span>
+          <div>
+            <h3 class="text-base sm:text-lg font-bold text-white">تحديث المخزون وإضافة قطع</h3>
+            <p class="text-[11px] text-slate-400">تزويد كميات لصنف حالي أو تسجيل صنف جديد تماماً</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeAddStockModal()"
+          class="text-slate-400 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <!-- Mode Switch Tabs -->
+      <div class="flex rounded-xl bg-slate-800/80 p-1 border border-slate-700/60">
+        <button type="button" id="stockModeRestockTab" onclick="setStockModalMode('restock')"
+          class="flex-1 py-1.5 rounded-lg text-xs font-bold transition bg-blue-600 text-white shadow">
+          ➕ تزويد كميات لصنف موجود
+        </button>
+        <button type="button" id="stockModeNewTab" onclick="setStockModalMode('new')"
+          class="flex-1 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-white">
+          ✨ إضافة صنف جديد بالكامل
+        </button>
+      </div>
+
+      <form id="addStockForm" onsubmit="submitAddStock(event)" class="space-y-3.5">
+        <!-- Field for existing product (Restock Mode) -->
+        <div id="stockProductSelectGroup">
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">اختر الصنف من المخزن *</label>
+          <select id="stockProductIdSelect" onchange="onStockProductSelectChange()"
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 text-xs sm:text-sm">
+            <!-- Injected via JS -->
+          </select>
+        </div>
+
+        <!-- Fields for new product (New Mode) -->
+        <div id="stockNewProductFields" class="hidden space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">اسم الصنف الجديد *</label>
+            <input type="text" id="stockNewProductNameInput" placeholder="مثال: ترنج أبيض، هودي شتوي، جاكيت جينز"
+              class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 text-xs sm:text-sm">
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1.5">الفئة / القسم *</label>
+              <select id="stockNewCategorySelect"
+                class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 text-xs sm:text-sm">
+                <option value="رجالي">👔 رجالي</option>
+                <option value="حريمي">👗 حريمي / نسائي</option>
+                <option value="أطفالي">👶 أطفالي</option>
+                <option value="للجنسين">👥 للجنسين (Unisex)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1.5">الخامة (Material)</label>
+              <input type="text" id="stockNewMaterialInput" placeholder="مثال: قطن ميلتون، وتربروف، جينز"
+                class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 text-xs sm:text-sm">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">سعر البيع للقطعة *</label>
+            <div class="relative">
+              <input type="number" step="any" min="0" id="stockNewPriceInput" placeholder="450"
+                class="w-full px-4 py-2.5 pl-14 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 text-sm font-mono dir-ltr text-left">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">ج.م</span>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">صورة الصنف (اختياري)</label>
+            <input type="file" id="stockNewImageFile" accept="image/*" onchange="previewStockNewImage(this)"
+              class="w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-600/20 file:text-blue-300 hover:file:bg-blue-600/30 cursor-pointer">
+            <div id="stockNewImagePreviewContainer" class="hidden mt-2 flex items-center gap-2">
+              <img id="stockNewImagePreview" src="" class="w-14 h-14 object-cover rounded-xl border border-slate-700">
+              <span class="text-[11px] text-emerald-400 font-semibold">جاهز للضغط والرفع الفوري 📸</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Size and Color (shared for both modes) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">المقاس (Size) *</label>
+            <input type="text" id="stockSizeInput" placeholder="مثال: L, XL, M, 42" required
+              class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 text-xs sm:text-sm font-mono uppercase">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5">اللون (Color) *</label>
+            <input type="text" id="stockColorInput" placeholder="مثال: أبيض، أسود، كحلي، رمادي" required
+              class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 text-xs sm:text-sm">
+          </div>
+        </div>
+
+        <!-- Quantity -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">عدد القطع المضافة *</label>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="adjustStockModalQty(-1)"
+              class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-lg flex items-center justify-center transition border border-slate-700">-</button>
+            <input type="number" min="1" id="stockQtyInput" value="5" required
+              class="flex-1 text-center px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-100 text-base font-bold font-mono">
+            <button type="button" onclick="adjustStockModalQty(1)"
+              class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-lg flex items-center justify-center transition border border-slate-700">+</button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">
+            سيتم تحديث رصيد المخزون فوراً وسيعكس في الداش بورد ولدى شات العملاء.
+          </p>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800/80">
+          <button type="button" onclick="closeAddStockModal()"
+            class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition">
+            إلغاء
+          </button>
+          <button type="submit" id="saveStockBtn"
+            class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-blue-600/20 transition transform active:scale-95 flex items-center gap-1.5">
+            <span id="saveStockSpinner" class="hidden animate-spin">⏳</span>
+            <span>حفظ وإضافة للمخزون 📦</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Add Promotion / Voucher Modal -->
   <div id="addPromotionModal"
     class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
@@ -288,6 +418,20 @@
             class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-xs sm:text-sm">
           <p class="text-[11px] text-slate-400 mt-1">
             💡 اتركها فارغة للكل | استخدم <b>+</b> لعمل طقم مركب (مثال: <code>تيشيرت + بنطلون</code>) | استخدم فواصل <b>,</b> لتحديد أصناف بديلة (مثال: <code>تيشيرت, هودي</code>).
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">الفرع المشمول بالعرض</label>
+          <select id="promoBranchSelect" onchange="onPromoBranchSelectChange()"
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-xs sm:text-sm font-semibold">
+            <option value="كل الفروع">🏬 كل الفروع (المتجر بالكامل وأونلاين)</option>
+            <option value="__custom__">✏️ فرع مخصص أو مكان محدد...</option>
+          </select>
+          <input type="text" id="promoCustomBranchInput" placeholder="اكتب اسم الفرع أو المكان (مثال: فرع المعادي، فرع مدينة نصر)"
+            class="w-full mt-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white hidden">
+          <p class="text-[11px] text-slate-400 mt-1">
+            حدد ما إذا كان العرض ساري في كل الفروع أم مخصص لفرع أو مكان معين فقط.
           </p>
         </div>
 
@@ -813,6 +957,9 @@
         </div>
 
         <div class="flex items-center gap-2">
+          <button type="button" onclick="openAddStockModal()" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/20 transition transform active:scale-95">
+            <span>➕ إضافة قطع / صنف للمخزن</span>
+          </button>
           <button type="button" onclick="loadProductsData()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
             <span id="productsRefreshSpinner" class="hidden animate-spin">🔄</span>
             <span>تحديث المنتجات</span>
@@ -2122,6 +2269,10 @@
 
           const codeBadge = p.code ? `<span class="font-mono bg-slate-800 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">كود: ${p.code}</span>` : '<span class="text-slate-500 text-[11px]">تطبيق تلقائي</span>';
           const targetBadge = p.target_items ? `<span class="bg-indigo-950/80 text-indigo-300 px-2 py-0.5 rounded-lg border border-indigo-500/30 text-[11px]">🎯 ${p.target_items}</span>` : '';
+          const rawBranch = p.branch || (p.description && p.description.match(/\[الفرع:\s*([^\]]+)\]/)?.[1]) || '';
+          const branchBadge = (rawBranch && rawBranch !== 'كل الفروع')
+            ? `<span class="bg-amber-500/10 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">🏬 فرع: ${rawBranch}</span>`
+            : `<span class="bg-slate-800 text-slate-400 px-2 py-0.5 rounded-lg text-[11px]">🏬 كل الفروع</span>`;
 
           let conditionText = '';
           if (p.min_order_value && Number(p.min_order_value) > 0) {
@@ -2160,6 +2311,7 @@
 
             <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
               <div class="flex items-center gap-1.5 flex-wrap">
+                ${branchBadge}
                 ${codeBadge}
                 ${targetBadge}
                 <span>شرط: ${conditionText}</span>
@@ -2177,7 +2329,39 @@
 
       function openAddPromotionModal() {
         document.getElementById('addPromotionModal').classList.remove('hidden');
+        populatePromoBranches();
         onPromoTypeChange();
+      }
+
+      function populatePromoBranches() {
+        const branchSelect = document.getElementById('promoBranchSelect');
+        if (!branchSelect) return;
+        branchSelect.innerHTML = `
+          <option value="كل الفروع">🏬 كل الفروع (المتجر بالكامل وأونلاين)</option>
+          <option value="__custom__">✏️ فرع مخصص أو مكان محدد...</option>
+        `;
+        const branches = (typeof tenantData !== 'undefined' && tenantData?.branches) ? tenantData.branches : [];
+        if (branches && branches.length) {
+          branches.forEach(b => {
+            const opt = document.createElement('option');
+            opt.value = b.name;
+            opt.innerText = `🏬 ${b.name} (${b.governorate || ''})`;
+            branchSelect.insertBefore(opt, branchSelect.lastElementChild);
+          });
+        }
+        const customInput = document.getElementById('promoCustomBranchInput');
+        if (customInput) customInput.classList.add('hidden');
+      }
+
+      function onPromoBranchSelectChange() {
+        const val = document.getElementById('promoBranchSelect').value;
+        const customInput = document.getElementById('promoCustomBranchInput');
+        if (val === '__custom__') {
+          customInput.classList.remove('hidden');
+          customInput.focus();
+        } else {
+          customInput.classList.add('hidden');
+        }
       }
 
       function closeAddPromotionModal() {
@@ -2236,6 +2420,11 @@
         const pMinVal = parseFloat(document.getElementById('promoMinValueInput').value || 0);
         const pMinItems = parseInt(document.getElementById('promoMinItemsInput').value || 1);
         const pTargetItems = (document.getElementById('promoTargetItemsInput')?.value || '').trim();
+        const branchSelectVal = document.getElementById('promoBranchSelect')?.value || 'كل الفروع';
+        let pBranch = branchSelectVal;
+        if (branchSelectVal === '__custom__') {
+          pBranch = document.getElementById('promoCustomBranchInput')?.value.trim() || 'كل الفروع';
+        }
         const pDesc = document.getElementById('promoDescInput').value.trim();
 
         if (!pDesc) {
@@ -2256,6 +2445,7 @@
             min_order_items: pMinItems,
             min_order_value: pMinVal,
             target_items: pTargetItems || null,
+            branch: pBranch || 'كل الفروع',
             description: pDesc
           };
 
@@ -2782,6 +2972,14 @@
             ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm">🖼️ له صورة</span>'
             : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm">📷 بدون صورة</span>';
 
+          const catBadge = p.category
+            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">👔 ${p.category}</span>`
+            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">👔 رجالي</span>';
+
+          const matBadge = p.material
+            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700" title="خامة: ${p.material}">🧵 ${p.material}</span>`
+            : '';
+
           return `
             <div id="productCard-${p.id}" class="glass-card rounded-2xl p-3 border-slate-800 flex flex-col justify-between gap-2.5 shadow-md hover:border-blue-500/40 transition bg-slate-900/60 relative group">
               <!-- Image thumbnail area -->
@@ -2794,30 +2992,40 @@
                     <span class="text-[10px]">لا توجد صورة</span>
                   </div>
                 `}
-                <div class="absolute top-2 right-2">${imgBadge}</div>
+                <div class="absolute top-2 right-2 flex flex-col items-end gap-1">${imgBadge}</div>
               </div>
 
-              <!-- Info -->
-              <div class="space-y-1">
+              <!-- Info & Category/Material Badges -->
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  ${catBadge}
+                  ${matBadge}
+                </div>
                 <h4 class="text-xs font-bold text-white truncate" title="${p.name}">${p.name}</h4>
                 <div class="flex items-center justify-between text-[11px]">
                   <span class="text-emerald-400 font-bold">${Number(p.price || 0).toLocaleString()} ج.م</span>
-                  <span class="text-slate-400 font-semibold">${p.total_stock || 0} قطعة بالمخزن</span>
+                  <span class="text-slate-300 font-bold bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700/60">${p.total_stock || 0} قطعة بالمخزن</span>
                 </div>
               </div>
 
-              <!-- Actions: Change / Upload / Delete image -->
-              <div class="pt-2 border-t border-slate-800/80 flex items-center gap-1.5">
-                <label class="flex-1 py-1.5 px-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-xl text-[11px] font-bold text-center cursor-pointer transition flex items-center justify-center gap-1">
-                  <span>📸 ${hasImg ? 'تغيير' : 'رفع صورة'}</span>
-                  <input type="file" accept="image/*" class="sr-only" onchange="handleProductImageFilePick('${p.id}', this)">
-                </label>
-                ${hasImg ? `
-                  <button type="button" onclick="deleteProductImage('${p.id}', '${p.name}')" title="حذف الصورة"
-                    class="p-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition text-xs">
-                    🗑️
-                  </button>
-                ` : ''}
+              <!-- Actions: Quick Restock & Image -->
+              <div class="pt-2 border-t border-slate-800/80 space-y-1.5">
+                <button type="button" onclick="openAddStockModal('${p.id}')"
+                  class="w-full py-1.5 px-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-[11px] font-bold text-center transition flex items-center justify-center gap-1">
+                  <span>➕ تزويد قطع بالمخزون</span>
+                </button>
+                <div class="flex items-center gap-1.5">
+                  <label class="flex-1 py-1 px-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-xl text-[10px] font-bold text-center cursor-pointer transition flex items-center justify-center gap-1">
+                    <span>📸 ${hasImg ? 'تغيير' : 'رفع صورة'}</span>
+                    <input type="file" accept="image/*" class="sr-only" onchange="handleProductImageFilePick('${p.id}', this)">
+                  </label>
+                  ${hasImg ? `
+                    <button type="button" onclick="deleteProductImage('${p.id}', '${p.name}')" title="حذف الصورة"
+                      class="p-1 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition text-xs">
+                      🗑️
+                    </button>
+                  ` : ''}
+                </div>
               </div>
 
               <!-- Loading overlay for image upload -->
@@ -2889,6 +3097,186 @@
           }
         } catch (err) {
           showToast('تعذر الاتصال بالسيرفر', 'error');
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // Stock & Product Management Modal (إضافة قطع وتحديث المخزون)
+      // -----------------------------------------------------------------
+      let currentStockModalMode = 'restock';
+      let stockNewImageBase64 = null;
+
+      function openAddStockModal(preselectedProductId = null) {
+        document.getElementById('addStockModal').classList.remove('hidden');
+        populateStockProductDropdown(preselectedProductId);
+        if (preselectedProductId) {
+          setStockModalMode('restock');
+        }
+      }
+
+      function closeAddStockModal() {
+        document.getElementById('addStockModal').classList.add('hidden');
+        document.getElementById('addStockForm').reset();
+        stockNewImageBase64 = null;
+        document.getElementById('stockNewImagePreviewContainer')?.classList.add('hidden');
+      }
+
+      function setStockModalMode(mode) {
+        currentStockModalMode = mode;
+        const restockTab = document.getElementById('stockModeRestockTab');
+        const newTab = document.getElementById('stockModeNewTab');
+        const selectGroup = document.getElementById('stockProductSelectGroup');
+        const newFields = document.getElementById('stockNewProductFields');
+
+        if (mode === 'restock') {
+          restockTab.classList.add('bg-blue-600', 'text-white', 'shadow');
+          restockTab.classList.remove('text-slate-400');
+          newTab.classList.remove('bg-blue-600', 'text-white', 'shadow');
+          newTab.classList.add('text-slate-400');
+          selectGroup.classList.remove('hidden');
+          newFields.classList.add('hidden');
+          document.getElementById('stockNewProductNameInput').required = false;
+          document.getElementById('stockNewPriceInput').required = false;
+        } else {
+          newTab.classList.add('bg-blue-600', 'text-white', 'shadow');
+          newTab.classList.remove('text-slate-400');
+          restockTab.classList.remove('bg-blue-600', 'text-white', 'shadow');
+          restockTab.classList.add('text-slate-400');
+          selectGroup.classList.add('hidden');
+          newFields.classList.remove('hidden');
+          document.getElementById('stockNewProductNameInput').required = true;
+          document.getElementById('stockNewPriceInput').required = true;
+        }
+      }
+
+      function populateStockProductDropdown(selectedId = null) {
+        const select = document.getElementById('stockProductIdSelect');
+        if (!select) return;
+        if (!allProducts.length) {
+          select.innerHTML = `<option value="">(لا توجد منتجات مسجلة، اختر إضافة صنف جديد)</option>`;
+          setStockModalMode('new');
+          return;
+        }
+
+        select.innerHTML = allProducts.map(p => `
+          <option value="${p.id}" ${selectedId === p.id ? 'selected' : ''}>
+            ${p.name} (${Number(p.price || 0).toLocaleString()} ج.م - رصيد: ${p.total_stock || 0} قطعة)
+          </option>
+        `).join('');
+      }
+
+      function onStockProductSelectChange() {
+        const pid = document.getElementById('stockProductIdSelect').value;
+        const prod = allProducts.find(p => p.id === pid);
+        if (prod && prod.variants && prod.variants.length > 0) {
+          const firstVar = prod.variants[0];
+          if (firstVar.size) document.getElementById('stockSizeInput').value = firstVar.size;
+          if (firstVar.color) document.getElementById('stockColorInput').value = firstVar.color;
+        }
+      }
+
+      function adjustStockModalQty(delta) {
+        const input = document.getElementById('stockQtyInput');
+        let val = parseInt(input.value || 1) + delta;
+        if (val < 1) val = 1;
+        input.value = val;
+      }
+
+      function previewStockNewImage(input) {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+          showToast('يرجى اختيار ملف صورة صالح', 'error');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          stockNewImageBase64 = e.target.result;
+          const preview = document.getElementById('stockNewImagePreview');
+          const container = document.getElementById('stockNewImagePreviewContainer');
+          if (preview && container) {
+            preview.src = stockNewImageBase64;
+            container.classList.remove('hidden');
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+
+      async function submitAddStock(e) {
+        e.preventDefault();
+        if (!currentTenantId) return;
+
+        const btn = document.getElementById('saveStockBtn');
+        const spinner = document.getElementById('saveStockSpinner');
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
+
+        try {
+          const size = document.getElementById('stockSizeInput').value.trim();
+          const color = document.getElementById('stockColorInput').value.trim();
+          const qty = parseInt(document.getElementById('stockQtyInput').value || 1);
+
+          if (!size || !color || qty < 1) {
+            showToast('يرجى التأكد من كتابة المقاس واللون وتحديد الكمية بشكل صحيح', 'warning');
+            return;
+          }
+
+          let payload = {
+            size: size,
+            color: color,
+            qty: qty
+          };
+
+          if (currentStockModalMode === 'restock') {
+            const pid = document.getElementById('stockProductIdSelect').value;
+            if (!pid) {
+              showToast('يرجى اختيار المنتج من القائمة', 'warning');
+              return;
+            }
+            payload.product_id = pid;
+          } else {
+            const name = document.getElementById('stockNewProductNameInput').value.trim();
+            const category = document.getElementById('stockNewCategorySelect').value;
+            const material = document.getElementById('stockNewMaterialInput').value.trim();
+            const price = parseFloat(document.getElementById('stockNewPriceInput').value || 0);
+
+            if (!name) {
+              showToast('يرجى كتابة اسم الصنف الجديد', 'warning');
+              return;
+            }
+            if (price <= 0) {
+              showToast('يرجى كتابة سعر بيع صالح للمنتج', 'warning');
+              return;
+            }
+
+            payload.product_name = name;
+            payload.category = category;
+            payload.material = material;
+            payload.price = price;
+            if (stockNewImageBase64) {
+              payload.image_data = stockNewImageBase64;
+            }
+          }
+
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/stock/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(json.message || 'تمت إضافة القطع للمخزون بنجاح! 📦', 'success');
+            closeAddStockModal();
+            await loadProductsData();
+            loadDashboardData();
+          } else {
+            showToast(json.detail || 'فشل تحديث المخزون', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر لتحديث المخزون', 'error');
+        } finally {
+          btn.disabled = false;
+          spinner.classList.add('hidden');
         }
       }
 

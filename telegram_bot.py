@@ -69,12 +69,18 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 4. لو المقاس أو اللون ناقص أو في أكتر من احتمال، اسأل بدل ما تخمّن.
 5. لو الكمية ماتقالتش افترض 1.
 6. أنواع العمليات: sale = بيع من المحل (بينقص)، restock = وصلت بضاعة (بتزيد)، return = مرتجع (بيزيد).
-7. لو صاحب المحل طلب إضافة منتج جديد (مش موجود قبل كده في المخزن) واكتملت بياناته (الاسم، السعر، المقاس، اللون، الكمية): استدعي دالة propose_new_product فوراً في الخلفية! ممنوع تقول باللسان 'تأكد من الأزرار' أو 'جهزت الإضافة' من غير ما تستدعي الدالة فعلياً.
+7. لو صاحب المحل طلب إضافة منتج جديد (مش موجود قبل كده في المخزن):
+   - لازم تحدد بدقة كل التفاصيل التالية:
+     أ) الفئة / القسم (Category): هل هو رجالي أم حريمي (نسائي) أم أطفالي أم للجنسين. لو ما قالش الصنف ده لمين، اسأله: 'الترنج/الصنف ده رجالي ولا حريمي ولا أطفالي؟'
+     ب) الخامة (Material): هل هو قطن، ميلتون، وتربروف، جينز، كتان، صوف، ليكرا، إلخ. لو ما ذكرهاش اسأله: 'وخامته إيه؟'
+     ج) السعر، المقاس، اللون، والكمية.
+     د) صورة المنتج: اسأله لو معاه صورة يبعتها عشان تتربط بالصنف فوراً وتظهر للعملاء في الشات والداش بورد، أو نجهّز الإضافة وينزل بدون صورة مؤقتاً.
+   - أول ما تكتمل البيانات استدعي دالة propose_new_product فوراً في الخلفية مع تمرير الفئة (category) والخامة (material)! ممنوع تقول باللسان 'تأكد من الأزرار' أو 'جهزت الإضافة' من غير ما تستدعي الدالة فعلياً.
 8. لو ذكر كذا لون أو مقاس لنفس المنتج، نادِ propose_new_product لكل لون/مقاس في نفس الرد فوراً لتجهيزهم معاً دفعة واحدة!
 9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
 10. لو صاحب المحل طلب إضافة فرع أو عنوان للمحل (مثلاً: فرع مدينة نصر، شارع كذا، لوكيشن ماب كذا)، استخرج البيانات ونادِ propose_new_branch.
 11. لو صاحب المحل طلب عمل كود خصم أو عرض ترويجي (مثلاً: كود EID20 خصم 20%، أو عرض شحن مجاني لأي حد يطلب قطعتين أو أكتر)، استخرج البيانات ونادِ propose_new_promo.
-13. لو صاحب المحل بعت صورة منتج (أو كان بعت صورة من دقايق وبيكمل كلامه): الصورة بتتحفظ وبتتربط تلقائياً بالمنتج أول ما يضغط تأكيد. بص على الصورة والكلام اللي معاها وحدد نوع القطعة واللون. لو قال وصل/جاي/ضيف منتج جديد استخدم propose_new_product (الاسم، السعر، المقاس، اللون، الكمية). لو عايز يغيّر أو يستبدل صورة منتج موجود بالفعل (لأنه بعت صورة غلط أو مش عاجباه) استخدم propose_set_product_image فوراً باسم المنتج. لو السعر أو المقاس ناقص اسأل، ممنوع تخمّن. لو طلب تغيير صورة منتج ومكنش باعت صورة، اطلب منه يبعت الصورة الجديدة دلوقتي وقوله إنه يقدر يستخدم أمر /set_image لاختيار الصنف بسهولة. لو الصورة من غير أي كلام اسأله: المنتج ده إيه وسعره ومقاسه وكميته؟
+13. لو صاحب المحل بعت صورة منتج (أو كان بعت صورة من دقايق وبيكمل كلامه): الصورة بتتحفظ وبتتربط تلقائياً بالمنتج أول ما يضغط تأكيد. بص على الصورة والكلام اللي معاها وحدد نوع القطعة واللون والفئة (رجالي/حريمي/أطفالي) والخامة إن كانت واضحة. لو قال وصل/جاي/ضيف منتج جديد استخدم propose_new_product (الاسم، السعر، المقاس، اللون، الكمية، الخامة، الفئة). لو عايز يغيّر أو يستبدل صورة منتج موجود بالفعل (لأنه بعت صورة غلط أو مش عاجباه) استخدم propose_set_product_image فوراً باسم المنتج. لو السعر أو المقاس أو الفئة ناقصة اسأل بلطف. لو طلب تغيير صورة منتج ومكنش باعت صورة، اطلب منه يبعت الصورة الجديدة دلوقتي وقوله إنه يقدر يستخدم أمر /set_image لاختيار الصنف بسهولة. لو الصورة من غير أي كلام اسأله: المنتج ده إيه ورجالي ولا حريمي وخامته وسعره ومقاسه وكميته؟
 12. اتفاقية حتمية: أي عملية بتغيّر أوردر أو مخزون لازم تعدي على أزرار التأكيد وماتتنفذش فوراً! لو صاحب المحل طلب إلغاء أوردر أو تعديل عنوان/موبايل/حالة أوردر، استدعِ propose_cancel_order أو propose_update_order لتجهيزها، والأزرار هي اللي هتأكد.
 14. لو صاحب المحل سأل 'المخزن فيه إيه؟' أو 'عايز كشف المخزون' أو 'إيه اللي عندي في المخزن؟': نادِ list_inventory واديله كشف سريع بالأصناف والكميات المتاحة وقوله إنه يقدر يكتب /stock عشان يشوف الكشف كامل ومفصل.
 
@@ -1802,16 +1808,25 @@ def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> lis
         )
         return {"status": "waiting_confirmation", "item": label, "change": change}
 
-    def propose_new_product(name: str, price: float, size: str, color: str, qty: int = 1, material: str = "") -> dict:
+    def propose_new_product(
+        name: str,
+        price: float,
+        size: str,
+        color: str,
+        qty: int = 1,
+        material: str = "",
+        category: str = "رجالي",
+    ) -> dict:
         """بتجهّز إضافة منتج أو صنف جديد خالص في المخزن وتستنى تأكيد صاحب المحل بالأزرار.
 
         Args:
-            name: اسم المنتج (مثلاً: جاكيت جينز، سويت شيرت)
+            name: اسم المنتج (مثلاً: ترنج أبيض، جاكيت جينز، سويت شيرت)
             price: سعر البيع بالجنيه
             size: المقاس (M, L, XL, 42, إلخ)
-            color: اللون بالعربي (أسود، كحلي، إلخ)
+            color: اللون بالعربي (أسود، كحلي، أبيض، إلخ)
             qty: الكمية المتاحة الأولية (افتراضي 1)
             material: نوع خامة المنتج (مثلاً: قطن 100%، ميلتون، كتان، جبردين، وتربروف) إن وجدت
+            category: الفئة أو القسم (رجالي، حريمي / نسائي، أطفالي، للجنسين) افتراضي رجالي
         """
         if price <= 0:
             return {"status": "error", "reason": "السعر لازم يكون أكبر من صفر"}
@@ -1826,6 +1841,7 @@ def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> lis
             "color": color.strip(),
             "qty": int(qty),
             "material": material.strip(),
+            "category": category.strip() if category else "رجالي",
         })
         return {"status": "waiting_confirmation", "product": name, "price": price}
 
@@ -1940,8 +1956,9 @@ def build_proposals_summary(proposals: list) -> str:
     for p in proposals:
         ptype = p.get("type")
         if ptype == "new_product":
+            cat_txt = f" | قسم: {p['category']}" if p.get("category") else ""
             mat_txt = f" | خامة: {p['material']}" if p.get("material") else ""
-            summary_lines.append(f"✨ إضافة صنف: {p['name']} ({p['color']} - {p['size']}{mat_txt}) | السعر: {p['price']:.0f}ج | الكمية: {p['qty']}")
+            summary_lines.append(f"✨ إضافة صنف: {p['name']} ({p['color']} - {p['size']}{cat_txt}{mat_txt}) | السعر: {p['price']:.0f}ج | الكمية: {p['qty']}")
         elif ptype == "new_branch":
             summary_lines.append(f"📍 إضافة فرع: {p['name']} ({p['governorate']} - {p['address']})")
         elif ptype == "new_promo":
@@ -2239,7 +2256,7 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
                 # 1. فحص المنتج بالاسم ومقارنته بـ _norm_ar
                 prod_rows = (
                     supabase.table("products")
-                    .select("id, name, price, image_url, material")
+                    .select("id, name, price, image_url, material, category")
                     .eq("tenant_id", tenant_id)
                     .execute()
                     .data or []
@@ -2258,6 +2275,8 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
                         prod_updates["image_url"] = image_url
                     if item.get("material") and not matched_prod.get("material"):
                         prod_updates["material"] = item["material"]
+                    if item.get("category") and not matched_prod.get("category"):
+                        prod_updates["category"] = item["category"]
                     if prod_updates:
                         supabase.table("products").update(prod_updates).eq("id", product_id).execute()
 
@@ -2272,10 +2291,10 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
                         "name": item["name"],
                         "price": item["price"],
                         "active": True,
+                        **({"category": item["category"]} if item.get("category") else {}),
+                        **({"material": item["material"]} if item.get("material") else {}),
                         **({"image_url": image_url} if image_url else {}),
                     }
-                    if item.get("material"):
-                        new_prod_payload["material"] = item["material"]
 
                     new_p = (
                         supabase.table("products")

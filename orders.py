@@ -279,7 +279,12 @@ def get_active_promotions(tenant_id):
     try:
         cols = "id,code,promo_type,discount_value,min_order_items,description"
         rows = None
-        for attempt_cols in (cols + ",min_order_value,target_items", cols + ",min_order_value", cols):
+        for attempt_cols in (
+            cols + ",min_order_value,target_items,branch",
+            cols + ",min_order_value,target_items",
+            cols + ",min_order_value",
+            cols,
+        ):
             try:
                 res = (
                     supabase.table("promotions")
