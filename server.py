@@ -2230,7 +2230,7 @@ async def tiktok_oauth_login(tenant_id: str, request: Request):
         base_url = base_url.replace("http://", "https://", 1)
     redirect_uri = f"{base_url}/auth/tiktok/callback"
 
-    scope = "user.info.basic,video.list,comment.list,comment.list.manage"
+    scope = os.environ.get("TIKTOK_SCOPES", "user.info.basic")
     oauth_url = (
         f"https://www.tiktok.com/v2/auth/authorize/?"
         f"client_key={client_key}&scope={scope}&response_type=code"
