@@ -313,7 +313,22 @@ def verify_tiktok_signature(raw_body: bytes, signature_header: str) -> bool:
 
 
 @app.get("/")
-def home():
+def home(request: Request):
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept:
+        return HTMLResponse("""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="tiktok-developers-site-verification" content="fUs1okchsPbHJEV5rHSie79lejq37e5S" />
+    <meta name="tiktok-developers-site-verification" content="tiktok-developers-site-verification=fUs1okchsPbHJEV5rHSie79lejq37e5S" />
+    <title>ORIK AI Agency</title>
+</head>
+<body>
+    <h1>ORIK AI Agency</h1>
+    <p>Service is active and running.</p>
+</body>
+</html>""")
     return {"status": "running", "service": "AI Agency Omnichannel Webhook"}
 
 
@@ -1893,15 +1908,17 @@ def get_dashboard_html() -> Optional[str]:
     return None
 
 
+@app.get("/tiktok-developers-site-verification.txt")
+@app.get("/tiktok-developers-site-verification")
+@app.get("/tiktokfUs1okchsPbHJEV5rHSie79lejq37e5S.txt")
 @app.get("/tiktokPzmur3aS6Y6aZHUVYotVZpsE5CekJpOU.txt")
-async def tiktok_developer_verification_file():
+@app.get("/tiktok{rest:path}")
+async def tiktok_developer_verification_file(rest: str = ""):
     """توثيق ملكية الدومين والبادئة لتطبيق تيك توك"""
-    fname = "tiktokPzmur3aS6Y6aZHUVYotVZpsE5CekJpOU.txt"
-    if os.path.exists(fname):
-        with open(fname, "r", encoding="utf-8") as f:
-            content = f.read()
-        return Response(content=content, media_type="text/plain")
-    return Response(content="tiktokPzmur3aS6Y6aZHUVYotVZpsE5CekJpOU", media_type="text/plain")
+    return Response(
+        content="tiktok-developers-site-verification=fUs1okchsPbHJEV5rHSie79lejq37e5S",
+        media_type="text/plain"
+    )
 
 
 @app.get("/privacy", response_class=HTMLResponse)
@@ -1912,6 +1929,8 @@ async def privacy_policy_page():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="tiktok-developers-site-verification" content="fUs1okchsPbHJEV5rHSie79lejq37e5S" />
+<meta name="tiktok-developers-site-verification" content="tiktok-developers-site-verification=fUs1okchsPbHJEV5rHSie79lejq37e5S" />
 <title>سياسة الخصوصية | Privacy Policy - ORIK</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; line-height: 1.8; max-width: 850px; margin: auto; color: #1e293b; background: #f8fafc; }
@@ -1989,6 +2008,8 @@ async def terms_page():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="tiktok-developers-site-verification" content="fUs1okchsPbHJEV5rHSie79lejq37e5S" />
+<meta name="tiktok-developers-site-verification" content="tiktok-developers-site-verification=fUs1okchsPbHJEV5rHSie79lejq37e5S" />
 <title>شروط الاستخدام | Terms of Service - ORIK</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; line-height: 1.8; max-width: 850px; margin: auto; color: #1e293b; background: #f8fafc; }
