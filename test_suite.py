@@ -1806,8 +1806,9 @@ def test_social_channels_subscription_control():
         normalize_channel_name,
         check_and_increment_whatsapp_usage,
     )
+    import uuid
 
-    tid = "test-merchant-sub-control"
+    tid = f"test-sub-ctrl-{uuid.uuid4().hex[:8]}"
 
     # 1. اختبار توحيد الأسماء
     assert normalize_channel_name("فيس") == "facebook"
@@ -1903,6 +1904,67 @@ def test_promotions_target_items_and_combo():
     # رقم غير صالح
     v_bad, _ = verify_voucher_eligibility("tid", "0123", 1000, "GIFT200")
     assert v_bad is False
+
+
+def test_image_optimization_and_resizing():
+    """اختبار ضغط وتحسين صور المنتجات وتعديل أبعادها لتسريع التحميل للعملاء"""
+    import io
+    from PIL import Image
+    from image_utils import optimize_product_image
+
+    # 1. إنشاء صورة كبيرة وشفافة بدقة 2400x1600 بصيغة PNG
+    orig_img = Image.new("RGBA", (2400, 1600), (50, 100, 200, 128))
+    in_buf = io.BytesIO()
+    orig_img.save(in_buf, format="PNG")
+    raw_bytes = in_buf.getvalue()
+
+    assert len(raw_bytes) > 0
+
+    # 2. تشغيل دالة التحسين
+    opt_bytes, mime, ext = optimize_product_image(raw_bytes, mime="image/png", max_dimension=1200, quality=85)
+
+    assert mime == "image/jpeg"
+    assert ext == "jpg"
+    assert len(opt_bytes) < len(raw_bytes)
+
+    # 3. التحقق من أبعاد الصورة الناتجة ونمط الألوان
+    with Image.open(io.BytesIO(opt_bytes)) as out_img:
+        w, h = out_img.size
+        assert max(w, h) <= 1200
+        assert out_img.mode == "RGB"
+
+    # 4. صورة صغيرة أقل من الحد الأقصى (لا يتم تكبيرها)
+    small_img = Image.new("RGB", (400, 300), (255, 255, 255))
+    s_buf = io.BytesIO()
+    small_img.save(s_buf, format="JPEG")
+    s_opt_bytes, _, _ = optimize_product_image(s_buf.getvalue(), mime="image/jpeg", max_dimension=1200)
+    with Image.open(io.BytesIO(s_opt_bytes)) as out_small:
+        assert out_small.size == (400, 300)
+
+
+def test_dashboard_orders_and_products_management():
+    """اختبار نماذج وتجهيزات واجهة إدارة الطلبات وتغيير الصور في الداشبورد وتليجرام"""
+    import server
+    from server import ProductImagePayload, OrderStatusPayload
+    import telegram_bot
+
+    # 1. فحص نماذج الـ Payloads
+    img_payload = ProductImagePayload(image_data="data:image/jpeg;base64,abc", image_url="https://example.com/p.jpg")
+    assert img_payload.image_url == "https://example.com/p.jpg"
+
+    order_payload = OrderStatusPayload(status="shipped")
+    assert order_payload.status == "shipped"
+
+    # 2. فحص وجود propose_set_product_image دائماً في أدوات البوت حتى لو مفيش صورة
+    tools = telegram_bot.build_tools("mock-tenant", [], has_image=False)
+    tool_names = [t.__name__ for t in tools]
+    assert "propose_set_product_image" in tool_names
+
+    # 3. فحص ملخص العمليات لـ set_image
+    summary = telegram_bot.build_proposals_summary([{"type": "set_image", "product_name": "هودي شتوي"}])
+    assert "تغيير صورة المنتج" in summary
+    assert "هودي شتوي" in summary
+
 
 
 

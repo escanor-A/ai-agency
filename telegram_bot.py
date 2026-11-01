@@ -74,7 +74,7 @@ SYSTEM_PROMPT = """أنت مساعد مخزن لصاحب محل ملابس مص�
 9. تذكّر سياق الرسائل السابقة واجمع البيانات الناقصة من كلام التاجر بدون ما تعيد السؤال عن حاجات قالها بالفعل.
 10. لو صاحب المحل طلب إضافة فرع أو عنوان للمحل (مثلاً: فرع مدينة نصر، شارع كذا، لوكيشن ماب كذا)، استخرج البيانات ونادِ propose_new_branch.
 11. لو صاحب المحل طلب عمل كود خصم أو عرض ترويجي (مثلاً: كود EID20 خصم 20%، أو عرض شحن مجاني لأي حد يطلب قطعتين أو أكتر)، استخرج البيانات ونادِ propose_new_promo.
-13. لو صاحب المحل بعت صورة منتج (أو كان بعت صورة من دقايق وبيكمل كلامه): الصورة بتتحفظ وبتتربط تلقائياً بالمنتج أول ما يضغط تأكيد. بص على الصورة والكلام اللي معاها وحدد نوع القطعة واللون. لو قال وصل/جاي/ضيف منتج جديد استخدم propose_new_product (الاسم، السعر، المقاس، اللون، الكمية). لو عايز يغيّر صورة منتج موجود بس استخدم propose_set_product_image. لو السعر أو المقاس ناقص اسأل، ممنوع تخمّن. لو الصورة من غير أي كلام اسأله: المنتج ده إيه وسعره ومقاسه وكميته؟
+13. لو صاحب المحل بعت صورة منتج (أو كان بعت صورة من دقايق وبيكمل كلامه): الصورة بتتحفظ وبتتربط تلقائياً بالمنتج أول ما يضغط تأكيد. بص على الصورة والكلام اللي معاها وحدد نوع القطعة واللون. لو قال وصل/جاي/ضيف منتج جديد استخدم propose_new_product (الاسم، السعر، المقاس، اللون، الكمية). لو عايز يغيّر أو يستبدل صورة منتج موجود بالفعل (لأنه بعت صورة غلط أو مش عاجباه) استخدم propose_set_product_image فوراً باسم المنتج. لو السعر أو المقاس ناقص اسأل، ممنوع تخمّن. لو طلب تغيير صورة منتج ومكنش باعت صورة، اطلب منه يبعت الصورة الجديدة دلوقتي وقوله إنه يقدر يستخدم أمر /set_image لاختيار الصنف بسهولة. لو الصورة من غير أي كلام اسأله: المنتج ده إيه وسعره ومقاسه وكميته؟
 12. اتفاقية حتمية: أي عملية بتغيّر أوردر أو مخزون لازم تعدي على أزرار التأكيد وماتتنفذش فوراً! لو صاحب المحل طلب إلغاء أوردر أو تعديل عنوان/موبايل/حالة أوردر، استدعِ propose_cancel_order أو propose_update_order لتجهيزها، والأزرار هي اللي هتأكد.
 14. لو صاحب المحل سأل 'المخزن فيه إيه؟' أو 'عايز كشف المخزون' أو 'إيه اللي عندي في المخزن؟': نادِ list_inventory واديله كشف سريع بالأصناف والكميات المتاحة وقوله إنه يقدر يكتب /stock عشان يشوف الكشف كامل ومفصل.
 
@@ -268,7 +268,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/today` — تقرير ملخص مبيعات اليوم\n"
         "• `/cancel <رقم_الأوردر>` — إلغاء أوردر وإرجاع بضاعته للمخزن\n"
         "• `/shipping` — حالة الشحن، و`/shipping off` لو محلك استلام من المحل بس، و`/shipping on` لتشغيله\n"
-        "• `/channels` — قنوات السوشيال ميديا المفعلة في باقتك (فيس، إنستا، تيك توك، واتساب)\n\n"
+        "• `/channels` — قنوات السوشيال ميديا المفعلة في باقتك (فيس، إنستا، تيك توك، واتساب)\n"
+        "• `/set_image [اسم_الصنف]` — تغيير أو إضافة أو استبدال صورة لمنتج في المخزن\n\n"
         "📁 *إضافة وتحديث المخزن:*\n"
         "• *بصورة المنتج:* ابعت صورة الموديل واكتب معاه كابشن: «وصل 50 ترنج شتوي بني مقاس L بـ600» وهسجله بالصورة فوراً!\n"
         "• *بشيت إكسيل:* ابعت أي ملف Excel (.xlsx) أو CSV فيه بضاعتك، وهقرأه وأحدث المخزن فوراً!"
@@ -1494,7 +1495,7 @@ async def today_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def stock_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض كشف المخزون المتاح والكميات الحالية لكل صنف في المحل"""
+    """عرض كشف المخزون المتاح والكميات الحالية لكل صنف في المحل مع حالة الصور"""
     tenant = get_owner_tenant(update.effective_chat.id)
     if not tenant:
         await update.message.reply_text(NOT_OWNER_MESSAGE)
@@ -1502,7 +1503,7 @@ async def stock_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     rows = (
         supabase.table("variants")
-        .select("sku, size, color, stock, reserved, available, products!inner(name, price)")
+        .select("sku, size, color, stock, reserved, available, image_url, products!inner(name, price, image_url)")
         .eq("tenant_id", tenant["id"])
         .eq("active", True)
         .execute()
@@ -1519,9 +1520,11 @@ async def stock_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = float(r.get("products", {}).get("price") or 0)
         avail = int(r.get("available") if r.get("available") is not None else (r.get("stock", 0) - r.get("reserved", 0)))
         total_qty += max(0, avail)
-        lines.append(f"• {pname} ({r.get('color')} - {r.get('size')}): {avail} قطعة | {price:.0f}ج | كود: {r.get('sku')}")
+        has_img = "🖼️" if (r.get("products", {}).get("image_url") or r.get("image_url")) else "📷"
+        lines.append(f"• {pname} ({r.get('color')} - {r.get('size')}): {avail} قطعة | {price:.0f}ج | كود: {r.get('sku')} {has_img}")
 
     lines.append(f"\n📊 إجمالي الأصناف: {len(rows)} صنف | {total_qty} قطعة في المخزن")
+    lines.append("📸 لتغيير أو إضافة صورة لأي صنف: استخدم أمر /set_image أو ابعت الصورة واكتب (غير صورة اسم_الصنف).")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -1657,8 +1660,10 @@ def get_fresh_photo(chat_id: int):
 
 
 def upload_product_image(tenant_id: str, data: bytes, mime: str) -> str:
-    """بيرفع الصورة على Supabase Storage (bucket عام) وبيرجّع الرابط العام."""
-    ext = ALLOWED_IMAGE_MIMES.get(mime, "jpg")
+    """تحسين وضغط الصورة ورفعها على Supabase Storage (bucket عام) وبيرجّع الرابط العام."""
+    from image_utils import optimize_product_image
+    # ضغط وتصغير وتحسين الصورة وتعديل تدوير الكاميرا لتسريع التحميل للعميل
+    data, mime, ext = optimize_product_image(data, mime=mime)
     path = f"{tenant_id}/{uuid.uuid4().hex}.{ext}"
     bucket = supabase.storage.from_(IMAGES_BUCKET)
     try:
@@ -1690,6 +1695,11 @@ def _find_product_by_name(tenant_id: str, name: str):
     for r in rows:
         rn = _norm_ar(r.get("name", ""))
         if target and (target in rn or rn in target):
+            return r
+    tokens = [t for t in target.split() if len(t) > 2]
+    for r in rows:
+        rn = _norm_ar(r.get("name", ""))
+        if any(tok in rn for tok in tokens):
             return r
     return None
 
@@ -1918,9 +1928,8 @@ def build_tools(tenant_id: str, proposals: list, has_image: bool = False) -> lis
         propose_new_promo,
         propose_cancel_order,
         propose_update_order,
+        propose_set_product_image,
     ]
-    if has_image:
-        tools.append(propose_set_product_image)
     return tools
 
 
@@ -2018,6 +2027,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     photo = {"bytes": data, "mime": mime, "ts": time.time()}
     remember_photo(chat_id, data, mime)
+
+    # فحص لو التاجر اختار مسبقاً صنف لتحديث صورته بأمر /set_image
+    waiting_prod = context.user_data.pop("waiting_image_product", None) if context.user_data else None
+    if waiting_prod:
+        proposals = [{"type": "set_image", "product_name": waiting_prod["name"]}]
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+        await reply_with_proposals(
+            update, context, chat_id, tenant_id, proposals,
+            reply=f"استلمت الصورة، وهربطها بمنتج «{waiting_prod['name']}».",
+            intro=f"🖼️ استلمت الصورة الجديدة لمنتج «{waiting_prod['name']}»:",
+            image=photo,
+        )
+        return
 
     caption = (msg.caption or "").strip()
     proposals = []
@@ -2364,13 +2389,158 @@ def process_confirmed_proposals(tenant_id: str, pid: str, items: list, image: di
     }
 
 
+async def set_image_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر مخصص للتاجر لتغيير أو إضافة صورة لأي منتج مسجل في المحل أو استبدال صورة قديمة"""
+    tenant = get_owner_tenant(update.effective_chat.id)
+    if not tenant:
+        await update.message.reply_text(NOT_OWNER_MESSAGE)
+        return
+
+    tenant_id = tenant["id"]
+    chat_id = update.effective_chat.id
+    target_name = " ".join(context.args).strip() if context.args else ""
+
+    if not target_name:
+        prods = (
+            supabase.table("products")
+            .select("id, name, image_url")
+            .eq("tenant_id", tenant_id)
+            .order("name", desc=False)
+            .limit(20)
+            .execute()
+            .data or []
+        )
+        if not prods:
+            await update.message.reply_text("📦 مفيش منتجات مسجلة في المخزن حالياً. ضيف منتجات الأول!")
+            return
+
+        keyboard = []
+        row = []
+        for p in prods:
+            has_img = "🖼️" if p.get("image_url") else "📷"
+            btn_text = f"{has_img} {p['name'][:18]}"
+            row.append(InlineKeyboardButton(btn_text, callback_data=f"chgimg:{p['id'][:10]}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+
+        await update.message.reply_text(
+            "📸 *تغيير أو إضافة صورة لمنتج:*\n\n"
+            "اضغط على الصنف اللي عايز تغير صورته أو ابعت صورة واكتب في الرسالة «غير صورة اسم_المنتج»:\n"
+            "• 🖼️ = له صورة حالية\n"
+            "• 📷 = بدون صورة حالياً",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return
+
+    prod = _find_product_by_name(tenant_id, target_name)
+    if not prod:
+        await update.message.reply_text(f"❌ لم يتم العثور على منتج باسم «{target_name}» في المخزن. تأكد من الاسم أو اكتب /stock لمعرفة الأسماء.")
+        return
+
+    photo = get_fresh_photo(chat_id)
+    if photo:
+        proposals = [{"type": "set_image", "product_name": prod["name"]}]
+        await reply_with_proposals(
+            update, context, chat_id, tenant_id, proposals,
+            reply=f"استلمت الصورة، وهربطها بمنتج «{prod['name']}».",
+            intro="جاهز لتحديث صورة المنتج:",
+            image=photo
+        )
+    else:
+        if context.user_data is not None:
+            context.user_data["waiting_image_product"] = {"id": prod["id"], "name": prod["name"]}
+        buttons = []
+        if prod.get("image_url"):
+            buttons.append([InlineKeyboardButton("🗑️ حذف الصورة الحالية", callback_data=f"delimg:{prod['id'][:10]}")])
+        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+        await update.message.reply_text(
+            f"📸 *جاهز لتحديث صورة «{prod['name']}»!*\n\n"
+            "ابعت الصورة دلوقتي (صورة عادية أو ملف)، وهحدثهالك فوراً في المخزن والرد التلقائي 🚀\n"
+            "(لو غيرت رأيك أو بعت صورة غلط تقدر تغيرها أو تحذفها في أي وقت).",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     action, _, pid = query.data.partition(":")
     chat_id = query.message.chat.id
-
     tenant = get_owner_tenant(chat_id)
+
+    # معالجة اختيار تغيير صورة المنتج من قائمة /set_image
+    if action == "chgimg":
+        short_id = pid
+        if not tenant:
+            await query.answer("غير مصرح", show_alert=True)
+            return
+        prods = (
+            supabase.table("products")
+            .select("id, name, image_url")
+            .eq("tenant_id", tenant["id"])
+            .execute()
+            .data or []
+        )
+        matched = next((p for p in prods if str(p.get("id", "")).startswith(short_id)), None)
+        if not matched:
+            await query.answer("لم يتم العثور على المنتج", show_alert=True)
+            return
+
+        photo = get_fresh_photo(chat_id)
+        if photo:
+            proposals = [{"type": "set_image", "product_name": matched["name"]}]
+            await reply_with_proposals(
+                update, context, chat_id, tenant["id"], proposals,
+                reply=f"استلمت الصورة، وهربطها بمنتج «{matched['name']}».",
+                intro="جاهز لتحديث صورة المنتج:",
+                image=photo
+            )
+        else:
+            if context.user_data is not None:
+                context.user_data["waiting_image_product"] = {"id": matched["id"], "name": matched["name"]}
+            buttons = []
+            if matched.get("image_url"):
+                buttons.append([InlineKeyboardButton("🗑️ حذف الصورة الحالية", callback_data=f"delimg:{matched['id'][:10]}")])
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+            await query.edit_message_text(
+                f"📸 تم اختيار «{matched['name']}»!\n\n"
+                "ابعت الصورة الجديدة دلوقتي كصورة أو ملف، وهحدثهالك فوراً في المخزن والرد التلقائي 🚀\n"
+                "(لو بعت صورة بالغلط تقدر تغيرها في أي وقت بنفس الطريقة).",
+                reply_markup=reply_markup
+            )
+        return
+
+    # معالجة حذف صورة المنتج
+    if action == "delimg":
+        short_id = pid
+        if not tenant:
+            await query.answer("غير مصرح", show_alert=True)
+            return
+        prods = (
+            supabase.table("products")
+            .select("id, name, image_url")
+            .eq("tenant_id", tenant["id"])
+            .execute()
+            .data or []
+        )
+        matched = next((p for p in prods if str(p.get("id", "")).startswith(short_id)), None)
+        if not matched:
+            await query.answer("لم يتم العثور على المنتج", show_alert=True)
+            return
+
+        try:
+            supabase.table("products").update({"image_url": None}).eq("id", matched["id"]).eq("tenant_id", tenant["id"]).execute()
+            supabase.table("variants").update({"image_url": None}).eq("product_id", matched["id"]).eq("tenant_id", tenant["id"]).execute()
+            await query.edit_message_text(f"🗑️ تم حذف صورة «{matched['name']}» بنجاح وإزالتها من الرد التلقائي.")
+        except Exception as e:
+            await query.edit_message_text(f"❌ تعذر حذف الصورة: {e}")
+        return
+
     pending = pop_pending_operation(context, pid)
     if not pending or pending["chat_id"] != chat_id or not tenant:
         await query.edit_message_text("العملية دي انتهت صلاحيتها أو اتنفذت قبل كده.")
@@ -2688,6 +2858,10 @@ def main():
     app.add_handler(CommandHandler("post_now", post_now_cmd))
     app.add_handler(CommandHandler("offers", offers_cmd))
     app.add_handler(CommandHandler("promos", offers_cmd))
+    app.add_handler(CommandHandler("set_image", set_image_cmd))
+    app.add_handler(CommandHandler("change_image", set_image_cmd))
+    app.add_handler(CommandHandler("update_image", set_image_cmd))
+    app.add_handler(CommandHandler("photo", set_image_cmd))
     app.add_handler(CallbackQueryHandler(on_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))

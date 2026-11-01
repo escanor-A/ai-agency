@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -8,7 +9,7 @@ import sys
 import time
 import httpx
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, List
 from fastapi import FastAPI, Request, Response, Query, BackgroundTasks, HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
@@ -16,6 +17,7 @@ from dotenv import load_dotenv
 import urllib.parse
 
 from check_stock import supabase
+from image_utils import optimize_product_image, upload_product_image_to_storage
 from customer_agent import handle_customer_message, RATE_LIMITER, classify_comment, pop_customer_images, purge_old_chat_messages
 import orders
 from orders import is_shipping_enabled
@@ -1627,6 +1629,16 @@ class ToggleShippingPayload(BaseModel):
     shipping_enabled: Optional[bool] = None
 
 
+class ProductImagePayload(BaseModel):
+    image_data: Optional[str] = None  # Base64 string / data-uri
+    image_url: Optional[str] = None   # Direct image URL
+
+
+class OrderStatusPayload(BaseModel):
+    status: str  # 'shipped', 'delivered', 'confirmed', 'new', 'cancelled'
+    reason: Optional[str] = ""
+
+
 def resolve_tenant_for_dashboard(identifier: str):
     """البحث عن التاجر بالـ UUID أو بادئة الـ ID (8 حروف سداسية عشرية فأكثر) فقط لحماية خصوصية المتاجر ومنع الدخول بالاسم"""
     if not identifier:
@@ -2617,6 +2629,296 @@ async def delete_promotion_api(identifier: str, promo_id: str):
         return {"status": "success", "message": "تم حذف العرض الترويجي بنجاح"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"فشل حذف العرض: {e}")
+
+
+# =====================================================================
+# إدارة منتجات وصور المخزن (Products & Images)
+# =====================================================================
+
+@app.get("/api/dashboard/{identifier}/products")
+@app.get("/api/merchant/{identifier}/products")
+async def get_dashboard_products_api(identifier: str):
+    """جلب قائمة منتجات المتجر مع حساب إجمالي المخزون وحالة الصورة"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = str(tenant["id"])
+
+    try:
+        prods_res = (
+            supabase.table("products")
+            .select("id, name, price, material, image_url, category, active, created_at")
+            .eq("tenant_id", tid)
+            .order("name", desc=False)
+            .execute()
+        )
+        prods = prods_res.data or []
+
+        vars_res = (
+            supabase.table("variants")
+            .select("product_id, available, stock, reserved, active")
+            .eq("tenant_id", tid)
+            .eq("active", True)
+            .execute()
+        )
+        vars_data = vars_res.data or []
+        stock_by_prod = {}
+        variants_by_prod = {}
+        for v in vars_data:
+            pid = v.get("product_id")
+            avail = v.get("available")
+            if avail is None:
+                avail = (v.get("stock") or 0) - (v.get("reserved") or 0)
+            stock_by_prod[pid] = stock_by_prod.get(pid, 0) + max(0, int(avail or 0))
+            variants_by_prod[pid] = variants_by_prod.get(pid, 0) + 1
+
+        for p in prods:
+            pid = p["id"]
+            p["total_stock"] = stock_by_prod.get(pid, 0)
+            p["variants_count"] = variants_by_prod.get(pid, 0)
+
+        return {"status": "success", "products": prods}
+    except Exception as e:
+        print("Error fetching products for dashboard:", e)
+        raise HTTPException(status_code=500, detail=f"فشل جلب المنتجات: {e}")
+
+
+@app.post("/api/dashboard/{identifier}/products/{product_id}/image")
+@app.post("/api/merchant/{identifier}/products/{product_id}/image")
+async def update_product_image_api(identifier: str, product_id: str, payload: ProductImagePayload):
+    """رفع أو تحديث صورة المنتج وضغطها بذكاء لتسريع التحميل للعملاء والرد التلقائي"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = str(tenant["id"])
+
+    p_check = (
+        supabase.table("products")
+        .select("id, name")
+        .eq("tenant_id", tid)
+        .eq("id", product_id)
+        .execute()
+    )
+    if not p_check.data:
+        raise HTTPException(status_code=404, detail="المنتج غير موجود في متجرك")
+    prod_name = p_check.data[0]["name"]
+
+    target_url = None
+    if payload.image_data and payload.image_data.strip():
+        raw_str = payload.image_data.strip()
+        mime = "image/jpeg"
+        if "," in raw_str:
+            header, encoded = raw_str.split(",", 1)
+            if "data:" in header and ";" in header:
+                mime = header.split("data:")[1].split(";")[0]
+        else:
+            encoded = raw_str
+
+        try:
+            img_bytes = base64.b64decode(encoded)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"بيانات الصورة غير صالحة ({e})")
+
+        try:
+            target_url = upload_product_image_to_storage(
+                supabase, tid, img_bytes, mime=mime
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"فشل رفع الصورة: {e}")
+
+    elif payload.image_url and payload.image_url.strip():
+        clean_url = payload.image_url.strip()
+        if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
+            raise HTTPException(status_code=400, detail="رابط الصورة يجب أن يبدأ بـ http أو https")
+        target_url = clean_url
+    else:
+        raise HTTPException(status_code=400, detail="يرجى إرسال ملف الصورة أو رابطها")
+
+    try:
+        supabase.table("products").update({"image_url": target_url}).eq("id", product_id).eq("tenant_id", tid).execute()
+        supabase.table("variants").update({"image_url": target_url}).eq("product_id", product_id).eq("tenant_id", tid).execute()
+        return {
+            "status": "success",
+            "message": f"تم تحديث صورة «{prod_name}» بنجاح! 📸",
+            "image_url": target_url,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل تحديث قاعدة البيانات: {e}")
+
+
+@app.delete("/api/dashboard/{identifier}/products/{product_id}/image")
+@app.delete("/api/merchant/{identifier}/products/{product_id}/image")
+async def delete_product_image_api(identifier: str, product_id: str):
+    """إزالة صورة المنتج لو تم إرسالها بالخطأ أو غير مناسبة"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = str(tenant["id"])
+
+    p_check = (
+        supabase.table("products")
+        .select("id, name")
+        .eq("tenant_id", tid)
+        .eq("id", product_id)
+        .execute()
+    )
+    if not p_check.data:
+        raise HTTPException(status_code=404, detail="المنتج غير موجود")
+    prod_name = p_check.data[0]["name"]
+
+    try:
+        supabase.table("products").update({"image_url": None}).eq("id", product_id).eq("tenant_id", tid).execute()
+        supabase.table("variants").update({"image_url": None}).eq("product_id", product_id).eq("tenant_id", tid).execute()
+        return {
+            "status": "success",
+            "message": f"تمت إزالة صورة «{prod_name}» بنجاح! 🗑️",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل حذف الصورة: {e}")
+
+
+# =====================================================================
+# إدارة ومتابعة الطلبات (Orders Management)
+# =====================================================================
+
+@app.get("/api/dashboard/{identifier}/orders")
+@app.get("/api/merchant/{identifier}/orders")
+async def get_dashboard_orders_api(identifier: str):
+    """جلب قائمة الطلبات مع تفاصيل الأصناف المحسوبة لكل أوردر وتلخيص المطلوب"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = str(tenant["id"])
+
+    try:
+        o_res = (
+            supabase.table("orders")
+            .select("*")
+            .eq("tenant_id", tid)
+            .order("order_number", desc=True)
+            .limit(100)
+            .execute()
+        )
+        orders_list = o_res.data or []
+        if not orders_list:
+            return {"status": "success", "orders": []}
+
+        order_ids = [o["id"] for o in orders_list]
+
+        items_res = (
+            supabase.table("order_items")
+            .select("id, order_id, variant_id, qty, unit_price, variants(sku, size, color, image_url, products(name, image_url, price))")
+            .in_("order_id", order_ids)
+            .execute()
+        )
+        items_data = items_res.data or []
+
+        items_by_order = {}
+        for it in items_data:
+            oid = it["order_id"]
+            var = it.get("variants") or {}
+            prod = var.get("products") or {}
+            pname = prod.get("name") or "صنف"
+            color = var.get("color") or ""
+            size = var.get("size") or ""
+            img = var.get("image_url") or prod.get("image_url") or ""
+            qty = int(it.get("qty") or 1)
+            uprice = float(it.get("unit_price") or 0)
+
+            item_obj = {
+                "id": it["id"],
+                "name": pname,
+                "color": color,
+                "size": size,
+                "sku": var.get("sku") or "",
+                "qty": qty,
+                "unit_price": uprice,
+                "subtotal": round(qty * uprice, 2),
+                "image_url": img,
+            }
+            items_by_order.setdefault(oid, []).append(item_obj)
+
+        for o in orders_list:
+            oid = o["id"]
+            o_items = items_by_order.get(oid, [])
+            o["items"] = o_items
+
+            if o_items:
+                summary_parts = []
+                for it in o_items:
+                    detail = f"{it['name']}"
+                    specs = []
+                    if it['color']: specs.append(it['color'])
+                    if it['size']: specs.append(it['size'])
+                    if specs:
+                        detail += f" ({' - '.join(specs)})"
+                    detail += f" × {it['qty']}"
+                    summary_parts.append(detail)
+                o["items_summary"] = " + ".join(summary_parts)
+            else:
+                o["items_summary"] = "طلب بدون أصناف مسجلة"
+
+        return {"status": "success", "orders": orders_list}
+    except Exception as e:
+        print("Error fetching orders for dashboard:", e)
+        raise HTTPException(status_code=500, detail=f"فشل جلب الطلبات: {e}")
+
+
+@app.patch("/api/dashboard/{identifier}/orders/{order_id}/status")
+@app.patch("/api/merchant/{identifier}/orders/{order_id}/status")
+async def update_order_status_api(identifier: str, order_id: str, payload: OrderStatusPayload):
+    """تحديث حالة الأوردر (اتشحن، تم البيع والتسليم، قيد التجهيز، أو ملغي)"""
+    tenant = resolve_tenant_for_dashboard(identifier)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="المتجر غير موجود")
+    tid = str(tenant["id"])
+
+    new_status = payload.status.strip().lower()
+    allowed_statuses = {
+        "shipped": "تم الشحن 🚚",
+        "delivered": "تم البيع والتسليم ✅",
+        "confirmed": "مؤكد / قيد التجهيز 📦",
+        "new": "طلب جديد 🆕",
+        "cancelled": "ملغي ❌",
+    }
+    if new_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"الحالة غير صالحة. الحالات المتاحة: {', '.join(allowed_statuses.keys())}"
+        )
+
+    o_res = (
+        supabase.table("orders")
+        .select("id, order_number, status, phone, customer_name")
+        .eq("tenant_id", tid)
+        .eq("id", order_id)
+        .execute()
+    )
+    if not o_res.data:
+        raise HTTPException(status_code=404, detail="الأوردر غير موجود")
+    order_row = o_res.data[0]
+    onum = order_row["order_number"]
+
+    # لو الإلغاء: نستخدم دالة cancel_order لاسترجاع البضاعة للمخزن بأمان
+    if new_status == "cancelled":
+        res = orders.cancel_order(tid, onum, reason=payload.reason or "إلغاء من لوحة التحكم")
+        if res.get("status") != "ok":
+            raise HTTPException(status_code=400, detail=res.get("reason", "فشل إلغاء الأوردر"))
+        return {
+            "status": "success",
+            "message": f"تم إلغاء الأوردر #{onum} وإرجاع بضاعته للمخزن ❌",
+            "order_status": "cancelled",
+        }
+
+    try:
+        supabase.table("orders").update({"status": new_status}).eq("id", order_id).eq("tenant_id", tid).execute()
+        return {
+            "status": "success",
+            "message": f"تم تحديث حالة الأوردر #{onum} إلى: {allowed_statuses[new_status]}",
+            "order_status": new_status,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل تحديث حالة الأوردر: {e}")
 
 
 @app.get("/api/dashboard/default")

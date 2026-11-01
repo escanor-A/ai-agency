@@ -313,6 +313,109 @@
     </div>
   </div>
 
+  <!-- Order Details Modal (تفاصيل الأوردر الكاملة) -->
+  <div id="orderDetailsModal"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md hidden transition-opacity">
+    <div
+      class="glass-card rounded-3xl max-w-xl w-full p-6 border-slate-700/80 shadow-2xl relative max-h-[90vh] overflow-y-auto space-y-5">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">📦</span>
+          <div>
+            <h3 id="modalOrderNumber" class="text-base font-bold text-white">تفاصيل الطلب</h3>
+            <p id="modalOrderDate" class="text-[11px] text-slate-400">تاريخ الطلب</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="modalOrderStatusBadge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
+            حالة الطلب
+          </span>
+          <button type="button" onclick="closeOrderDetailsModal()"
+            class="text-slate-400 hover:text-white p-1 rounded-xl hover:bg-slate-800 transition">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Customer Info Card -->
+      <div class="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-300">👤 بيانات العميل</span>
+          <div class="flex items-center gap-2" id="modalCustomerActions">
+            <!-- Call & WhatsApp links injected via JS -->
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <div><span class="text-slate-400">الاسم:</span> <span id="modalCustomerName" class="font-bold text-white"></span></div>
+          <div><span class="text-slate-400">الموبايل:</span> <span id="modalCustomerPhone" class="font-bold text-indigo-300 font-mono"></span></div>
+          <div class="sm:col-span-2"><span class="text-slate-400">المحافظة:</span> <span id="modalCustomerGov" class="font-semibold text-white"></span></div>
+          <div class="sm:col-span-2"><span class="text-slate-400">العنوان بالتفصيل:</span> <span id="modalCustomerAddress" class="font-semibold text-slate-200"></span></div>
+        </div>
+      </div>
+
+      <!-- Items List -->
+      <div class="space-y-2">
+        <div class="text-xs font-bold text-slate-300">🛒 الأصناف والكميات المطلوبة:</div>
+        <div id="modalOrderItemsContainer" class="space-y-2">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+
+      <!-- Financial Summary -->
+      <div class="bg-slate-900/60 rounded-2xl p-4 border border-slate-800/80 space-y-1.5 text-xs">
+        <div class="flex justify-between text-slate-400">
+          <span>سعر البضاعة:</span>
+          <span id="modalOrderSubtotal" class="font-bold text-slate-200"></span>
+        </div>
+        <div class="flex justify-between text-slate-400">
+          <span>مصاريف الشحن:</span>
+          <span id="modalOrderShipping" class="font-bold text-slate-200"></span>
+        </div>
+        <div id="modalOrderDiscountRow" class="flex justify-between text-emerald-400 hidden">
+          <span id="modalOrderDiscountLabel">الخصم / كارت الهدية:</span>
+          <span id="modalOrderDiscount" class="font-bold"></span>
+        </div>
+        <div class="flex justify-between text-sm font-black text-white pt-2 border-t border-slate-800">
+          <span>الإجمالي النهائي:</span>
+          <span id="modalOrderTotal" class="text-emerald-400 text-base"></span>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-1">
+          طريقة الدفع: <span class="text-slate-300 font-semibold">الدفع عند الاستلام (COD)</span>
+        </div>
+      </div>
+
+      <!-- Status Action Bar (تحديد علامة الشحن أو البيع والتسليم) -->
+      <div class="space-y-2 pt-2 border-t border-slate-800">
+        <span class="text-xs font-bold text-slate-300 block">⚡ تحديد حالة الأوردر (علامة الشحن أو البيع):</span>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <button type="button" onclick="changeCurrentOrderStatus('shipped')"
+            class="px-3 py-2 rounded-xl text-xs font-bold bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/40 transition flex items-center justify-center gap-1">
+            <span>🚚 تم الشحن</span>
+          </button>
+          <button type="button" onclick="changeCurrentOrderStatus('delivered')"
+            class="px-3 py-2 rounded-xl text-xs font-bold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-600/40 transition flex items-center justify-center gap-1">
+            <span>✅ تم البيع والتسليم</span>
+          </button>
+          <button type="button" onclick="changeCurrentOrderStatus('confirmed')"
+            class="px-3 py-2 rounded-xl text-xs font-bold bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-600/40 transition flex items-center justify-center gap-1">
+            <span>📦 قيد التجهيز</span>
+          </button>
+          <button type="button" onclick="changeCurrentOrderStatus('cancelled')"
+            class="px-3 py-2 rounded-xl text-xs font-bold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-600/40 transition flex items-center justify-center gap-1">
+            <span>❌ إلغاء الطلب</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-2">
+        <button type="button" onclick="closeOrderDetailsModal()"
+          class="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition">
+          إغلاق
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Container -->
   <div class="max-w-4xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex-1 flex flex-col gap-6">
 
@@ -383,28 +486,34 @@
       </div>
 
       <!-- Card 3: Products -->
-      <div
-        class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+      <div onclick="scrollToSection('productsSection')"
+        class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-blue-500/50 hover:bg-slate-800/40 transition cursor-pointer group shadow-lg">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-semibold text-slate-400">المنتجات بالمخزن</span>
-          <span class="p-2 bg-blue-500/10 text-blue-400 rounded-xl text-lg">📦</span>
+          <span class="text-xs font-semibold text-slate-400 group-hover:text-blue-400 transition">المنتجات بالمخزن</span>
+          <span class="p-2 bg-blue-500/10 text-blue-400 rounded-xl text-lg group-hover:scale-110 transition">📦</span>
         </div>
         <div>
           <div id="statProducts" class="text-2xl font-black text-white">0</div>
-          <span class="text-[11px] text-slate-400">صنف مسجّل</span>
+          <span class="text-[11px] text-blue-400 font-semibold flex items-center gap-1">
+            <span>صنف مسجّل</span>
+            <span>• اضغط للمعاينة والتحكم 👈</span>
+          </span>
         </div>
       </div>
 
       <!-- Card 4: Orders -->
-      <div
-        class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-slate-700 transition">
+      <div onclick="scrollToSection('ordersSection')"
+        class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-purple-500/50 hover:bg-slate-800/40 transition cursor-pointer group shadow-lg shadow-purple-950/20 ring-1 ring-purple-500/20">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-semibold text-slate-400">إجمالي الطلبات</span>
-          <span class="p-2 bg-purple-500/10 text-purple-400 rounded-xl text-lg">🛒</span>
+          <span class="text-xs font-semibold text-slate-400 group-hover:text-purple-400 transition">إجمالي الطلبات</span>
+          <span class="p-2 bg-purple-500/10 text-purple-400 rounded-xl text-lg group-hover:scale-110 transition">🛒</span>
         </div>
         <div>
           <div id="statOrders" class="text-2xl font-black text-white">0</div>
-          <span class="text-[11px] text-slate-400">طلب مؤكد</span>
+          <span class="text-[11px] text-purple-400 font-semibold flex items-center gap-1">
+            <span>طلب مؤكد</span>
+            <span>• اضغط لمتابعة الطلبات 👈</span>
+          </span>
         </div>
       </div>
 
@@ -637,6 +746,95 @@
 
       </div>
 
+    </div>
+
+    <!-- Section: Store Orders Management (متابعة وإدارة الطلبات) -->
+    <div id="ordersSection" class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5 scroll-mt-6 transition-all duration-300">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl">
+            🛒
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-bold text-white">طلبات وأوردرات المتجر (Orders)</h3>
+              <span id="ordersCountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">0 طلب</span>
+            </div>
+            <p class="text-xs text-slate-400">متابعة الأصناف المطلوبة، فحص تفاصيل العميل، وتحديد علامة الشحن أو البيع والتسليم</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="loadOrdersData()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
+            <span id="ordersRefreshSpinner" class="hidden animate-spin">🔄</span>
+            <span>تحديث الطلبات</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters & Search Toolbar -->
+      <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+        <!-- Status Tabs / Filter Pills -->
+        <div class="flex flex-wrap gap-1.5 p-1 bg-slate-900/80 rounded-2xl border border-slate-800 text-xs">
+          <button type="button" onclick="filterOrders('all')" id="orderTab-all" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold bg-purple-600 text-white transition">الكل</button>
+          <button type="button" onclick="filterOrders('new')" id="orderTab-new" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🆕 قيد التجهيز</button>
+          <button type="button" onclick="filterOrders('shipped')" id="orderTab-shipped" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🚚 تم الشحن</button>
+          <button type="button" onclick="filterOrders('delivered')" id="orderTab-delivered" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">✅ تم البيع والتسليم</button>
+          <button type="button" onclick="filterOrders('cancelled')" id="orderTab-cancelled" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">❌ ملغي</button>
+        </div>
+
+        <!-- Search Input -->
+        <div class="relative flex-1 sm:max-w-xs">
+          <input type="text" id="orderSearchInput" oninput="handleOrderSearch()" placeholder="بحث برقم الطلب، الاسم، أو الموبايل..."
+            class="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition">
+        </div>
+      </div>
+
+      <!-- Orders Grid (مربعات الطلبات) -->
+      <div id="ordersContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+        <!-- Rendered via JS -->
+      </div>
+    </div>
+
+    <!-- Section: Products & Images (منتجات المخزن وصور المعروضات) -->
+    <div id="productsSection" class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5 scroll-mt-6 transition-all duration-300">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xl">
+            📦
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-bold text-white">منتجات المخزن وصور المعروضات (Products & Images)</h3>
+              <span id="productsCountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">0 صنف</span>
+            </div>
+            <p class="text-xs text-slate-400">استعراض الأصناف، ضبط حجم الصور وضغطها تلقائياً، وتغيير أو استبدال صورة أي منتج</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="loadProductsData()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
+            <span id="productsRefreshSpinner" class="hidden animate-spin">🔄</span>
+            <span>تحديث المنتجات</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Search Toolbar -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div class="relative flex-1 max-w-sm">
+          <input type="text" id="productSearchInput" oninput="handleProductSearch()" placeholder="بحث باسم الصنف أو الخامة..."
+            class="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition">
+        </div>
+        <div class="text-[11px] text-slate-400 bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
+          💡 الصور تُضغط وتُعدل أبعادها تلقائياً لتنزيل فوري وسريع على هاتف العميل
+        </div>
+      </div>
+
+      <!-- Products Grid -->
+      <div id="productsContainer" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pt-1">
+        <!-- Rendered via JS -->
+      </div>
     </div>
 
     <!-- Section 3: Social Media Channels (قنوات السوشيال ميديا والتواصل) -->
@@ -1053,6 +1251,10 @@
         try { renderShippingSection(data.shipping_rates, data.shipping_enabled); } catch (e) { console.error(e); }
         try { renderPromotionsSection(data.promotions || []); } catch (e) { console.error(e); }
         try { renderAutopostSection(data.autopost_enabled, data.autopost_interval_hours, data.autopost_last_at); } catch (e) { console.error(e); }
+
+        // Load Orders & Products for Interactive Dashboard
+        try { loadOrdersData(); } catch (e) { console.error(e); }
+        try { loadProductsData(); } catch (e) { console.error(e); }
       }
 
       // Tenant Resolution Logic
@@ -2214,6 +2416,479 @@
         } finally {
           btn.disabled = false;
           spinner.classList.add('hidden');
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // Scroll to Section Helper
+      // -----------------------------------------------------------------
+      function scrollToSection(id) {
+        const el = document.getElementById(id);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('ring-2', 'ring-purple-500/50');
+          setTimeout(() => el.classList.remove('ring-2', 'ring-purple-500/50'), 1500);
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // Orders Management Logic (متابعة وإدارة الطلبات وتحديد العلامات)
+      // -----------------------------------------------------------------
+      let allOrders = [];
+      let currentOrderFilter = 'all';
+      let activeOrderModalId = null;
+
+      async function loadOrdersData() {
+        if (!currentTenantId) return;
+        const spinner = document.getElementById('ordersRefreshSpinner');
+        if (spinner) spinner.classList.remove('hidden');
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/orders`);
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            allOrders = json.orders || [];
+            renderOrders();
+            const badge = document.getElementById('ordersCountBadge');
+            if (badge) badge.innerText = `${allOrders.length} طلب`;
+            const statOrders = document.getElementById('statOrders');
+            if (statOrders) statOrders.innerText = allOrders.length;
+          }
+        } catch (e) {
+          console.error('Error loading orders:', e);
+        } finally {
+          if (spinner) spinner.classList.add('hidden');
+        }
+      }
+
+      function filterOrders(status) {
+        currentOrderFilter = status;
+        document.querySelectorAll('.order-filter-tab').forEach(tab => {
+          tab.classList.remove('bg-purple-600', 'text-white');
+          tab.classList.add('text-slate-400');
+        });
+        const activeTab = document.getElementById(`orderTab-${status}`);
+        if (activeTab) {
+          activeTab.classList.remove('text-slate-400');
+          activeTab.classList.add('bg-purple-600', 'text-white');
+        }
+        renderOrders();
+      }
+
+      function handleOrderSearch() {
+        renderOrders();
+      }
+
+      function renderOrders() {
+        const container = document.getElementById('ordersContainer');
+        if (!container) return;
+
+        const searchTerm = (document.getElementById('orderSearchInput')?.value || '').trim().toLowerCase();
+
+        let filtered = allOrders;
+        if (currentOrderFilter !== 'all') {
+          if (currentOrderFilter === 'new') {
+            filtered = filtered.filter(o => o.status === 'new' || o.status === 'confirmed');
+          } else {
+            filtered = filtered.filter(o => o.status === currentOrderFilter);
+          }
+        }
+
+        if (searchTerm) {
+          filtered = filtered.filter(o => 
+            String(o.order_number).includes(searchTerm) ||
+            (o.customer_name || '').toLowerCase().includes(searchTerm) ||
+            (o.phone || '').includes(searchTerm) ||
+            (o.items_summary || '').toLowerCase().includes(searchTerm) ||
+            (o.governorate || '').toLowerCase().includes(searchTerm)
+          );
+        }
+
+        if (!filtered.length) {
+          container.innerHTML = `
+            <div class="col-span-full py-12 text-center text-slate-500 space-y-2">
+              <span class="text-4xl block">🛒</span>
+              <p class="text-sm font-semibold">لا توجد طلبات في هذا القسم حالياً</p>
+            </div>
+          `;
+          return;
+        }
+
+        const statusBadges = {
+          'new': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">🆕 قيد التجهيز</span>',
+          'confirmed': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">📦 مؤكد</span>',
+          'shipped': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">🚚 تم الشحن</span>',
+          'delivered': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✅ تم البيع والتسليم</span>',
+          'cancelled': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">❌ ملغي</span>',
+        };
+
+        container.innerHTML = filtered.map(o => {
+          const badge = statusBadges[o.status] || `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300">${o.status}</span>`;
+          const dateStr = o.created_at ? new Date(o.created_at).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+          return `
+            <div class="glass-card rounded-2xl p-4 border-slate-800 hover:border-purple-500/40 transition flex flex-col justify-between gap-3 shadow-md hover:shadow-xl bg-slate-900/60 relative group">
+              <!-- Top Row: Order # + Status -->
+              <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-black text-white bg-slate-800 px-2.5 py-1 rounded-lg">#${o.order_number}</span>
+                  <span class="text-[11px] text-slate-400">${dateStr}</span>
+                </div>
+                <div>${badge}</div>
+              </div>
+
+              <!-- Customer summary -->
+              <div class="text-xs text-slate-300 flex items-center justify-between">
+                <span class="font-bold text-white flex items-center gap-1 truncate max-w-[150px]">
+                  <span>👤</span> ${o.customer_name || 'عميل'}
+                </span>
+                <span class="text-[11px] text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded-md truncate max-w-[120px]">
+                  📍 ${o.governorate || 'المحافظة'}
+                </span>
+              </div>
+
+              <!-- المربع دا من بره مكتوب الحاجة المطلوبة -->
+              <div class="bg-purple-950/30 rounded-xl p-3 border border-purple-800/40 space-y-1">
+                <div class="text-[11px] font-bold text-purple-300 flex items-center gap-1">
+                  <span>👕 الحاجة المطلوبة:</span>
+                </div>
+                <p class="text-xs font-semibold text-white leading-relaxed line-clamp-2" title="${o.items_summary || ''}">
+                  ${o.items_summary || 'أصناف الطلب'}
+                </p>
+                <div class="text-xs font-black text-emerald-400 pt-1 flex items-center justify-between">
+                  <span class="text-[11px] text-slate-400 font-normal">الإجمالي:</span>
+                  <span>${Number(o.total || 0).toLocaleString()} ج.م</span>
+                </div>
+              </div>
+
+              <!-- مكان العلامة السريع (لو اتشحن أو تم بيعه) + زرار التفاصيل -->
+              <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-1.5">
+                <div class="flex items-center gap-1 flex-1">
+                  ${o.status !== 'shipped' && o.status !== 'delivered' && o.status !== 'cancelled' ? `
+                    <button type="button" onclick="quickUpdateOrderStatus('${o.id}', 'shipped', event)" title="تحديد كـ تم الشحن"
+                      class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/40 transition flex items-center gap-0.5">
+                      <span>🚚 اتشحن</span>
+                    </button>
+                  ` : ''}
+                  ${o.status !== 'delivered' && o.status !== 'cancelled' ? `
+                    <button type="button" onclick="quickUpdateOrderStatus('${o.id}', 'delivered', event)" title="تحديد كـ تم البيع والتسليم"
+                      class="px-2 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-600/40 transition flex items-center gap-0.5">
+                      <span>✅ تم بيعه</span>
+                    </button>
+                  ` : ''}
+                </div>
+                <button type="button" onclick="openOrderDetails('${o.id}')"
+                  class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-purple-600 hover:text-white text-slate-300 transition border border-slate-700/60 flex items-center gap-1">
+                  <span>👁️ التفاصيل</span>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function openOrderDetails(orderId) {
+        const order = allOrders.find(o => o.id === orderId);
+        if (!order) return;
+        activeOrderModalId = orderId;
+
+        document.getElementById('modalOrderNumber').innerText = `الطلب #${order.order_number}`;
+        const dateStr = order.created_at ? new Date(order.created_at).toLocaleString('ar-EG') : '';
+        document.getElementById('modalOrderDate').innerText = dateStr;
+
+        const statusBadges = {
+          'new': '🆕 قيد التجهيز',
+          'confirmed': '📦 مؤكد',
+          'shipped': '🚚 تم الشحن',
+          'delivered': '✅ تم البيع والتسليم',
+          'cancelled': '❌ ملغي',
+        };
+        const badgeEl = document.getElementById('modalOrderStatusBadge');
+        badgeEl.innerText = statusBadges[order.status] || order.status;
+
+        // Customer details
+        document.getElementById('modalCustomerName').innerText = order.customer_name || 'غير محدد';
+        document.getElementById('modalCustomerPhone').innerText = order.phone || 'غير مسجل';
+        document.getElementById('modalCustomerGov').innerText = order.governorate || '-';
+        document.getElementById('modalCustomerAddress').innerText = order.address || '-';
+
+        // Call & WhatsApp quick links
+        const cleanPhone = (order.phone || '').replace(/[^0-9]/g, '');
+        const waPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : (cleanPhone.startsWith('2') ? cleanPhone : `20${cleanPhone}`);
+        document.getElementById('modalCustomerActions').innerHTML = `
+          ${cleanPhone ? `
+            <a href="tel:${cleanPhone}" class="px-2 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold transition flex items-center gap-1">
+              📞 اتصال
+            </a>
+            <a href="https://wa.me/${waPhone}" target="_blank" class="px-2 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1">
+              💬 واتساب
+            </a>
+          ` : ''}
+        `;
+
+        // Financials
+        document.getElementById('modalOrderSubtotal').innerText = `${Number(order.subtotal || 0).toLocaleString()} ج.م`;
+        document.getElementById('modalOrderShipping').innerText = `${Number(order.shipping_fee || 0).toLocaleString()} ج.م`;
+
+        const discRow = document.getElementById('modalOrderDiscountRow');
+        if (order.discount && Number(order.discount) > 0) {
+          discRow.classList.remove('hidden');
+          const note = order.discount_note || order.promo_code ? ` (${order.discount_note || order.promo_code})` : '';
+          document.getElementById('modalOrderDiscountLabel').innerText = `الخصم / كارت الهدية${note}:`;
+          document.getElementById('modalOrderDiscount').innerText = `-${Number(order.discount).toLocaleString()} ج.م`;
+        } else {
+          discRow.classList.add('hidden');
+        }
+        document.getElementById('modalOrderTotal').innerText = `${Number(order.total || 0).toLocaleString()} ج.م`;
+
+        // Items List
+        const itemsContainer = document.getElementById('modalOrderItemsContainer');
+        const items = order.items || [];
+        if (!items.length) {
+          itemsContainer.innerHTML = `<p class="text-xs text-slate-400 py-2">لا توجد تفاصيل أصناف لهذا الطلب</p>`;
+        } else {
+          itemsContainer.innerHTML = items.map(it => `
+            <div class="flex items-center gap-3 p-2 rounded-xl bg-slate-900/80 border border-slate-800">
+              <div class="w-12 h-12 rounded-lg bg-slate-950 overflow-hidden flex items-center justify-center flex-shrink-0 border border-slate-800">
+                ${it.image_url ? `
+                  <img src="${it.image_url}" alt="${it.name}" class="w-full h-full object-cover">
+                ` : `
+                  <span class="text-xl">👕</span>
+                `}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-bold text-white truncate">${it.name}</div>
+                <div class="text-[11px] text-slate-400">
+                  ${it.color ? `لون: <span class="text-slate-200 font-semibold">${it.color}</span>` : ''}
+                  ${it.size ? ` • مقاس: <span class="text-slate-200 font-semibold">${it.size}</span>` : ''}
+                  ${it.sku ? ` • كود: <span class="text-indigo-300 font-mono">${it.sku}</span>` : ''}
+                </div>
+              </div>
+              <div class="text-left text-xs">
+                <div class="font-black text-white">${it.qty} × ${Number(it.unit_price).toLocaleString()}ج</div>
+                <div class="text-emerald-400 font-bold">${Number(it.subtotal).toLocaleString()} ج.م</div>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        document.getElementById('orderDetailsModal').classList.remove('hidden');
+      }
+
+      function closeOrderDetailsModal() {
+        document.getElementById('orderDetailsModal').classList.add('hidden');
+        activeOrderModalId = null;
+      }
+
+      async function quickUpdateOrderStatus(orderId, newStatus, event) {
+        if (event) event.stopPropagation();
+        await executeOrderStatusUpdate(orderId, newStatus);
+      }
+
+      async function changeCurrentOrderStatus(newStatus) {
+        if (!activeOrderModalId) return;
+        await executeOrderStatusUpdate(activeOrderModalId, newStatus);
+      }
+
+      async function executeOrderStatusUpdate(orderId, newStatus) {
+        if (!currentTenantId) return;
+
+        const confirmMsg = newStatus === 'cancelled'
+          ? 'هل أنت متأكد من إلغاء هذا الأوردر؟ سيتم إرجاع كميات الأصناف للمخزن تلقائياً.'
+          : (newStatus === 'delivered' ? 'هل تريد تحديد الأوردر كـ تم البيع والتسليم؟' : `تغيير حالة الأوردر؟`);
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/orders/${orderId}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(json.message || 'تم تحديث حالة الأوردر بنجاح! 🚀', 'success');
+            await loadOrdersData();
+            if (activeOrderModalId === orderId) {
+              openOrderDetails(orderId);
+            }
+          } else {
+            showToast(json.detail || 'فشل تحديث حالة الأوردر', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر لتحديث الأوردر', 'error');
+        }
+      }
+
+      // -----------------------------------------------------------------
+      // Products & Images Management Logic (معرض المنتجات وضغط الصور)
+      // -----------------------------------------------------------------
+      let allProducts = [];
+
+      async function loadProductsData() {
+        if (!currentTenantId) return;
+        const spinner = document.getElementById('productsRefreshSpinner');
+        if (spinner) spinner.classList.remove('hidden');
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products`);
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            allProducts = json.products || [];
+            renderProducts();
+            const badge = document.getElementById('productsCountBadge');
+            if (badge) badge.innerText = `${allProducts.length} صنف`;
+            const statProducts = document.getElementById('statProducts');
+            if (statProducts) statProducts.innerText = allProducts.length;
+          }
+        } catch (e) {
+          console.error('Error loading products:', e);
+        } finally {
+          if (spinner) spinner.classList.add('hidden');
+        }
+      }
+
+      function handleProductSearch() {
+        renderProducts();
+      }
+
+      function renderProducts() {
+        const container = document.getElementById('productsContainer');
+        if (!container) return;
+
+        const searchTerm = (document.getElementById('productSearchInput')?.value || '').trim().toLowerCase();
+        let filtered = allProducts;
+        if (searchTerm) {
+          filtered = filtered.filter(p => 
+            (p.name || '').toLowerCase().includes(searchTerm) ||
+            (p.material || '').toLowerCase().includes(searchTerm) ||
+            (p.category || '').toLowerCase().includes(searchTerm)
+          );
+        }
+
+        if (!filtered.length) {
+          container.innerHTML = `
+            <div class="col-span-full py-12 text-center text-slate-500 space-y-2">
+              <span class="text-4xl block">📦</span>
+              <p class="text-sm font-semibold">لا توجد منتجات مسجلة في المخزن حالياً</p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = filtered.map(p => {
+          const hasImg = Boolean(p.image_url);
+          const imgBadge = hasImg
+            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm">🖼️ له صورة</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm">📷 بدون صورة</span>';
+
+          return `
+            <div id="productCard-${p.id}" class="glass-card rounded-2xl p-3 border-slate-800 flex flex-col justify-between gap-2.5 shadow-md hover:border-blue-500/40 transition bg-slate-900/60 relative group">
+              <!-- Image thumbnail area -->
+              <div class="relative w-full aspect-square rounded-xl bg-slate-950 overflow-hidden flex items-center justify-center border border-slate-800">
+                ${hasImg ? `
+                  <img src="${p.image_url}" alt="${p.name}" class="w-full h-full object-cover transition transform group-hover:scale-105 duration-300" loading="lazy">
+                ` : `
+                  <div class="text-center text-slate-600 p-2">
+                    <span class="text-3xl block mb-1">📷</span>
+                    <span class="text-[10px]">لا توجد صورة</span>
+                  </div>
+                `}
+                <div class="absolute top-2 right-2">${imgBadge}</div>
+              </div>
+
+              <!-- Info -->
+              <div class="space-y-1">
+                <h4 class="text-xs font-bold text-white truncate" title="${p.name}">${p.name}</h4>
+                <div class="flex items-center justify-between text-[11px]">
+                  <span class="text-emerald-400 font-bold">${Number(p.price || 0).toLocaleString()} ج.م</span>
+                  <span class="text-slate-400 font-semibold">${p.total_stock || 0} قطعة بالمخزن</span>
+                </div>
+              </div>
+
+              <!-- Actions: Change / Upload / Delete image -->
+              <div class="pt-2 border-t border-slate-800/80 flex items-center gap-1.5">
+                <label class="flex-1 py-1.5 px-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-xl text-[11px] font-bold text-center cursor-pointer transition flex items-center justify-center gap-1">
+                  <span>📸 ${hasImg ? 'تغيير' : 'رفع صورة'}</span>
+                  <input type="file" accept="image/*" class="sr-only" onchange="handleProductImageFilePick('${p.id}', this)">
+                </label>
+                ${hasImg ? `
+                  <button type="button" onclick="deleteProductImage('${p.id}', '${p.name}')" title="حذف الصورة"
+                    class="p-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition text-xs">
+                    🗑️
+                  </button>
+                ` : ''}
+              </div>
+
+              <!-- Loading overlay for image upload -->
+              <div id="productLoading-${p.id}" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center p-3 text-center hidden z-10">
+                <span class="animate-spin text-2xl mb-1">⏳</span>
+                <span class="text-[11px] font-bold text-blue-300">جاري ضغط وتحسين ورفع الصورة...</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      async function handleProductImageFilePick(productId, inputEl) {
+        const file = inputEl.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+          showToast('يرجى اختيار ملف صورة صالح (JPG, PNG, WEBP)', 'error');
+          return;
+        }
+
+        const overlay = document.getElementById(`productLoading-${productId}`);
+        if (overlay) overlay.classList.remove('hidden');
+
+        try {
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64Data = reader.result;
+            try {
+              const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products/${productId}/image`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image_data: base64Data })
+              });
+              const json = await res.json();
+              if (res.ok && json.status === 'success') {
+                showToast(json.message || 'تم تحديث صورة المنتج بنجاح! 📸', 'success');
+                await loadProductsData();
+              } else {
+                showToast(json.detail || 'فشل رفع الصورة', 'error');
+              }
+            } catch (err) {
+              showToast('تعذر الاتصال بالسيرفر لرفع الصورة', 'error');
+            } finally {
+              if (overlay) overlay.classList.add('hidden');
+              inputEl.value = '';
+            }
+          };
+          reader.readAsDataURL(file);
+        } catch (e) {
+          if (overlay) overlay.classList.add('hidden');
+          showToast('حدث خطأ أثناء قراءة ملف الصورة', 'error');
+        }
+      }
+
+      async function deleteProductImage(productId, productName) {
+        if (!confirm(`هل تريد إزالة صورة «${productName}»؟`)) return;
+
+        try {
+          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products/${productId}/image`, {
+            method: 'DELETE'
+          });
+          const json = await res.json();
+          if (res.ok && json.status === 'success') {
+            showToast(json.message || 'تم حذف صورة المنتج 🗑️', 'success');
+            await loadProductsData();
+          } else {
+            showToast(json.detail || 'فشل حذف صورة المنتج', 'error');
+          }
+        } catch (err) {
+          showToast('تعذر الاتصال بالسيرفر', 'error');
         }
       }
 

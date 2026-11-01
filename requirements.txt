@@ -6,3 +6,4 @@ httpx
 fastapi
 uvicorn
 openpyxl
+Pillow
