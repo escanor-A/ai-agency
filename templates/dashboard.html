@@ -412,12 +412,14 @@
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-slate-300 mb-1.5">الأصناف المشمولة أو تركيبة العرض (اختياري)</label>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">الأصناف المشمولة أو تركيبة العرض
+            (اختياري)</label>
           <input type="text" id="promoTargetItemsInput"
             placeholder="اتركه فارغاً لكل المتجر، أو اكتب: تيشيرت + بنطلون، أو: تيشيرت, هودي"
             class="w-full px-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none text-slate-100 text-xs sm:text-sm">
           <p class="text-[11px] text-slate-400 mt-1">
-            💡 اتركها فارغة للكل | استخدم <b>+</b> لعمل طقم مركب (مثال: <code>تيشيرت + بنطلون</code>) | استخدم فواصل <b>,</b> لتحديد أصناف بديلة (مثال: <code>تيشيرت, هودي</code>).
+            💡 اتركها فارغة للكل | استخدم <b>+</b> لعمل طقم مركب (مثال: <code>تيشيرت + بنطلون</code>) | استخدم فواصل
+            <b>,</b> لتحديد أصناف بديلة (مثال: <code>تيشيرت, هودي</code>).
           </p>
         </div>
 
@@ -428,7 +430,8 @@
             <option value="كل الفروع">🏬 كل الفروع (المتجر بالكامل وأونلاين)</option>
             <option value="__custom__">✏️ فرع مخصص أو مكان محدد...</option>
           </select>
-          <input type="text" id="promoCustomBranchInput" placeholder="اكتب اسم الفرع أو المكان (مثال: فرع المعادي، فرع مدينة نصر)"
+          <input type="text" id="promoCustomBranchInput"
+            placeholder="اكتب اسم الفرع أو المكان (مثال: فرع المعادي، فرع مدينة نصر)"
             class="w-full mt-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white hidden">
           <p class="text-[11px] text-slate-400 mt-1">
             حدد ما إذا كان العرض ساري في كل الفروع أم مخصص لفرع أو مكان معين فقط.
@@ -471,7 +474,8 @@
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <span id="modalOrderStatusBadge" class="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
+          <span id="modalOrderStatusBadge"
+            class="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
             حالة الطلب
           </span>
           <button type="button" onclick="closeOrderDetailsModal()"
@@ -490,10 +494,14 @@
           </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-          <div><span class="text-slate-400">الاسم:</span> <span id="modalCustomerName" class="font-bold text-white"></span></div>
-          <div><span class="text-slate-400">الموبايل:</span> <span id="modalCustomerPhone" class="font-bold text-indigo-300 font-mono"></span></div>
-          <div class="sm:col-span-2"><span class="text-slate-400">المحافظة:</span> <span id="modalCustomerGov" class="font-semibold text-white"></span></div>
-          <div class="sm:col-span-2"><span class="text-slate-400">العنوان بالتفصيل:</span> <span id="modalCustomerAddress" class="font-semibold text-slate-200"></span></div>
+          <div><span class="text-slate-400">الاسم:</span> <span id="modalCustomerName"
+              class="font-bold text-white"></span></div>
+          <div><span class="text-slate-400">الموبايل:</span> <span id="modalCustomerPhone"
+              class="font-bold text-indigo-300 font-mono"></span></div>
+          <div class="sm:col-span-2"><span class="text-slate-400">المحافظة:</span> <span id="modalCustomerGov"
+              class="font-semibold text-white"></span></div>
+          <div class="sm:col-span-2"><span class="text-slate-400">العنوان بالتفصيل:</span> <span
+              id="modalCustomerAddress" class="font-semibold text-slate-200"></span></div>
         </div>
       </div>
 
@@ -633,7 +641,8 @@
       <div onclick="scrollToSection('productsSection')"
         class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-blue-500/50 hover:bg-slate-800/40 transition cursor-pointer group shadow-lg">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-semibold text-slate-400 group-hover:text-blue-400 transition">المنتجات بالمخزن</span>
+          <span class="text-xs font-semibold text-slate-400 group-hover:text-blue-400 transition">المنتجات
+            بالمخزن</span>
           <span class="p-2 bg-blue-500/10 text-blue-400 rounded-xl text-lg group-hover:scale-110 transition">📦</span>
         </div>
         <div>
@@ -649,8 +658,10 @@
       <div onclick="scrollToSection('ordersSection')"
         class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between border-slate-800/80 hover:border-purple-500/50 hover:bg-slate-800/40 transition cursor-pointer group shadow-lg shadow-purple-950/20 ring-1 ring-purple-500/20">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-semibold text-slate-400 group-hover:text-purple-400 transition">إجمالي الطلبات</span>
-          <span class="p-2 bg-purple-500/10 text-purple-400 rounded-xl text-lg group-hover:scale-110 transition">🛒</span>
+          <span class="text-xs font-semibold text-slate-400 group-hover:text-purple-400 transition">إجمالي
+            الطلبات</span>
+          <span
+            class="p-2 bg-purple-500/10 text-purple-400 rounded-xl text-lg group-hover:scale-110 transition">🛒</span>
         </div>
         <div>
           <div id="statOrders" class="text-2xl font-black text-white">0</div>
@@ -780,21 +791,28 @@
           </div>
 
           <!-- One-Click Connect with Facebook / OAuth -->
-          <div class="mb-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-950/40 via-indigo-950/30 to-slate-900 border border-blue-600/40 shadow-lg">
+          <div
+            class="mb-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-950/40 via-indigo-950/30 to-slate-900 border border-blue-600/40 shadow-lg">
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <div class="flex items-center gap-2">
                   <span class="text-lg">✨</span>
                   <h4 class="text-sm font-bold text-white">الربط التلقائي بضغطة زر واحدة (موصى به)</h4>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">رسمي من Meta</span>
+                  <span
+                    class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">رسمي
+                    من Meta</span>
                 </div>
                 <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                  سجّل دخولك بفيسبوك وسنقوم بجلب وتوصيل صفحتك وحساب إنستجرام وتفعيل الويب هوك تلقائياً وبأمان تام دون نسخ أي أكواد.
+                  سجّل دخولك بفيسبوك وسنقوم بجلب وتوصيل صفحتك وحساب إنستجرام وتفعيل الويب هوك تلقائياً وبأمان تام دون
+                  نسخ أي أكواد.
                 </p>
               </div>
               <button type="button" onclick="startFacebookOAuth()"
                 class="w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg shadow-blue-600/30 transition transform active:scale-95 flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer">
-                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                  <path
+                    d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                </svg>
                 <span>ربط الصفحة بضغطة زر 🚀</span>
               </button>
             </div>
@@ -802,7 +820,8 @@
 
           <div class="relative flex py-2 items-center mb-4">
             <div class="flex-grow border-t border-slate-800"></div>
-            <span class="flex-shrink mx-4 text-[11px] text-slate-500 font-semibold">أو الربط اليدوي بالتوكن ومعرّف الصفحة</span>
+            <span class="flex-shrink mx-4 text-[11px] text-slate-500 font-semibold">أو الربط اليدوي بالتوكن ومعرّف
+              الصفحة</span>
             <div class="flex-grow border-t border-slate-800"></div>
           </div>
 
@@ -893,7 +912,8 @@
     </div>
 
     <!-- Section: Store Orders Management (متابعة وإدارة الطلبات) -->
-    <div id="ordersSection" class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5 scroll-mt-6 transition-all duration-300">
+    <div id="ordersSection"
+      class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5 scroll-mt-6 transition-all duration-300">
       <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-xl">
@@ -902,14 +922,18 @@
           <div>
             <div class="flex items-center gap-2">
               <h3 class="text-base font-bold text-white">طلبات وأوردرات المتجر (Orders)</h3>
-              <span id="ordersCountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">0 طلب</span>
+              <span id="ordersCountBadge"
+                class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">0
+                طلب</span>
             </div>
-            <p class="text-xs text-slate-400">متابعة الأصناف المطلوبة، فحص تفاصيل العميل، وتحديد علامة الشحن أو البيع والتسليم</p>
+            <p class="text-xs text-slate-400">متابعة الأصناف المطلوبة، فحص تفاصيل العميل، وتحديد علامة الشحن أو البيع
+              والتسليم</p>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
-          <button type="button" onclick="loadOrdersData()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
+          <button type="button" onclick="loadOrdersData()"
+            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
             <span id="ordersRefreshSpinner" class="hidden animate-spin">🔄</span>
             <span>تحديث الطلبات</span>
           </button>
@@ -920,16 +944,26 @@
       <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
         <!-- Status Tabs / Filter Pills -->
         <div class="flex flex-wrap gap-1.5 p-1 bg-slate-900/80 rounded-2xl border border-slate-800 text-xs">
-          <button type="button" onclick="filterOrders('all')" id="orderTab-all" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold bg-purple-600 text-white transition">الكل</button>
-          <button type="button" onclick="filterOrders('new')" id="orderTab-new" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🆕 قيد التجهيز</button>
-          <button type="button" onclick="filterOrders('shipped')" id="orderTab-shipped" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🚚 تم الشحن</button>
-          <button type="button" onclick="filterOrders('delivered')" id="orderTab-delivered" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">✅ تم البيع والتسليم</button>
-          <button type="button" onclick="filterOrders('cancelled')" id="orderTab-cancelled" class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">❌ ملغي</button>
+          <button type="button" onclick="filterOrders('all')" id="orderTab-all"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold bg-purple-600 text-white transition">الكل</button>
+          <button type="button" onclick="filterOrders('new')" id="orderTab-new"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🆕 قيد
+            التجهيز</button>
+          <button type="button" onclick="filterOrders('shipped')" id="orderTab-shipped"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">🚚 تم
+            الشحن</button>
+          <button type="button" onclick="filterOrders('delivered')" id="orderTab-delivered"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">✅ تم
+            البيع والتسليم</button>
+          <button type="button" onclick="filterOrders('cancelled')" id="orderTab-cancelled"
+            class="order-filter-tab px-3 py-1.5 rounded-xl font-bold text-slate-400 hover:text-white transition">❌
+            ملغي</button>
         </div>
 
         <!-- Search Input -->
         <div class="relative flex-1 sm:max-w-xs">
-          <input type="text" id="orderSearchInput" oninput="handleOrderSearch()" placeholder="بحث برقم الطلب، الاسم، أو الموبايل..."
+          <input type="text" id="orderSearchInput" oninput="handleOrderSearch()"
+            placeholder="بحث برقم الطلب، الاسم، أو الموبايل..."
             class="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition">
         </div>
       </div>
@@ -941,7 +975,8 @@
     </div>
 
     <!-- Section: Products & Images (منتجات المخزن وصور المعروضات) -->
-    <div id="productsSection" class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5 scroll-mt-6 transition-all duration-300">
+    <div id="productsSection"
+      class="glass-card rounded-3xl p-5 sm:p-7 border-slate-800 shadow-xl space-y-5 scroll-mt-6 transition-all duration-300">
       <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center text-xl">
@@ -950,17 +985,22 @@
           <div>
             <div class="flex items-center gap-2">
               <h3 class="text-base font-bold text-white">منتجات المخزن وصور المعروضات (Products & Images)</h3>
-              <span id="productsCountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">0 صنف</span>
+              <span id="productsCountBadge"
+                class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">0
+                صنف</span>
             </div>
-            <p class="text-xs text-slate-400">استعراض الأصناف، ضبط حجم الصور وضغطها تلقائياً، وتغيير أو استبدال صورة أي منتج</p>
+            <p class="text-xs text-slate-400">استعراض الأصناف، ضبط حجم الصور وضغطها تلقائياً، وتغيير أو استبدال صورة أي
+              منتج</p>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
-          <button type="button" onclick="openAddStockModal()" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/20 transition transform active:scale-95">
+          <button type="button" onclick="openAddStockModal()"
+            class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/20 transition transform active:scale-95">
             <span>➕ إضافة قطع / صنف للمخزن</span>
           </button>
-          <button type="button" onclick="loadProductsData()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
+          <button type="button" onclick="loadProductsData()"
+            class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-700/60 transition">
             <span id="productsRefreshSpinner" class="hidden animate-spin">🔄</span>
             <span>تحديث المنتجات</span>
           </button>
@@ -970,7 +1010,8 @@
       <!-- Search Toolbar -->
       <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div class="relative flex-1 max-w-sm">
-          <input type="text" id="productSearchInput" oninput="handleProductSearch()" placeholder="بحث باسم الصنف أو الخامة..."
+          <input type="text" id="productSearchInput" oninput="handleProductSearch()"
+            placeholder="بحث باسم الصنف أو الخامة..."
             class="w-full bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition">
         </div>
         <div class="text-[11px] text-slate-400 bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-800">
@@ -1306,555 +1347,555 @@
     // Facebook Token Security & Visibility State
     let hasSavedToken = false;
 
-      function updateTokenUIState(isChanging = false) {
-        const savedContainer = document.getElementById('tokenSavedContainer');
-        const entryContainer = document.getElementById('tokenEntryContainer');
-        const cancelBtn = document.getElementById('cancelChangeTokenBtn');
-        const tokenInput = document.getElementById('facebookTokenInput');
+    function updateTokenUIState(isChanging = false) {
+      const savedContainer = document.getElementById('tokenSavedContainer');
+      const entryContainer = document.getElementById('tokenEntryContainer');
+      const cancelBtn = document.getElementById('cancelChangeTokenBtn');
+      const tokenInput = document.getElementById('facebookTokenInput');
 
-        if (!savedContainer || !entryContainer) return;
+      if (!savedContainer || !entryContainer) return;
 
-        if (hasSavedToken && !isChanging) {
-          savedContainer.classList.remove('hidden');
-          entryContainer.classList.add('hidden');
-          if (tokenInput) tokenInput.value = '';
-        } else {
-          savedContainer.classList.add('hidden');
-          entryContainer.classList.remove('hidden');
-          if (cancelBtn) {
-            if (hasSavedToken && isChanging) {
-              cancelBtn.classList.remove('hidden');
-            } else {
-              cancelBtn.classList.add('hidden');
-            }
-          }
-        }
-      }
-
-      function showChangeTokenInput() {
-        updateTokenUIState(true);
-        const tokenInput = document.getElementById('facebookTokenInput');
-        if (tokenInput) {
-          tokenInput.value = '';
-          tokenInput.focus();
-        }
-      }
-
-      function hideChangeTokenInput() {
-        const tokenInput = document.getElementById('facebookTokenInput');
+      if (hasSavedToken && !isChanging) {
+        savedContainer.classList.remove('hidden');
+        entryContainer.classList.add('hidden');
         if (tokenInput) tokenInput.value = '';
-        updateTokenUIState(false);
-      }
-
-      // Apply Dashboard Data Directly to UI
-      function applyDashboardData(data) {
-        if (!data || !data.id) return;
-        currentTenantData = data;
-        currentTenantId = data.id;
-        try {
-          localStorage.setItem('agy_dashboard_tenant_id', data.id);
-        } catch (e) { }
-
-        // Update Header
-        const nameEl = document.getElementById('merchantName');
-        if (nameEl) nameEl.innerText = data.name || 'متجر ORIK';
-
-        const idEl = document.getElementById('merchantId');
-        if (idEl) {
-          idEl.innerText = (data.id || '').substring(0, 8) + '...';
-          idEl.setAttribute('title', data.id);
-        }
-
-        // Update Bot Status & Toggle
-        const isBotEnabled = Boolean(data.bot_enabled);
-        updateBotStatusUI(isBotEnabled);
-
-        // Update Stats
-        const stats = data.stats || {};
-        const msgEl = document.getElementById('statMessages');
-        if (msgEl) msgEl.innerText = Number(stats.messages_count || 0).toLocaleString('ar-EG');
-
-        const prodEl = document.getElementById('statProducts');
-        if (prodEl) prodEl.innerText = Number(stats.products_count || 0).toLocaleString('ar-EG');
-
-        const ordEl = document.getElementById('statOrders');
-        if (ordEl) ordEl.innerText = Number(stats.orders_count || 0).toLocaleString('ar-EG');
-
-        // Update Inputs
-        const sheetsInput = document.getElementById('sheetsUrlInput');
-        if (sheetsInput) {
-          sheetsInput.value = data.google_sheets_url || '';
-          updateSheetButton(data.google_sheets_url);
-        }
-
-        const fbInput = document.getElementById('facebookPageIdInput');
-        if (fbInput) fbInput.value = data.facebook_page_id || '';
-        hasSavedToken = Boolean(data.facebook_page_token);
-        updateTokenUIState();
-
-        // Render Social Channels & Branches
-        try { renderSocialChannels(data.social_channels); } catch (e) { console.error(e); }
-        try { renderBranches(data.branches); } catch (e) { console.error(e); }
-        try { renderShippingSection(data.shipping_rates, data.shipping_enabled); } catch (e) { console.error(e); }
-        try { renderPromotionsSection(data.promotions || []); } catch (e) { console.error(e); }
-        try { renderAutopostSection(data.autopost_enabled, data.autopost_interval_hours, data.autopost_last_at); } catch (e) { console.error(e); }
-
-        // Load Orders & Products for Interactive Dashboard
-        try { loadOrdersData(); } catch (e) { console.error(e); }
-        try { loadProductsData(); } catch (e) { console.error(e); }
-      }
-
-      // Tenant Resolution Logic
-      async function resolveInitialTenant() {
-        const params = new URLSearchParams(window.location.search);
-        let tid = params.get('tenant_id') || params.get('id');
-
-        if (params.get('oauth_success') === '1') {
-          const pName = params.get('page_name') || 'الصفحة';
-          setTimeout(() => {
-            showToast(`🎉 تم ربط «${pName}» بنجاح وتفعيل ردود الذكاء الاصطناعي والويب هوك!`, 'success');
-          }, 400);
-        }
-        if (params.get('tiktok_success') === '1') {
-          setTimeout(() => {
-            showToast('🎉 تم ربط حساب تيك توك بنجاح وتفعيل ردود الذكاء الاصطناعي!', 'success');
-          }, 400);
-        }
-        if (params.get('whatsapp_success') === '1') {
-          setTimeout(() => {
-            showToast('🎉 تم ربط رقم واتساب بنجاح وتفعيل خدمة الرد الآلي للعملاء!', 'success');
-          }, 400);
-        }
-
-        // 1. Check path parameter: /dashboard/{tenant_id}
-        if (!tid) {
-          const pathParts = window.location.pathname.split('/').filter(Boolean);
-          if (pathParts.length >= 2 && pathParts[0] === 'dashboard') {
-            tid = pathParts[1];
+      } else {
+        savedContainer.classList.add('hidden');
+        entryContainer.classList.remove('hidden');
+        if (cancelBtn) {
+          if (hasSavedToken && isChanging) {
+            cancelBtn.classList.remove('hidden');
+          } else {
+            cancelBtn.classList.add('hidden');
           }
         }
+      }
+    }
 
-        // 2. If explicit tenant_id provided in URL matching server-injected data:
-        if (tid && window.__INITIAL_DATA__ && (window.__INITIAL_DATA__.id === tid || window.__INITIAL_DATA__.id.startsWith(tid))) {
+    function showChangeTokenInput() {
+      updateTokenUIState(true);
+      const tokenInput = document.getElementById('facebookTokenInput');
+      if (tokenInput) {
+        tokenInput.value = '';
+        tokenInput.focus();
+      }
+    }
+
+    function hideChangeTokenInput() {
+      const tokenInput = document.getElementById('facebookTokenInput');
+      if (tokenInput) tokenInput.value = '';
+      updateTokenUIState(false);
+    }
+
+    // Apply Dashboard Data Directly to UI
+    function applyDashboardData(data) {
+      if (!data || !data.id) return;
+      currentTenantData = data;
+      currentTenantId = data.id;
+      try {
+        localStorage.setItem('agy_dashboard_tenant_id', data.id);
+      } catch (e) { }
+
+      // Update Header
+      const nameEl = document.getElementById('merchantName');
+      if (nameEl) nameEl.innerText = data.name || 'متجر ORIK';
+
+      const idEl = document.getElementById('merchantId');
+      if (idEl) {
+        idEl.innerText = (data.id || '').substring(0, 8) + '...';
+        idEl.setAttribute('title', data.id);
+      }
+
+      // Update Bot Status & Toggle
+      const isBotEnabled = Boolean(data.bot_enabled);
+      updateBotStatusUI(isBotEnabled);
+
+      // Update Stats
+      const stats = data.stats || {};
+      const msgEl = document.getElementById('statMessages');
+      if (msgEl) msgEl.innerText = Number(stats.messages_count || 0).toLocaleString('ar-EG');
+
+      const prodEl = document.getElementById('statProducts');
+      if (prodEl) prodEl.innerText = Number(stats.products_count || 0).toLocaleString('ar-EG');
+
+      const ordEl = document.getElementById('statOrders');
+      if (ordEl) ordEl.innerText = Number(stats.orders_count || 0).toLocaleString('ar-EG');
+
+      // Update Inputs
+      const sheetsInput = document.getElementById('sheetsUrlInput');
+      if (sheetsInput) {
+        sheetsInput.value = data.google_sheets_url || '';
+        updateSheetButton(data.google_sheets_url);
+      }
+
+      const fbInput = document.getElementById('facebookPageIdInput');
+      if (fbInput) fbInput.value = data.facebook_page_id || '';
+      hasSavedToken = Boolean(data.facebook_page_token);
+      updateTokenUIState();
+
+      // Render Social Channels & Branches
+      try { renderSocialChannels(data.social_channels); } catch (e) { console.error(e); }
+      try { renderBranches(data.branches); } catch (e) { console.error(e); }
+      try { renderShippingSection(data.shipping_rates, data.shipping_enabled); } catch (e) { console.error(e); }
+      try { renderPromotionsSection(data.promotions || []); } catch (e) { console.error(e); }
+      try { renderAutopostSection(data.autopost_enabled, data.autopost_interval_hours, data.autopost_last_at); } catch (e) { console.error(e); }
+
+      // Load Orders & Products for Interactive Dashboard
+      try { loadOrdersData(); } catch (e) { console.error(e); }
+      try { loadProductsData(); } catch (e) { console.error(e); }
+    }
+
+    // Tenant Resolution Logic
+    async function resolveInitialTenant() {
+      const params = new URLSearchParams(window.location.search);
+      let tid = params.get('tenant_id') || params.get('id');
+
+      if (params.get('oauth_success') === '1') {
+        const pName = params.get('page_name') || 'الصفحة';
+        setTimeout(() => {
+          showToast(`🎉 تم ربط «${pName}» بنجاح وتفعيل ردود الذكاء الاصطناعي والويب هوك!`, 'success');
+        }, 400);
+      }
+      if (params.get('tiktok_success') === '1') {
+        setTimeout(() => {
+          showToast('🎉 تم ربط حساب تيك توك بنجاح وتفعيل ردود الذكاء الاصطناعي!', 'success');
+        }, 400);
+      }
+      if (params.get('whatsapp_success') === '1') {
+        setTimeout(() => {
+          showToast('🎉 تم ربط رقم واتساب بنجاح وتفعيل خدمة الرد الآلي للعملاء!', 'success');
+        }, 400);
+      }
+
+      // 1. Check path parameter: /dashboard/{tenant_id}
+      if (!tid) {
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        if (pathParts.length >= 2 && pathParts[0] === 'dashboard') {
+          tid = pathParts[1];
+        }
+      }
+
+      // 2. If explicit tenant_id provided in URL matching server-injected data:
+      if (tid && window.__INITIAL_DATA__ && (window.__INITIAL_DATA__.id === tid || window.__INITIAL_DATA__.id.startsWith(tid))) {
+        applyDashboardData(window.__INITIAL_DATA__);
+        return;
+      }
+
+      // 3. Check Telegram WebApp initData (when opened from Telegram Mini App button)
+      if (!tid && tg?.initDataUnsafe) {
+        if (tg.initDataUnsafe.start_param) {
+          tid = tg.initDataUnsafe.start_param;
+        } else if (tg.initDataUnsafe.user?.id) {
+          const chatData = await lookupByTelegramId(tg.initDataUnsafe.user.id);
+          if (chatData) {
+            applyDashboardData(chatData);
+            return;
+          }
+        }
+      }
+
+      // 4. Server-Side Injected Initial Data (Instantaneous 0ms load)
+      if (window.__INITIAL_DATA__ && window.__INITIAL_DATA__.id) {
+        if (!tid || tid === window.__INITIAL_DATA__.id) {
           applyDashboardData(window.__INITIAL_DATA__);
           return;
         }
+      }
 
-        // 3. Check Telegram WebApp initData (when opened from Telegram Mini App button)
-        if (!tid && tg?.initDataUnsafe) {
-          if (tg.initDataUnsafe.start_param) {
-            tid = tg.initDataUnsafe.start_param;
-          } else if (tg.initDataUnsafe.user?.id) {
-            const chatData = await lookupByTelegramId(tg.initDataUnsafe.user.id);
-            if (chatData) {
-              applyDashboardData(chatData);
-              return;
-            }
-          }
-        }
+      // 5. If specific tid is set, load its data
+      if (tid) {
+        currentTenantId = tid;
+        await loadDashboardData();
+        return;
+      }
 
-        // 4. Server-Side Injected Initial Data (Instantaneous 0ms load)
-        if (window.__INITIAL_DATA__ && window.__INITIAL_DATA__.id) {
-          if (!tid || tid === window.__INITIAL_DATA__.id) {
-            applyDashboardData(window.__INITIAL_DATA__);
-            return;
-          }
-        }
-
-        // 5. If specific tid is set, load its data
-        if (tid) {
-          currentTenantId = tid;
+      // 6. Check LocalStorage fallback
+      try {
+        const storedTid = localStorage.getItem('agy_dashboard_tenant_id');
+        if (storedTid) {
+          currentTenantId = storedTid;
           await loadDashboardData();
           return;
         }
+      } catch (e) { }
 
-        // 6. Check LocalStorage fallback
-        try {
-          const storedTid = localStorage.getItem('agy_dashboard_tenant_id');
-          if (storedTid) {
-            currentTenantId = storedTid;
-            await loadDashboardData();
+      // 7. Check default merchant fallback (e.g. ORIK)
+      try {
+        const defRes = await fetch('/api/dashboard/default');
+        if (defRes.ok) {
+          const defJson = await defRes.json();
+          if (defJson?.data?.id) {
+            applyDashboardData(defJson.data);
             return;
           }
-        } catch (e) { }
-
-        // 7. Check default merchant fallback (e.g. ORIK)
-        try {
-          const defRes = await fetch('/api/dashboard/default');
-          if (defRes.ok) {
-            const defJson = await defRes.json();
-            if (defJson?.data?.id) {
-              applyDashboardData(defJson.data);
-              return;
-            }
-          }
-        } catch (e) {
-          console.error('Default tenant lookup error:', e);
         }
+      } catch (e) {
+        console.error('Default tenant lookup error:', e);
+      }
 
+      openChangeStoreModal();
+    }
+
+    async function lookupByTelegramId(chatId) {
+      try {
+        const res = await fetch(`/api/dashboard/by-telegram/${encodeURIComponent(chatId)}`);
+        if (res.ok) {
+          const json = await res.json();
+          return json?.data || null;
+        }
+      } catch (e) {
+        console.error('Telegram lookup error:', e);
+      }
+      return null;
+    }
+
+    function openChangeStoreModal() {
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+
+    function closeChangeStoreModal() {
+      document.getElementById('loginModal').classList.add('hidden');
+    }
+
+    function submitManualTenant() {
+      const input = document.getElementById('manualTenantInput').value.trim();
+      if (!input) {
+        showToast('يرجى كتابة معرّف المتجر (Tenant ID)', 'error');
+        return;
+      }
+      const cleanHex = input.replace(/-/g, '').toLowerCase();
+      if (cleanHex.length < 8 || !/^[0-9a-f]+$/i.test(cleanHex)) {
+        showToast('الدخول متاح فقط بكود المعرّف (Tenant ID) وليس بالاسم لضمان الأمان والخصوصية', 'error');
+        return;
+      }
+      currentTenantId = input;
+      localStorage.setItem('agy_dashboard_tenant_id', input);
+      closeChangeStoreModal();
+      loadDashboardData();
+    }
+
+    // Load Merchant Data and Stats from Backend
+    async function loadDashboardData() {
+      if (!currentTenantId) {
         openChangeStoreModal();
+        return;
       }
 
-      async function lookupByTelegramId(chatId) {
-        try {
-          const res = await fetch(`/api/dashboard/by-telegram/${encodeURIComponent(chatId)}`);
-          if (res.ok) {
-            const json = await res.json();
-            return json?.data || null;
-          }
-        } catch (e) {
-          console.error('Telegram lookup error:', e);
-        }
-        return null;
-      }
+      const refreshIcon = document.getElementById('refreshIcon');
+      refreshIcon.classList.add('animate-spin');
 
-      function openChangeStoreModal() {
-        document.getElementById('loginModal').classList.remove('hidden');
-      }
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`);
+        const json = await res.json();
 
-      function closeChangeStoreModal() {
-        document.getElementById('loginModal').classList.add('hidden');
-      }
-
-      function submitManualTenant() {
-        const input = document.getElementById('manualTenantInput').value.trim();
-        if (!input) {
-          showToast('يرجى كتابة معرّف المتجر (Tenant ID)', 'error');
-          return;
-        }
-        const cleanHex = input.replace(/-/g, '').toLowerCase();
-        if (cleanHex.length < 8 || !/^[0-9a-f]+$/i.test(cleanHex)) {
-          showToast('الدخول متاح فقط بكود المعرّف (Tenant ID) وليس بالاسم لضمان الأمان والخصوصية', 'error');
-          return;
-        }
-        currentTenantId = input;
-        localStorage.setItem('agy_dashboard_tenant_id', input);
-        closeChangeStoreModal();
-        loadDashboardData();
-      }
-
-      // Load Merchant Data and Stats from Backend
-      async function loadDashboardData() {
-        if (!currentTenantId) {
+        if (!res.ok || json.status !== 'success') {
+          showToast(json.detail || json.message || 'لم يتم العثور على المتجر', 'error');
           openChangeStoreModal();
           return;
         }
 
-        const refreshIcon = document.getElementById('refreshIcon');
-        refreshIcon.classList.add('animate-spin');
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`);
-          const json = await res.json();
-
-          if (!res.ok || json.status !== 'success') {
-            showToast(json.detail || json.message || 'لم يتم العثور على المتجر', 'error');
-            openChangeStoreModal();
-            return;
-          }
-
-          applyDashboardData(json.data);
-        } catch (err) {
-          console.error('Error loading dashboard data:', err);
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        } finally {
-          refreshIcon.classList.remove('animate-spin');
-        }
+        applyDashboardData(json.data);
+      } catch (err) {
+        console.error('Error loading dashboard data:', err);
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        refreshIcon.classList.remove('animate-spin');
       }
+    }
 
-      function updateBotStatusUI(enabled) {
-        const badge = document.getElementById('botStatusBadge');
-        const toggle = document.getElementById('botEnabledToggle');
-        const label = document.getElementById('toggleStatusLabel');
-        const statText = document.getElementById('statBotStatus');
-        const quickBtn = document.getElementById('quickToggleBtn');
+    function updateBotStatusUI(enabled) {
+      const badge = document.getElementById('botStatusBadge');
+      const toggle = document.getElementById('botEnabledToggle');
+      const label = document.getElementById('toggleStatusLabel');
+      const statText = document.getElementById('statBotStatus');
+      const quickBtn = document.getElementById('quickToggleBtn');
 
-        toggle.checked = enabled;
+      toggle.checked = enabled;
 
-        if (enabled) {
-          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 pulse-glow-green';
-          badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> رد آلي نشط';
-          label.innerText = 'مفعّل وشغال تمام';
-          label.className = 'text-xs text-emerald-400 font-semibold mt-0.5';
-          statText.innerText = '🟢 نشط';
-          statText.className = 'text-lg sm:text-xl font-black text-emerald-400';
-          quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/40';
-          quickBtn.innerHTML = '<span>⏸️ إيقاف البوت مؤقتاً</span>';
+      if (enabled) {
+        badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 pulse-glow-green';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> رد آلي نشط';
+        label.innerText = 'مفعّل وشغال تمام';
+        label.className = 'text-xs text-emerald-400 font-semibold mt-0.5';
+        statText.innerText = '🟢 نشط';
+        statText.className = 'text-lg sm:text-xl font-black text-emerald-400';
+        quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-600/40';
+        quickBtn.innerHTML = '<span>⏸️ إيقاف البوت مؤقتاً</span>';
+      } else {
+        badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-950/80 text-rose-400 border border-rose-800/80';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span> متوقف مؤقتاً';
+        label.innerText = 'متوقف مؤقتاً';
+        label.className = 'text-xs text-rose-400 font-semibold mt-0.5';
+        statText.innerText = '⏸️ متوقف';
+        statText.className = 'text-lg sm:text-xl font-black text-amber-400';
+        quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30';
+        quickBtn.innerHTML = '<span>▶️ تفعيل الرد الآلي الآن</span>';
+      }
+    }
+
+    function updateSheetButton(url) {
+      const openBtn = document.getElementById('openSheetBtn');
+      if (url && url.startsWith('http')) {
+        openBtn.href = url;
+        openBtn.classList.remove('hidden');
+        openBtn.classList.add('inline-flex');
+      } else {
+        openBtn.classList.add('hidden');
+        openBtn.classList.remove('inline-flex');
+      }
+    }
+
+    // Toggle Bot State
+    async function toggleBotSwitch() {
+      const toggle = document.getElementById('botEnabledToggle');
+      await executeToggleBot(toggle.checked);
+    }
+
+    async function toggleBotSwitchClick() {
+      const toggle = document.getElementById('botEnabledToggle');
+      toggle.checked = !toggle.checked;
+      await executeToggleBot(toggle.checked);
+    }
+
+    async function executeToggleBot(newState) {
+      if (!currentTenantId) return;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-bot`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bot_enabled: newState })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          updateBotStatusUI(json.bot_enabled);
+          showToast(json.bot_enabled ? 'تم تفعيل رد البوت بنجاح! 🚀' : 'تم إيقاف رد البوت مؤقتاً ⏸️', 'success');
         } else {
-          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-950/80 text-rose-400 border border-rose-800/80';
-          badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-500"></span> متوقف مؤقتاً';
-          label.innerText = 'متوقف مؤقتاً';
-          label.className = 'text-xs text-rose-400 font-semibold mt-0.5';
-          statText.innerText = '⏸️ متوقف';
-          statText.className = 'text-lg sm:text-xl font-black text-amber-400';
-          quickBtn.className = 'w-full py-3 px-4 rounded-xl font-bold text-xs transition duration-200 shadow-md flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30';
-          quickBtn.innerHTML = '<span>▶️ تفعيل الرد الآلي الآن</span>';
-        }
-      }
-
-      function updateSheetButton(url) {
-        const openBtn = document.getElementById('openSheetBtn');
-        if (url && url.startsWith('http')) {
-          openBtn.href = url;
-          openBtn.classList.remove('hidden');
-          openBtn.classList.add('inline-flex');
-        } else {
-          openBtn.classList.add('hidden');
-          openBtn.classList.remove('inline-flex');
-        }
-      }
-
-      // Toggle Bot State
-      async function toggleBotSwitch() {
-        const toggle = document.getElementById('botEnabledToggle');
-        await executeToggleBot(toggle.checked);
-      }
-
-      async function toggleBotSwitchClick() {
-        const toggle = document.getElementById('botEnabledToggle');
-        toggle.checked = !toggle.checked;
-        await executeToggleBot(toggle.checked);
-      }
-
-      async function executeToggleBot(newState) {
-        if (!currentTenantId) return;
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-bot`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bot_enabled: newState })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            updateBotStatusUI(json.bot_enabled);
-            showToast(json.bot_enabled ? 'تم تفعيل رد البوت بنجاح! 🚀' : 'تم إيقاف رد البوت مؤقتاً ⏸️', 'success');
-          } else {
-            showToast(json.detail || 'حدث خطأ أثناء تعديل حالة البوت', 'error');
-            // Revert toggle
-            document.getElementById('botEnabledToggle').checked = !newState;
-          }
-        } catch (e) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
+          showToast(json.detail || 'حدث خطأ أثناء تعديل حالة البوت', 'error');
+          // Revert toggle
           document.getElementById('botEnabledToggle').checked = !newState;
         }
+      } catch (e) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+        document.getElementById('botEnabledToggle').checked = !newState;
+      }
+    }
+
+    // Save Google Sheets URL
+    async function saveSheetsUrl(event) {
+      event.preventDefault();
+      if (!currentTenantId) return;
+
+      const input = document.getElementById('sheetsUrlInput');
+      const btn = document.getElementById('saveSheetsBtn');
+      const spinner = document.getElementById('saveSheetsSpinner');
+      const url = input.value.trim();
+
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ google_sheets_url: url })
+        });
+        const json = await res.json();
+
+        if (res.ok && json.status === 'success') {
+          showToast('تم حفظ رابط شيت المخزن بنجاح! 📊', 'success');
+          updateSheetButton(url);
+        } else {
+          showToast(json.detail || 'فشل حفظ رابط الشيت', 'error');
+        }
+      } catch (err) {
+        showToast('خطأ في الاتصال أثناء حفظ الشيت', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    // Facebook One-Click OAuth
+    function startFacebookOAuth() {
+      if (!currentTenantId) {
+        showToast('يرجى تحديد المتجر أولاً', 'error');
+        return;
+      }
+      window.location.href = `/auth/facebook/login?tenant_id=${encodeURIComponent(currentTenantId)}`;
+    }
+
+    // TikTok One-Click OAuth
+    function startTikTokOAuth() {
+      if (!currentTenantId) {
+        showToast('يرجى تحديد المتجر أولاً', 'error');
+        return;
+      }
+      window.location.href = `/auth/tiktok/login?tenant_id=${encodeURIComponent(currentTenantId)}`;
+    }
+
+    // WhatsApp One-Click OAuth
+    function startWhatsAppOAuth() {
+      if (!currentTenantId) {
+        showToast('يرجى تحديد المتجر أولاً', 'error');
+        return;
+      }
+      window.location.href = `/auth/whatsapp/login?tenant_id=${encodeURIComponent(currentTenantId)}`;
+    }
+
+    // Save Facebook Settings
+    async function saveFacebookSettings(event) {
+      event.preventDefault();
+      if (!currentTenantId) return;
+
+      const pageIdInput = document.getElementById('facebookPageIdInput');
+      const tokenInput = document.getElementById('facebookTokenInput');
+      const btn = document.getElementById('saveFacebookBtn');
+      const spinner = document.getElementById('saveFacebookSpinner');
+      const entryContainer = document.getElementById('tokenEntryContainer');
+
+      const pageId = pageIdInput.value.trim();
+      const token = tokenInput ? tokenInput.value.trim() : '';
+
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      const payload = {
+        facebook_page_id: pageId
+      };
+
+      // Only send token if entry field is active/visible and user typed/pasted a new token
+      const isEntryVisible = entryContainer && !entryContainer.classList.contains('hidden');
+      if (isEntryVisible && token) {
+        payload.facebook_page_token = token;
       }
 
-      // Save Google Sheets URL
-      async function saveSheetsUrl(event) {
-        event.preventDefault();
-        if (!currentTenantId) return;
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
 
-        const input = document.getElementById('sheetsUrlInput');
-        const btn = document.getElementById('saveSheetsBtn');
-        const spinner = document.getElementById('saveSheetsSpinner');
-        const url = input.value.trim();
-
-        btn.disabled = true;
-        spinner.classList.remove('hidden');
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ google_sheets_url: url })
-          });
-          const json = await res.json();
-
-          if (res.ok && json.status === 'success') {
-            showToast('تم حفظ رابط شيت المخزن بنجاح! 📊', 'success');
-            updateSheetButton(url);
+        if (res.ok && json.status === 'success') {
+          if (pageId && !token && !hasSavedToken) {
+            showToast('⚠️ تم حفظ رقم الصفحة، ولكن يجب إدخال التوكن (Page Token) لتفعيل الرد التلقائي وإرسال الرسائل.', 'warning');
           } else {
-            showToast(json.detail || 'فشل حفظ رابط الشيت', 'error');
+            showToast('تم حفظ إعدادات فيسبوك وتأمين التوكن بنجاح! 🔒', 'success');
           }
-        } catch (err) {
-          showToast('خطأ في الاتصال أثناء حفظ الشيت', 'error');
-        } finally {
-          btn.disabled = false;
-          spinner.classList.add('hidden');
+          if (tokenInput) tokenInput.value = '';
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل تحديث بيانات فيسبوك', 'error');
         }
+      } catch (err) {
+        showToast('خطأ في الاتصال أثناء حفظ إعدادات فيسبوك', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    // Unlink Facebook Page
+    async function unlinkFacebook() {
+      if (!currentTenantId) return;
+      if (!confirm('هل أنت متأكد من رغبتك في إلغاء ربط صفحة فيسبوك؟ سيتوقف البوت عن الرد على رسائل الصفحة.')) {
+        return;
       }
 
-      // Facebook One-Click OAuth
-      function startFacebookOAuth() {
-        if (!currentTenantId) {
-          showToast('يرجى تحديد المتجر أولاً', 'error');
-          return;
+      const btn = document.getElementById('unlinkFacebookBtn');
+      if (btn) btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            facebook_page_id: "",
+            facebook_page_token: ""
+          })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تم إلغاء ربط صفحة فيسبوك بنجاح! 🗑️', 'info');
+          const pageIdInput = document.getElementById('facebookPageIdInput');
+          const tokenInput = document.getElementById('facebookTokenInput');
+          if (pageIdInput) pageIdInput.value = '';
+          if (tokenInput) tokenInput.value = '';
+          hasSavedToken = false;
+          updateTokenUIState(false);
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل إلغاء الربط', 'error');
         }
-        window.location.href = `/auth/facebook/login?tenant_id=${encodeURIComponent(currentTenantId)}`;
+      } catch (err) {
+        showToast('خطأ في الاتصال أثناء إلغاء الربط', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // Render Social Media Channels Grid
+    function renderSocialChannels(channels) {
+      const container = document.getElementById('socialChannelsGrid');
+      if (!container) return;
+      if (!channels || Object.keys(channels).length === 0) {
+        container.innerHTML = '<div class="col-span-full text-xs text-slate-500 text-center py-4">لا توجد قنوات مربوطة حالياً.</div>';
+        return;
       }
 
-      // TikTok One-Click OAuth
-      function startTikTokOAuth() {
-        if (!currentTenantId) {
-          showToast('يرجى تحديد المتجر أولاً', 'error');
-          return;
-        }
-        window.location.href = `/auth/tiktok/login?tenant_id=${encodeURIComponent(currentTenantId)}`;
-      }
+      let html = '';
+      for (const [key, ch] of Object.entries(channels)) {
+        let borderClass = 'border-slate-800 bg-slate-900/40';
+        let badgeClass = 'bg-slate-800 text-slate-400 border border-slate-700';
+        let badgeText = '⚪ غير مربوط';
 
-      // WhatsApp One-Click OAuth
-      function startWhatsAppOAuth() {
-        if (!currentTenantId) {
-          showToast('يرجى تحديد المتجر أولاً', 'error');
-          return;
-        }
-        window.location.href = `/auth/whatsapp/login?tenant_id=${encodeURIComponent(currentTenantId)}`;
-      }
-
-      // Save Facebook Settings
-      async function saveFacebookSettings(event) {
-        event.preventDefault();
-        if (!currentTenantId) return;
-
-        const pageIdInput = document.getElementById('facebookPageIdInput');
-        const tokenInput = document.getElementById('facebookTokenInput');
-        const btn = document.getElementById('saveFacebookBtn');
-        const spinner = document.getElementById('saveFacebookSpinner');
-        const entryContainer = document.getElementById('tokenEntryContainer');
-
-        const pageId = pageIdInput.value.trim();
-        const token = tokenInput ? tokenInput.value.trim() : '';
-
-        btn.disabled = true;
-        spinner.classList.remove('hidden');
-
-        const payload = {
-          facebook_page_id: pageId
-        };
-
-        // Only send token if entry field is active/visible and user typed/pasted a new token
-        const isEntryVisible = entryContainer && !entryContainer.classList.contains('hidden');
-        if (isEntryVisible && token) {
-          payload.facebook_page_token = token;
+        if (ch.status === 'connected') {
+          borderClass = 'border-emerald-800/60 bg-emerald-950/20';
+          badgeClass = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
+          badgeText = '🟢 متصل ونشط';
+        } else if (ch.status === 'pending_token') {
+          borderClass = 'border-amber-800/60 bg-amber-950/20';
+          badgeClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/30';
+          badgeText = '⚠️ ناقص التوكن';
         }
 
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          const json = await res.json();
+        const idDisplay = ch.id ? `<div class="text-[11px] font-mono text-slate-400 truncate mt-1 dir-ltr text-right" title="${ch.id}">ID: ${ch.id}</div>` : '';
 
-          if (res.ok && json.status === 'success') {
-            if (pageId && !token && !hasSavedToken) {
-              showToast('⚠️ تم حفظ رقم الصفحة، ولكن يجب إدخال التوكن (Page Token) لتفعيل الرد التلقائي وإرسال الرسائل.', 'warning');
-            } else {
-              showToast('تم حفظ إعدادات فيسبوك وتأمين التوكن بنجاح! 🔒', 'success');
-            }
-            if (tokenInput) tokenInput.value = '';
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل تحديث بيانات فيسبوك', 'error');
-          }
-        } catch (err) {
-          showToast('خطأ في الاتصال أثناء حفظ إعدادات فيسبوك', 'error');
-        } finally {
-          btn.disabled = false;
-          spinner.classList.add('hidden');
-        }
-      }
-
-      // Unlink Facebook Page
-      async function unlinkFacebook() {
-        if (!currentTenantId) return;
-        if (!confirm('هل أنت متأكد من رغبتك في إلغاء ربط صفحة فيسبوك؟ سيتوقف البوت عن الرد على رسائل الصفحة.')) {
-          return;
-        }
-
-        const btn = document.getElementById('unlinkFacebookBtn');
-        if (btn) btn.disabled = true;
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              facebook_page_id: "",
-              facebook_page_token: ""
-            })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast('تم إلغاء ربط صفحة فيسبوك بنجاح! 🗑️', 'info');
-            const pageIdInput = document.getElementById('facebookPageIdInput');
-            const tokenInput = document.getElementById('facebookTokenInput');
-            if (pageIdInput) pageIdInput.value = '';
-            if (tokenInput) tokenInput.value = '';
-            hasSavedToken = false;
-            updateTokenUIState(false);
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل إلغاء الربط', 'error');
-          }
-        } catch (err) {
-          showToast('خطأ في الاتصال أثناء إلغاء الربط', 'error');
-        } finally {
-          if (btn) btn.disabled = false;
-        }
-      }
-
-      // Render Social Media Channels Grid
-      function renderSocialChannels(channels) {
-        const container = document.getElementById('socialChannelsGrid');
-        if (!container) return;
-        if (!channels || Object.keys(channels).length === 0) {
-          container.innerHTML = '<div class="col-span-full text-xs text-slate-500 text-center py-4">لا توجد قنوات مربوطة حالياً.</div>';
-          return;
-        }
-
-        let html = '';
-        for (const [key, ch] of Object.entries(channels)) {
-          let borderClass = 'border-slate-800 bg-slate-900/40';
-          let badgeClass = 'bg-slate-800 text-slate-400 border border-slate-700';
-          let badgeText = '⚪ غير مربوط';
-
-          if (ch.status === 'connected') {
-            borderClass = 'border-emerald-800/60 bg-emerald-950/20';
-            badgeClass = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
-            badgeText = '🟢 متصل ونشط';
-          } else if (ch.status === 'pending_token') {
-            borderClass = 'border-amber-800/60 bg-amber-950/20';
-            badgeClass = 'bg-amber-500/10 text-amber-400 border border-amber-500/30';
-            badgeText = '⚠️ ناقص التوكن';
-          }
-
-          const idDisplay = ch.id ? `<div class="text-[11px] font-mono text-slate-400 truncate mt-1 dir-ltr text-right" title="${ch.id}">ID: ${ch.id}</div>` : '';
-          
-          let actionBtn = '';
-          if (ch.status === 'connected') {
-            if (ch.url) {
-              actionBtn = `
+        let actionBtn = '';
+        if (ch.status === 'connected') {
+          if (ch.url) {
+            actionBtn = `
               <a href="${ch.url}" target="_blank" class="mt-3 w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white text-xs font-bold text-center inline-flex items-center justify-center gap-1.5 border border-slate-700/60 transition">
                 <span>فتح القناة ↗</span>
               </a>`;
-            }
-          } else {
-            if (key === 'facebook') {
-              actionBtn = `
+          }
+        } else {
+          if (key === 'facebook') {
+            actionBtn = `
               <button onclick="startFacebookOAuth()" class="mt-3 w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold text-center inline-flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/20 transition cursor-pointer">
                 <span>ربط فيسبوك 🚀</span>
               </button>`;
-            } else if (key === 'instagram') {
-              actionBtn = `
+          } else if (key === 'instagram') {
+            actionBtn = `
               <button onclick="startFacebookOAuth()" class="mt-3 w-full py-2 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold text-center inline-flex items-center justify-center gap-1.5 shadow-md shadow-pink-600/20 transition cursor-pointer">
                 <span>ربط إنستغرام 📸</span>
               </button>`;
-            } else if (key === 'tiktok') {
-              actionBtn = `
+          } else if (key === 'tiktok') {
+            actionBtn = `
               <button onclick="startTikTokOAuth()" class="mt-3 w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 hover:text-rose-300 border border-rose-500/40 text-xs font-bold text-center inline-flex items-center justify-center gap-1.5 transition cursor-pointer">
                 <span>ربط تيك توك 🎵</span>
               </button>`;
-            } else if (key === 'whatsapp') {
-              actionBtn = `
+          } else if (key === 'whatsapp') {
+            actionBtn = `
               <button onclick="startWhatsAppOAuth()" class="mt-3 w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold text-center inline-flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition cursor-pointer">
                 <span>ربط واتساب 🟢</span>
               </button>`;
-            }
           }
+        }
 
-          html += `
+        html += `
           <div class="rounded-2xl p-4 border ${borderClass} transition flex flex-col justify-between">
             <div>
               <div class="flex items-center justify-between gap-2">
@@ -1873,16 +1914,16 @@
             ${actionBtn}
           </div>
         `;
-        }
-        container.innerHTML = html;
       }
+      container.innerHTML = html;
+    }
 
-      // Render Branches
-      function renderBranches(branches) {
-        const container = document.getElementById('branchesContainer');
-        if (!container) return;
-        if (!branches || branches.length === 0) {
-          container.innerHTML = `
+    // Render Branches
+    function renderBranches(branches) {
+      const container = document.getElementById('branchesContainer');
+      if (!container) return;
+      if (!branches || branches.length === 0) {
+        container.innerHTML = `
           <div class="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-slate-400 space-y-2">
             <span class="text-3xl block">🏬</span>
             <div class="text-xs font-bold text-slate-300">لا توجد فروع مسجلة حتى الآن</div>
@@ -1892,18 +1933,18 @@
             </button>
           </div>
         `;
-          return;
-        }
+        return;
+      }
 
-        let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
-        for (const b of branches) {
-          const mapBtn = b.google_maps_url ? `
+      let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
+      for (const b of branches) {
+        const mapBtn = b.google_maps_url ? `
           <a href="${b.google_maps_url}" target="_blank" class="px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 text-xs font-bold transition flex items-center gap-1">
             <span>🗺️ الخريطة</span>
           </a>
         ` : '';
 
-          html += `
+        html += `
           <div class="glass-card rounded-2xl p-4 sm:p-5 border border-slate-800/80 bg-slate-900/60 flex flex-col justify-between gap-3 hover:border-slate-700 transition">
             <div>
               <div class="flex items-start justify-between gap-2">
@@ -1943,123 +1984,123 @@
             </div>
           </div>
         `;
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function openAddBranchModal() {
+      document.getElementById('addBranchModal').classList.remove('hidden');
+      document.getElementById('branchNameInput').focus();
+    }
+
+    function closeAddBranchModal() {
+      document.getElementById('addBranchModal').classList.add('hidden');
+      document.getElementById('addBranchForm').reset();
+    }
+
+    async function submitAddBranch(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
+
+      const name = document.getElementById('branchNameInput').value.trim();
+      const governorate = document.getElementById('branchGovInput').value.trim();
+      const address = document.getElementById('branchAddressInput').value.trim();
+      const working_hours = document.getElementById('branchHoursInput').value.trim();
+      const google_maps_url = document.getElementById('branchMapInput').value.trim();
+
+      const btn = document.getElementById('saveBranchBtn');
+      const spinner = document.getElementById('saveBranchSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, governorate, address, working_hours, google_maps_url })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تمت إضافة الفرع بنجاح! 🏬', 'success');
+          closeAddBranchModal();
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل إضافة الفرع', 'error');
         }
-        html += '</div>';
-        container.innerHTML = html;
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    async function deleteBranch(branchId, branchName) {
+      if (!confirm(`هل أنت متأكد من حذف ${branchName}؟`)) return;
+      if (!currentTenantId) return;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches/${encodeURIComponent(branchId)}`, {
+          method: 'DELETE'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تم حذف الفرع بنجاح', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حذف الفرع', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
+    // Render Shipping Section
+    function renderShippingSection(rates, enabled) {
+      const badge = document.getElementById('shippingStatusBadge');
+      const toggle = document.getElementById('shippingToggle');
+      const container = document.getElementById('shippingRatesContainer');
+      const flatInput = document.getElementById('flatShippingInput');
+
+      const isEnabled = enabled !== false;
+      if (toggle) toggle.checked = isEnabled;
+
+      if (badge) {
+        if (isEnabled) {
+          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+          badge.innerText = '🟢 الشحن مفعّل';
+        } else {
+          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-rose-500/10 text-rose-400 border-rose-500/30';
+          badge.innerText = '🔴 الشحن موقوف';
+        }
       }
 
-      function openAddBranchModal() {
-        document.getElementById('addBranchModal').classList.remove('hidden');
-        document.getElementById('branchNameInput').focus();
+      if (!container) return;
+
+      const ratesList = rates || [];
+      // If flat rate exists, prefill the flat input
+      const flatRow = ratesList.find(r => r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد');
+      if (flatRow && flatInput && !flatInput.value) {
+        flatInput.value = flatRow.price;
       }
 
-      function closeAddBranchModal() {
-        document.getElementById('addBranchModal').classList.add('hidden');
-        document.getElementById('addBranchForm').reset();
-      }
-
-      async function submitAddBranch(e) {
-        e.preventDefault();
-        if (!currentTenantId) return;
-
-        const name = document.getElementById('branchNameInput').value.trim();
-        const governorate = document.getElementById('branchGovInput').value.trim();
-        const address = document.getElementById('branchAddressInput').value.trim();
-        const working_hours = document.getElementById('branchHoursInput').value.trim();
-        const google_maps_url = document.getElementById('branchMapInput').value.trim();
-
-        const btn = document.getElementById('saveBranchBtn');
-        const spinner = document.getElementById('saveBranchSpinner');
-        btn.disabled = true;
-        spinner.classList.remove('hidden');
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, governorate, address, working_hours, google_maps_url })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast('تمت إضافة الفرع بنجاح! 🏬', 'success');
-            closeAddBranchModal();
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل إضافة الفرع', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        } finally {
-          btn.disabled = false;
-          spinner.classList.add('hidden');
-        }
-      }
-
-      async function deleteBranch(branchId, branchName) {
-        if (!confirm(`هل أنت متأكد من حذف ${branchName}؟`)) return;
-        if (!currentTenantId) return;
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/branches/${encodeURIComponent(branchId)}`, {
-            method: 'DELETE'
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast('تم حذف الفرع بنجاح', 'success');
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل حذف الفرع', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        }
-      }
-
-      // Render Shipping Section
-      function renderShippingSection(rates, enabled) {
-        const badge = document.getElementById('shippingStatusBadge');
-        const toggle = document.getElementById('shippingToggle');
-        const container = document.getElementById('shippingRatesContainer');
-        const flatInput = document.getElementById('flatShippingInput');
-
-        const isEnabled = enabled !== false;
-        if (toggle) toggle.checked = isEnabled;
-
-        if (badge) {
-          if (isEnabled) {
-            badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-            badge.innerText = '🟢 الشحن مفعّل';
-          } else {
-            badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-rose-500/10 text-rose-400 border-rose-500/30';
-            badge.innerText = '🔴 الشحن موقوف';
-          }
-        }
-
-        if (!container) return;
-
-        const ratesList = rates || [];
-        // If flat rate exists, prefill the flat input
-        const flatRow = ratesList.find(r => r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد');
-        if (flatRow && flatInput && !flatInput.value) {
-          flatInput.value = flatRow.price;
-        }
-
-        if (ratesList.length === 0) {
-          container.innerHTML = `
+      if (ratesList.length === 0) {
+        container.innerHTML = `
           <div class="p-4 rounded-xl bg-slate-800/40 border border-dashed border-slate-700/80 text-center space-y-1 text-slate-400 text-xs">
             <div>💡 لم يتم تسجيل أسعار شحن مخصصة بعد.</div>
             <div class="text-[11px] text-slate-500">يعتمد الذكاء الاصطناعي السعر الافتراضي (50 ج.م) أو يمكنك تطبيق شحن موحد الآن ⚡.</div>
           </div>
         `;
-          return;
-        }
+        return;
+      }
 
-        let html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">';
-        for (const r of ratesList) {
-          const isFlat = r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد';
-          const icon = isFlat ? '⚡' : '📍';
-          const cardBg = isFlat ? 'bg-teal-950/20 border-teal-800/40' : 'bg-slate-800/60 border-slate-700/60';
-          html += `
+      let html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">';
+      for (const r of ratesList) {
+        const isFlat = r.governorate === 'جميع المحافظات' || r.governorate === 'شحن موحد';
+        const icon = isFlat ? '⚡' : '📍';
+        const cardBg = isFlat ? 'bg-teal-950/20 border-teal-800/40' : 'bg-slate-800/60 border-slate-700/60';
+        html += `
           <div class="p-2.5 sm:p-3 rounded-xl border ${cardBg} flex items-center justify-between gap-2 transition hover:border-teal-500/40">
             <div class="flex items-center gap-2 min-w-0">
               <span class="text-base">${icon}</span>
@@ -2073,161 +2114,161 @@
             </button>
           </div>
         `;
-        }
-        html += '</div>';
-        container.innerHTML = html;
       }
+      html += '</div>';
+      container.innerHTML = html;
+    }
 
-      // Toggle Shipping Enabled / Disabled
-      async function toggleShippingStatus() {
-        if (!currentTenantId) return;
-        const toggle = document.getElementById('shippingToggle');
-        const targetState = toggle ? toggle.checked : true;
+    // Toggle Shipping Enabled / Disabled
+    async function toggleShippingStatus() {
+      if (!currentTenantId) return;
+      const toggle = document.getElementById('shippingToggle');
+      const targetState = toggle ? toggle.checked : true;
 
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-shipping`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ shipping_enabled: targetState })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(json.message || 'تم تحديث حالة الشحن', 'success');
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل تبديل حالة الشحن', 'error');
-            if (toggle) toggle.checked = !targetState;
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/toggle-shipping`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shipping_enabled: targetState })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(json.message || 'تم تحديث حالة الشحن', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل تبديل حالة الشحن', 'error');
           if (toggle) toggle.checked = !targetState;
         }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+        if (toggle) toggle.checked = !targetState;
+      }
+    }
+
+    // Submit Flat Shipping Rate
+    async function submitFlatShipping(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
+
+      const input = document.getElementById('flatShippingInput');
+      const btn = document.getElementById('saveFlatShippingBtn');
+      const price = parseFloat(input.value);
+
+      if (isNaN(price) || price < 0) {
+        showToast('يرجى إدخال سعر شحن صحيح', 'warning');
+        return;
       }
 
-      // Submit Flat Shipping Rate
-      async function submitFlatShipping(e) {
-        e.preventDefault();
-        if (!currentTenantId) return;
+      btn.disabled = true;
 
-        const input = document.getElementById('flatShippingInput');
-        const btn = document.getElementById('saveFlatShippingBtn');
-        const price = parseFloat(input.value);
-
-        if (isNaN(price) || price < 0) {
-          showToast('يرجى إدخال سعر شحن صحيح', 'warning');
-          return;
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            governorate: 'جميع المحافظات',
+            price: price,
+            is_flat: true
+          })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(`تم تطبيق الشحن الموحد (${price} ج.م) لجميع المحافظات بنجاح! 🚚`, 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حفظ الشحن الموحد', 'error');
         }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
 
-        btn.disabled = true;
+    // Modal controls for Custom Governorate Rate
+    function openAddShippingRateModal() {
+      document.getElementById('addShippingRateModal').classList.remove('hidden');
+      document.getElementById('shippingGovInput').focus();
+    }
 
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              governorate: 'جميع المحافظات',
-              price: price,
-              is_flat: true
-            })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(`تم تطبيق الشحن الموحد (${price} ج.م) لجميع المحافظات بنجاح! 🚚`, 'success');
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل حفظ الشحن الموحد', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        } finally {
-          btn.disabled = false;
+    function closeAddShippingRateModal() {
+      document.getElementById('addShippingRateModal').classList.add('hidden');
+      document.getElementById('addShippingRateForm').reset();
+    }
+
+    async function submitAddShippingRate(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
+
+      const gov = document.getElementById('shippingGovInput').value.trim();
+      const price = parseFloat(document.getElementById('shippingPriceInput').value);
+
+      if (!gov || isNaN(price) || price < 0) {
+        showToast('يرجى ملء الحقول بشكل صحيح', 'warning');
+        return;
+      }
+
+      const btn = document.getElementById('saveShippingRateBtn');
+      const spinner = document.getElementById('saveShippingRateSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            governorate: gov,
+            price: price,
+            is_flat: false
+          })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(`تم حفظ تسعيرة شحن ${gov} بنجاح! 🚚`, 'success');
+          closeAddShippingRateModal();
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حفظ تسعيرة الشحن', 'error');
         }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
       }
+    }
 
-      // Modal controls for Custom Governorate Rate
-      function openAddShippingRateModal() {
-        document.getElementById('addShippingRateModal').classList.remove('hidden');
-        document.getElementById('shippingGovInput').focus();
-      }
+    async function deleteShippingRate(rateId, govName) {
+      if (!confirm(`هل أنت متأكد من حذف تسعيرة شحن ${govName}؟`)) return;
+      if (!currentTenantId) return;
 
-      function closeAddShippingRateModal() {
-        document.getElementById('addShippingRateModal').classList.add('hidden');
-        document.getElementById('addShippingRateForm').reset();
-      }
-
-      async function submitAddShippingRate(e) {
-        e.preventDefault();
-        if (!currentTenantId) return;
-
-        const gov = document.getElementById('shippingGovInput').value.trim();
-        const price = parseFloat(document.getElementById('shippingPriceInput').value);
-
-        if (!gov || isNaN(price) || price < 0) {
-          showToast('يرجى ملء الحقول بشكل صحيح', 'warning');
-          return;
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates/${encodeURIComponent(rateId)}`, {
+          method: 'DELETE'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تم حذف تسعيرة الشحن بنجاح', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حذف تسعيرة الشحن', 'error');
         }
-
-        const btn = document.getElementById('saveShippingRateBtn');
-        const spinner = document.getElementById('saveShippingRateSpinner');
-        btn.disabled = true;
-        spinner.classList.remove('hidden');
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              governorate: gov,
-              price: price,
-              is_flat: false
-            })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(`تم حفظ تسعيرة شحن ${gov} بنجاح! 🚚`, 'success');
-            closeAddShippingRateModal();
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل حفظ تسعيرة الشحن', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        } finally {
-          btn.disabled = false;
-          spinner.classList.add('hidden');
-        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
       }
+    }
 
-      async function deleteShippingRate(rateId, govName) {
-        if (!confirm(`هل أنت متأكد من حذف تسعيرة شحن ${govName}؟`)) return;
-        if (!currentTenantId) return;
+    // ==========================================
+    // Promotions & Vouchers Management
+    // ==========================================
+    function renderPromotionsSection(promos) {
+      const container = document.getElementById('promotionsContainer');
+      if (!container) return;
 
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/shipping-rates/${encodeURIComponent(rateId)}`, {
-            method: 'DELETE'
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast('تم حذف تسعيرة الشحن بنجاح', 'success');
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل حذف تسعيرة الشحن', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        }
-      }
-
-      // ==========================================
-      // Promotions & Vouchers Management
-      // ==========================================
-      function renderPromotionsSection(promos) {
-        const container = document.getElementById('promotionsContainer');
-        if (!container) return;
-
-        const list = promos || [];
-        if (list.length === 0) {
-          container.innerHTML = `
+      const list = promos || [];
+      if (list.length === 0) {
+        container.innerHTML = `
           <div class="p-5 rounded-2xl bg-slate-900/50 border border-dashed border-slate-800 text-center space-y-2 text-slate-400 text-xs">
             <div class="text-2xl">🎁</div>
             <div class="font-bold text-slate-300">لم يتم تفعيل أي عروض ترويجية أو كروت هدايا بعد</div>
@@ -2239,62 +2280,62 @@
             </button>
           </div>
         `;
-          return;
+        return;
+      }
+
+      let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
+      for (const p of list) {
+        const type = (p.promo_type || 'percentage').toLowerCase();
+        let typeBadge = '';
+        let typeColor = 'purple';
+        let icon = '🎁';
+
+        if (type === 'voucher' || type === 'gift_card') {
+          typeBadge = 'كارت هدايا / فاوتشر';
+          icon = '💳';
+          typeColor = 'purple';
+        } else if (type === 'free_shipping') {
+          typeBadge = 'شحن مجاني';
+          icon = '🚚';
+          typeColor = 'teal';
+        } else if (type === 'percentage') {
+          typeBadge = 'خصم مئوي %';
+          icon = '🏷️';
+          typeColor = 'indigo';
+        } else {
+          typeBadge = 'خصم مباشر';
+          icon = '💵';
+          typeColor = 'blue';
         }
 
-        let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">';
-        for (const p of list) {
-          const type = (p.promo_type || 'percentage').toLowerCase();
-          let typeBadge = '';
-          let typeColor = 'purple';
-          let icon = '🎁';
+        const codeBadge = p.code ? `<span class="font-mono bg-slate-800 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">كود: ${p.code}</span>` : '<span class="text-slate-500 text-[11px]">تطبيق تلقائي</span>';
+        const targetBadge = p.target_items ? `<span class="bg-indigo-950/80 text-indigo-300 px-2 py-0.5 rounded-lg border border-indigo-500/30 text-[11px]">🎯 ${p.target_items}</span>` : '';
+        const rawBranch = p.branch || (p.description && p.description.match(/\[الفرع:\s*([^\]]+)\]/)?.[1]) || '';
+        const branchBadge = (rawBranch && rawBranch !== 'كل الفروع')
+          ? `<span class="bg-amber-500/10 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">🏬 فرع: ${rawBranch}</span>`
+          : `<span class="bg-slate-800 text-slate-400 px-2 py-0.5 rounded-lg text-[11px]">🏬 كل الفروع</span>`;
 
-          if (type === 'voucher' || type === 'gift_card') {
-            typeBadge = 'كارت هدايا / فاوتشر';
-            icon = '💳';
-            typeColor = 'purple';
-          } else if (type === 'free_shipping') {
-            typeBadge = 'شحن مجاني';
-            icon = '🚚';
-            typeColor = 'teal';
-          } else if (type === 'percentage') {
-            typeBadge = 'خصم مئوي %';
-            icon = '🏷️';
-            typeColor = 'indigo';
-          } else {
-            typeBadge = 'خصم مباشر';
-            icon = '💵';
-            typeColor = 'blue';
-          }
+        let conditionText = '';
+        if (p.min_order_value && Number(p.min_order_value) > 0) {
+          conditionText = `أوردر بـ ${Number(p.min_order_value).toLocaleString('ar-EG')} ج.م فأكثر`;
+        } else if (p.min_order_items && Number(p.min_order_items) > 1) {
+          conditionText = `${p.min_order_items} قطع فأكثر`;
+        } else {
+          conditionText = 'أي طلب';
+        }
 
-          const codeBadge = p.code ? `<span class="font-mono bg-slate-800 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">كود: ${p.code}</span>` : '<span class="text-slate-500 text-[11px]">تطبيق تلقائي</span>';
-          const targetBadge = p.target_items ? `<span class="bg-indigo-950/80 text-indigo-300 px-2 py-0.5 rounded-lg border border-indigo-500/30 text-[11px]">🎯 ${p.target_items}</span>` : '';
-          const rawBranch = p.branch || (p.description && p.description.match(/\[الفرع:\s*([^\]]+)\]/)?.[1]) || '';
-          const branchBadge = (rawBranch && rawBranch !== 'كل الفروع')
-            ? `<span class="bg-amber-500/10 text-amber-300 px-2 py-0.5 rounded-lg border border-amber-500/20 text-[11px]">🏬 فرع: ${rawBranch}</span>`
-            : `<span class="bg-slate-800 text-slate-400 px-2 py-0.5 rounded-lg text-[11px]">🏬 كل الفروع</span>`;
+        let valueText = '';
+        if (type === 'voucher' || type === 'gift_card') {
+          valueText = `هدية: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
+        } else if (type === 'percentage') {
+          valueText = `خصم: ${p.discount_value}%`;
+        } else if (type === 'fixed') {
+          valueText = `خصم: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
+        } else {
+          valueText = 'شحن 0 ج.م';
+        }
 
-          let conditionText = '';
-          if (p.min_order_value && Number(p.min_order_value) > 0) {
-            conditionText = `أوردر بـ ${Number(p.min_order_value).toLocaleString('ar-EG')} ج.م فأكثر`;
-          } else if (p.min_order_items && Number(p.min_order_items) > 1) {
-            conditionText = `${p.min_order_items} قطع فأكثر`;
-          } else {
-            conditionText = 'أي طلب';
-          }
-
-          let valueText = '';
-          if (type === 'voucher' || type === 'gift_card') {
-            valueText = `هدية: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
-          } else if (type === 'percentage') {
-            valueText = `خصم: ${p.discount_value}%`;
-          } else if (type === 'fixed') {
-            valueText = `خصم: ${Number(p.discount_value).toLocaleString('ar-EG')} ج.م`;
-          } else {
-            valueText = 'شحن 0 ج.م';
-          }
-
-          html += `
+        html += `
           <div class="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 hover:border-purple-500/30 transition flex flex-col justify-between space-y-3">
             <div class="space-y-2">
               <div class="flex items-center justify-between gap-2">
@@ -2322,401 +2363,401 @@
             </div>
           </div>
         `;
-        }
-        html += '</div>';
-        container.innerHTML = html;
       }
+      html += '</div>';
+      container.innerHTML = html;
+    }
 
-      function openAddPromotionModal() {
-        document.getElementById('addPromotionModal').classList.remove('hidden');
-        populatePromoBranches();
-        onPromoTypeChange();
-      }
+    function openAddPromotionModal() {
+      document.getElementById('addPromotionModal').classList.remove('hidden');
+      populatePromoBranches();
+      onPromoTypeChange();
+    }
 
-      function populatePromoBranches() {
-        const branchSelect = document.getElementById('promoBranchSelect');
-        if (!branchSelect) return;
-        branchSelect.innerHTML = `
+    function populatePromoBranches() {
+      const branchSelect = document.getElementById('promoBranchSelect');
+      if (!branchSelect) return;
+      branchSelect.innerHTML = `
           <option value="كل الفروع">🏬 كل الفروع (المتجر بالكامل وأونلاين)</option>
           <option value="__custom__">✏️ فرع مخصص أو مكان محدد...</option>
         `;
-        const branches = (typeof tenantData !== 'undefined' && tenantData?.branches) ? tenantData.branches : [];
-        if (branches && branches.length) {
-          branches.forEach(b => {
-            const opt = document.createElement('option');
-            opt.value = b.name;
-            opt.innerText = `🏬 ${b.name} (${b.governorate || ''})`;
-            branchSelect.insertBefore(opt, branchSelect.lastElementChild);
-          });
+      const branches = (typeof tenantData !== 'undefined' && tenantData?.branches) ? tenantData.branches : [];
+      if (branches && branches.length) {
+        branches.forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b.name;
+          opt.innerText = `🏬 ${b.name} (${b.governorate || ''})`;
+          branchSelect.insertBefore(opt, branchSelect.lastElementChild);
+        });
+      }
+      const customInput = document.getElementById('promoCustomBranchInput');
+      if (customInput) customInput.classList.add('hidden');
+    }
+
+    function onPromoBranchSelectChange() {
+      const val = document.getElementById('promoBranchSelect').value;
+      const customInput = document.getElementById('promoCustomBranchInput');
+      if (val === '__custom__') {
+        customInput.classList.remove('hidden');
+        customInput.focus();
+      } else {
+        customInput.classList.add('hidden');
+      }
+    }
+
+    function closeAddPromotionModal() {
+      document.getElementById('addPromotionModal').classList.add('hidden');
+      document.getElementById('addPromotionForm').reset();
+    }
+
+    function onPromoTypeChange() {
+      const type = document.getElementById('promoTypeSelect').value;
+      const discountLabel = document.getElementById('promoDiscountLabel');
+      const unitSuffix = document.getElementById('promoUnitSuffix');
+      const discountInput = document.getElementById('promoDiscountValueInput');
+      const minValueCol = document.getElementById('promoMinValueCol');
+      const descInput = document.getElementById('promoDescInput');
+
+      if (type === 'voucher') {
+        discountLabel.innerText = 'قيمة الفاوتشر / كارت الهدية *';
+        unitSuffix.innerText = 'ج.م';
+        discountInput.placeholder = '200';
+        minValueCol.classList.remove('hidden');
+        if (!descInput.value || descInput.value.includes('خصم')) {
+          descInput.value = 'اشتري بقيمة 1000 جنيه واحصل على كارت هدايا بـ 200 جنيه لطلبك القادم!';
         }
-        const customInput = document.getElementById('promoCustomBranchInput');
-        if (customInput) customInput.classList.add('hidden');
+      } else if (type === 'free_shipping') {
+        discountLabel.innerText = 'قيمة التخفيض *';
+        unitSuffix.innerText = 'ج.م';
+        discountInput.value = '0';
+        discountInput.placeholder = '0';
+        if (!descInput.value || descInput.value.includes('كارت هدايا')) {
+          descInput.value = 'شحن مجاني لجميع المحافظات عند طلب قطعتين أو أكثر!';
+        }
+      } else if (type === 'percentage') {
+        discountLabel.innerText = 'نسبة الخصم المئوية *';
+        unitSuffix.innerText = '%';
+        discountInput.placeholder = '20';
+        if (!descInput.value) {
+          descInput.value = 'خصم خاص 20% على إجمالي مشترياتك لفترة محدودة!';
+        }
+      } else if (type === 'fixed') {
+        discountLabel.innerText = 'مبلغ الخصم المباشر *';
+        unitSuffix.innerText = 'ج.م';
+        discountInput.placeholder = '50';
+        if (!descInput.value) {
+          descInput.value = 'خصم فوري بقيمة 50 جنيه على الأوردر!';
+        }
+      }
+    }
+
+    async function submitAddPromotion(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
+
+      const pType = document.getElementById('promoTypeSelect').value;
+      const pVal = parseFloat(document.getElementById('promoDiscountValueInput').value || 0);
+      const pCode = document.getElementById('promoCodeInput').value.trim();
+      const pMinVal = parseFloat(document.getElementById('promoMinValueInput').value || 0);
+      const pMinItems = parseInt(document.getElementById('promoMinItemsInput').value || 1);
+      const pTargetItems = (document.getElementById('promoTargetItemsInput')?.value || '').trim();
+      const branchSelectVal = document.getElementById('promoBranchSelect')?.value || 'كل الفروع';
+      let pBranch = branchSelectVal;
+      if (branchSelectVal === '__custom__') {
+        pBranch = document.getElementById('promoCustomBranchInput')?.value.trim() || 'كل الفروع';
+      }
+      const pDesc = document.getElementById('promoDescInput').value.trim();
+
+      if (!pDesc) {
+        showToast('يرجى كتابة وصف العرض', 'warning');
+        return;
       }
 
-      function onPromoBranchSelectChange() {
-        const val = document.getElementById('promoBranchSelect').value;
-        const customInput = document.getElementById('promoCustomBranchInput');
-        if (val === '__custom__') {
-          customInput.classList.remove('hidden');
-          customInput.focus();
+      const btn = document.getElementById('savePromoBtn');
+      const spinner = document.getElementById('savePromoSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const payload = {
+          promo_type: pType,
+          discount_value: pVal,
+          code: pCode || null,
+          min_order_items: pMinItems,
+          min_order_value: pMinVal,
+          target_items: pTargetItems || null,
+          branch: pBranch || 'كل الفروع',
+          description: pDesc
+        };
+
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تمت إضافة العرض بنجاح! 🎁', 'success');
+          closeAddPromotionModal();
+          loadDashboardData();
         } else {
-          customInput.classList.add('hidden');
+          showToast(json.detail || 'فشل إضافة العرض', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    async function deletePromotion(promoId) {
+      if (!confirm('هل أنت متأكد من حذف هذا العرض الترويجي؟')) return;
+      if (!currentTenantId) return;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions/${encodeURIComponent(promoId)}`, {
+          method: 'DELETE'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast('تم حذف العرض الترويجي', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل حذف العرض', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
+    // ==========================================
+    // Auto-Posting Management
+    // ==========================================
+    function renderAutopostSection(enabled, intervalHours, lastAt) {
+      const badge = document.getElementById('autopostStatusBadge');
+      const toggle = document.getElementById('autopostToggle');
+      const select = document.getElementById('autopostIntervalSelect');
+      const lastLabel = document.getElementById('autopostLastAtLabel');
+
+      const isEnabled = Boolean(enabled);
+      if (toggle) toggle.checked = isEnabled;
+
+      if (badge) {
+        if (isEnabled) {
+          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+          badge.innerText = '🟢 النشر التلقائي مفعّل';
+        } else {
+          badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-slate-800 text-slate-400 border-slate-700';
+          badge.innerText = '⚪ النشر التلقائي متوقف';
         }
       }
 
-      function closeAddPromotionModal() {
-        document.getElementById('addPromotionModal').classList.add('hidden');
-        document.getElementById('addPromotionForm').reset();
+      if (select && intervalHours) {
+        select.value = String(intervalHours);
       }
 
-      function onPromoTypeChange() {
-        const type = document.getElementById('promoTypeSelect').value;
-        const discountLabel = document.getElementById('promoDiscountLabel');
-        const unitSuffix = document.getElementById('promoUnitSuffix');
-        const discountInput = document.getElementById('promoDiscountValueInput');
-        const minValueCol = document.getElementById('promoMinValueCol');
-        const descInput = document.getElementById('promoDescInput');
-
-        if (type === 'voucher') {
-          discountLabel.innerText = 'قيمة الفاوتشر / كارت الهدية *';
-          unitSuffix.innerText = 'ج.م';
-          discountInput.placeholder = '200';
-          minValueCol.classList.remove('hidden');
-          if (!descInput.value || descInput.value.includes('خصم')) {
-            descInput.value = 'اشتري بقيمة 1000 جنيه واحصل على كارت هدايا بـ 200 جنيه لطلبك القادم!';
+      if (lastLabel) {
+        if (lastAt && lastAt !== 'None' && lastAt !== '') {
+          try {
+            const d = new Date(lastAt);
+            lastLabel.innerText = d.toLocaleString('ar-EG');
+          } catch (e) {
+            lastLabel.innerText = lastAt;
           }
-        } else if (type === 'free_shipping') {
-          discountLabel.innerText = 'قيمة التخفيض *';
-          unitSuffix.innerText = 'ج.م';
-          discountInput.value = '0';
-          discountInput.placeholder = '0';
-          if (!descInput.value || descInput.value.includes('كارت هدايا')) {
-            descInput.value = 'شحن مجاني لجميع المحافظات عند طلب قطعتين أو أكثر!';
-          }
-        } else if (type === 'percentage') {
-          discountLabel.innerText = 'نسبة الخصم المئوية *';
-          unitSuffix.innerText = '%';
-          discountInput.placeholder = '20';
-          if (!descInput.value) {
-            descInput.value = 'خصم خاص 20% على إجمالي مشترياتك لفترة محدودة!';
-          }
-        } else if (type === 'fixed') {
-          discountLabel.innerText = 'مبلغ الخصم المباشر *';
-          unitSuffix.innerText = 'ج.م';
-          discountInput.placeholder = '50';
-          if (!descInput.value) {
-            descInput.value = 'خصم فوري بقيمة 50 جنيه على الأوردر!';
-          }
+        } else {
+          lastLabel.innerText = 'لم يتم النشر بعد';
         }
       }
+    }
 
-      async function submitAddPromotion(e) {
-        e.preventDefault();
-        if (!currentTenantId) return;
+    async function toggleAutopostStatus() {
+      if (!currentTenantId) return;
+      const toggle = document.getElementById('autopostToggle');
+      const targetState = toggle ? toggle.checked : false;
 
-        const pType = document.getElementById('promoTypeSelect').value;
-        const pVal = parseFloat(document.getElementById('promoDiscountValueInput').value || 0);
-        const pCode = document.getElementById('promoCodeInput').value.trim();
-        const pMinVal = parseFloat(document.getElementById('promoMinValueInput').value || 0);
-        const pMinItems = parseInt(document.getElementById('promoMinItemsInput').value || 1);
-        const pTargetItems = (document.getElementById('promoTargetItemsInput')?.value || '').trim();
-        const branchSelectVal = document.getElementById('promoBranchSelect')?.value || 'كل الفروع';
-        let pBranch = branchSelectVal;
-        if (branchSelectVal === '__custom__') {
-          pBranch = document.getElementById('promoCustomBranchInput')?.value.trim() || 'كل الفروع';
-        }
-        const pDesc = document.getElementById('promoDescInput').value.trim();
-
-        if (!pDesc) {
-          showToast('يرجى كتابة وصف العرض', 'warning');
-          return;
-        }
-
-        const btn = document.getElementById('savePromoBtn');
-        const spinner = document.getElementById('savePromoSpinner');
-        btn.disabled = true;
-        spinner.classList.remove('hidden');
-
-        try {
-          const payload = {
-            promo_type: pType,
-            discount_value: pVal,
-            code: pCode || null,
-            min_order_items: pMinItems,
-            min_order_value: pMinVal,
-            target_items: pTargetItems || null,
-            branch: pBranch || 'كل الفروع',
-            description: pDesc
-          };
-
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast('تمت إضافة العرض بنجاح! 🎁', 'success');
-            closeAddPromotionModal();
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل إضافة العرض', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        } finally {
-          btn.disabled = false;
-          spinner.classList.add('hidden');
-        }
-      }
-
-      async function deletePromotion(promoId) {
-        if (!confirm('هل أنت متأكد من حذف هذا العرض الترويجي؟')) return;
-        if (!currentTenantId) return;
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/promotions/${encodeURIComponent(promoId)}`, {
-            method: 'DELETE'
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast('تم حذف العرض الترويجي', 'success');
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل حذف العرض', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        }
-      }
-
-      // ==========================================
-      // Auto-Posting Management
-      // ==========================================
-      function renderAutopostSection(enabled, intervalHours, lastAt) {
-        const badge = document.getElementById('autopostStatusBadge');
-        const toggle = document.getElementById('autopostToggle');
-        const select = document.getElementById('autopostIntervalSelect');
-        const lastLabel = document.getElementById('autopostLastAtLabel');
-
-        const isEnabled = Boolean(enabled);
-        if (toggle) toggle.checked = isEnabled;
-
-        if (badge) {
-          if (isEnabled) {
-            badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-            badge.innerText = '🟢 النشر التلقائي مفعّل';
-          } else {
-            badge.className = 'text-xs font-semibold px-3 py-1.5 rounded-xl border bg-slate-800 text-slate-400 border-slate-700';
-            badge.innerText = '⚪ النشر التلقائي متوقف';
-          }
-        }
-
-        if (select && intervalHours) {
-          select.value = String(intervalHours);
-        }
-
-        if (lastLabel) {
-          if (lastAt && lastAt !== 'None' && lastAt !== '') {
-            try {
-              const d = new Date(lastAt);
-              lastLabel.innerText = d.toLocaleString('ar-EG');
-            } catch (e) {
-              lastLabel.innerText = lastAt;
-            }
-          } else {
-            lastLabel.innerText = 'لم يتم النشر بعد';
-          }
-        }
-      }
-
-      async function toggleAutopostStatus() {
-        if (!currentTenantId) return;
-        const toggle = document.getElementById('autopostToggle');
-        const targetState = toggle ? toggle.checked : false;
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ autopost_enabled: targetState })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(targetState ? 'تم تفعيل النشر التلقائي 📢' : 'تم إيقاف النشر التلقائي', 'success');
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل تحديث حالة النشر', 'error');
-            if (toggle) toggle.checked = !targetState;
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autopost_enabled: targetState })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(targetState ? 'تم تفعيل النشر التلقائي 📢' : 'تم إيقاف النشر التلقائي', 'success');
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل تحديث حالة النشر', 'error');
           if (toggle) toggle.checked = !targetState;
         }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+        if (toggle) toggle.checked = !targetState;
       }
+    }
 
-      async function changeAutopostInterval() {
-        if (!currentTenantId) return;
-        const select = document.getElementById('autopostIntervalSelect');
-        const val = parseInt(select.value);
+    async function changeAutopostInterval() {
+      if (!currentTenantId) return;
+      const select = document.getElementById('autopostIntervalSelect');
+      const val = parseInt(select.value);
 
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ autopost_interval_hours: val })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(`تم ضبط معدل النشر: كل ${val} ساعة`, 'success');
-          } else {
-            showToast(json.detail || 'فشل تحديث معدل النشر', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        }
-      }
-
-      async function triggerAutoPostNow() {
-        if (!currentTenantId) return;
-        const btn = document.getElementById('triggerAutopostBtn');
-        const spinner = document.getElementById('triggerAutopostSpinner');
-        const feedback = document.getElementById('autopostFeedback');
-
-        btn.disabled = true;
-        spinner.classList.remove('hidden');
-        if (feedback) feedback.innerText = 'جاري اختيار منتج وصياغة البوست والنشر... ⏳';
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-trigger`, {
-            method: 'POST'
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(`تم نشر بوست «${json.product_name || 'المنتج'}» بنجاح على فيسبوك! 🚀`, 'success');
-            if (feedback) feedback.innerText = `تم النشر بنجاح لمنتج «${json.product_name || ''}» 📸`;
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل نشر البوست الترويجي', 'error');
-            if (feedback) feedback.innerText = `خطأ: ${json.detail || 'فشل النشر'}`;
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-          if (feedback) feedback.innerText = 'تعذر الاتصال بالسيرفر';
-        } finally {
-          btn.disabled = false;
-          spinner.classList.add('hidden');
-        }
-      }
-
-      // -----------------------------------------------------------------
-      // Scroll to Section Helper
-      // -----------------------------------------------------------------
-      function scrollToSection(id) {
-        const el = document.getElementById(id);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          el.classList.add('ring-2', 'ring-purple-500/50');
-          setTimeout(() => el.classList.remove('ring-2', 'ring-purple-500/50'), 1500);
-        }
-      }
-
-      // -----------------------------------------------------------------
-      // Orders Management Logic (متابعة وإدارة الطلبات وتحديد العلامات)
-      // -----------------------------------------------------------------
-      let allOrders = [];
-      let currentOrderFilter = 'all';
-      let activeOrderModalId = null;
-
-      async function loadOrdersData() {
-        if (!currentTenantId) return;
-        const spinner = document.getElementById('ordersRefreshSpinner');
-        if (spinner) spinner.classList.remove('hidden');
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/orders`);
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            allOrders = json.orders || [];
-            renderOrders();
-            const badge = document.getElementById('ordersCountBadge');
-            if (badge) badge.innerText = `${allOrders.length} طلب`;
-            const statOrders = document.getElementById('statOrders');
-            if (statOrders) statOrders.innerText = allOrders.length;
-          }
-        } catch (e) {
-          console.error('Error loading orders:', e);
-        } finally {
-          if (spinner) spinner.classList.add('hidden');
-        }
-      }
-
-      function filterOrders(status) {
-        currentOrderFilter = status;
-        document.querySelectorAll('.order-filter-tab').forEach(tab => {
-          tab.classList.remove('bg-purple-600', 'text-white');
-          tab.classList.add('text-slate-400');
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autopost_interval_hours: val })
         });
-        const activeTab = document.getElementById(`orderTab-${status}`);
-        if (activeTab) {
-          activeTab.classList.remove('text-slate-400');
-          activeTab.classList.add('bg-purple-600', 'text-white');
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(`تم ضبط معدل النشر: كل ${val} ساعة`, 'success');
+        } else {
+          showToast(json.detail || 'فشل تحديث معدل النشر', 'error');
         }
-        renderOrders();
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
+    async function triggerAutoPostNow() {
+      if (!currentTenantId) return;
+      const btn = document.getElementById('triggerAutopostBtn');
+      const spinner = document.getElementById('triggerAutopostSpinner');
+      const feedback = document.getElementById('autopostFeedback');
+
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+      if (feedback) feedback.innerText = 'جاري اختيار منتج وصياغة البوست والنشر... ⏳';
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/autopost-trigger`, {
+          method: 'POST'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(`تم نشر بوست «${json.product_name || 'المنتج'}» بنجاح على فيسبوك! 🚀`, 'success');
+          if (feedback) feedback.innerText = `تم النشر بنجاح لمنتج «${json.product_name || ''}» 📸`;
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل نشر البوست الترويجي', 'error');
+          if (feedback) feedback.innerText = `خطأ: ${json.detail || 'فشل النشر'}`;
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+        if (feedback) feedback.innerText = 'تعذر الاتصال بالسيرفر';
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // Scroll to Section Helper
+    // -----------------------------------------------------------------
+    function scrollToSection(id) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.classList.add('ring-2', 'ring-purple-500/50');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-purple-500/50'), 1500);
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // Orders Management Logic (متابعة وإدارة الطلبات وتحديد العلامات)
+    // -----------------------------------------------------------------
+    let allOrders = [];
+    let currentOrderFilter = 'all';
+    let activeOrderModalId = null;
+
+    async function loadOrdersData() {
+      if (!currentTenantId) return;
+      const spinner = document.getElementById('ordersRefreshSpinner');
+      if (spinner) spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/orders`);
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          allOrders = json.orders || [];
+          renderOrders();
+          const badge = document.getElementById('ordersCountBadge');
+          if (badge) badge.innerText = `${allOrders.length} طلب`;
+          const statOrders = document.getElementById('statOrders');
+          if (statOrders) statOrders.innerText = allOrders.length;
+        }
+      } catch (e) {
+        console.error('Error loading orders:', e);
+      } finally {
+        if (spinner) spinner.classList.add('hidden');
+      }
+    }
+
+    function filterOrders(status) {
+      currentOrderFilter = status;
+      document.querySelectorAll('.order-filter-tab').forEach(tab => {
+        tab.classList.remove('bg-purple-600', 'text-white');
+        tab.classList.add('text-slate-400');
+      });
+      const activeTab = document.getElementById(`orderTab-${status}`);
+      if (activeTab) {
+        activeTab.classList.remove('text-slate-400');
+        activeTab.classList.add('bg-purple-600', 'text-white');
+      }
+      renderOrders();
+    }
+
+    function handleOrderSearch() {
+      renderOrders();
+    }
+
+    function renderOrders() {
+      const container = document.getElementById('ordersContainer');
+      if (!container) return;
+
+      const searchTerm = (document.getElementById('orderSearchInput')?.value || '').trim().toLowerCase();
+
+      let filtered = allOrders;
+      if (currentOrderFilter !== 'all') {
+        if (currentOrderFilter === 'new') {
+          filtered = filtered.filter(o => o.status === 'new' || o.status === 'confirmed');
+        } else {
+          filtered = filtered.filter(o => o.status === currentOrderFilter);
+        }
       }
 
-      function handleOrderSearch() {
-        renderOrders();
+      if (searchTerm) {
+        filtered = filtered.filter(o =>
+          String(o.order_number).includes(searchTerm) ||
+          (o.customer_name || '').toLowerCase().includes(searchTerm) ||
+          (o.phone || '').includes(searchTerm) ||
+          (o.items_summary || '').toLowerCase().includes(searchTerm) ||
+          (o.governorate || '').toLowerCase().includes(searchTerm)
+        );
       }
 
-      function renderOrders() {
-        const container = document.getElementById('ordersContainer');
-        if (!container) return;
-
-        const searchTerm = (document.getElementById('orderSearchInput')?.value || '').trim().toLowerCase();
-
-        let filtered = allOrders;
-        if (currentOrderFilter !== 'all') {
-          if (currentOrderFilter === 'new') {
-            filtered = filtered.filter(o => o.status === 'new' || o.status === 'confirmed');
-          } else {
-            filtered = filtered.filter(o => o.status === currentOrderFilter);
-          }
-        }
-
-        if (searchTerm) {
-          filtered = filtered.filter(o => 
-            String(o.order_number).includes(searchTerm) ||
-            (o.customer_name || '').toLowerCase().includes(searchTerm) ||
-            (o.phone || '').includes(searchTerm) ||
-            (o.items_summary || '').toLowerCase().includes(searchTerm) ||
-            (o.governorate || '').toLowerCase().includes(searchTerm)
-          );
-        }
-
-        if (!filtered.length) {
-          container.innerHTML = `
+      if (!filtered.length) {
+        container.innerHTML = `
             <div class="col-span-full py-12 text-center text-slate-500 space-y-2">
               <span class="text-4xl block">🛒</span>
               <p class="text-sm font-semibold">لا توجد طلبات في هذا القسم حالياً</p>
             </div>
           `;
-          return;
-        }
+        return;
+      }
 
-        const statusBadges = {
-          'new': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">🆕 قيد التجهيز</span>',
-          'confirmed': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">📦 مؤكد</span>',
-          'shipped': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">🚚 تم الشحن</span>',
-          'delivered': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✅ تم البيع والتسليم</span>',
-          'cancelled': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">❌ ملغي</span>',
-        };
+      const statusBadges = {
+        'new': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">🆕 قيد التجهيز</span>',
+        'confirmed': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">📦 مؤكد</span>',
+        'shipped': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">🚚 تم الشحن</span>',
+        'delivered': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✅ تم البيع والتسليم</span>',
+        'cancelled': '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">❌ ملغي</span>',
+      };
 
-        container.innerHTML = filtered.map(o => {
-          const badge = statusBadges[o.status] || `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300">${o.status}</span>`;
-          const dateStr = o.created_at ? new Date(o.created_at).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+      container.innerHTML = filtered.map(o => {
+        const badge = statusBadges[o.status] || `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300">${o.status}</span>`;
+        const dateStr = o.created_at ? new Date(o.created_at).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
-          return `
+        return `
             <div class="glass-card rounded-2xl p-4 border-slate-800 hover:border-purple-500/40 transition flex flex-col justify-between gap-3 shadow-md hover:shadow-xl bg-slate-900/60 relative group">
               <!-- Top Row: Order # + Status -->
               <div class="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
@@ -2774,38 +2815,38 @@
               </div>
             </div>
           `;
-        }).join('');
-      }
+      }).join('');
+    }
 
-      function openOrderDetails(orderId) {
-        const order = allOrders.find(o => o.id === orderId);
-        if (!order) return;
-        activeOrderModalId = orderId;
+    function openOrderDetails(orderId) {
+      const order = allOrders.find(o => o.id === orderId);
+      if (!order) return;
+      activeOrderModalId = orderId;
 
-        document.getElementById('modalOrderNumber').innerText = `الطلب #${order.order_number}`;
-        const dateStr = order.created_at ? new Date(order.created_at).toLocaleString('ar-EG') : '';
-        document.getElementById('modalOrderDate').innerText = dateStr;
+      document.getElementById('modalOrderNumber').innerText = `الطلب #${order.order_number}`;
+      const dateStr = order.created_at ? new Date(order.created_at).toLocaleString('ar-EG') : '';
+      document.getElementById('modalOrderDate').innerText = dateStr;
 
-        const statusBadges = {
-          'new': '🆕 قيد التجهيز',
-          'confirmed': '📦 مؤكد',
-          'shipped': '🚚 تم الشحن',
-          'delivered': '✅ تم البيع والتسليم',
-          'cancelled': '❌ ملغي',
-        };
-        const badgeEl = document.getElementById('modalOrderStatusBadge');
-        badgeEl.innerText = statusBadges[order.status] || order.status;
+      const statusBadges = {
+        'new': '🆕 قيد التجهيز',
+        'confirmed': '📦 مؤكد',
+        'shipped': '🚚 تم الشحن',
+        'delivered': '✅ تم البيع والتسليم',
+        'cancelled': '❌ ملغي',
+      };
+      const badgeEl = document.getElementById('modalOrderStatusBadge');
+      badgeEl.innerText = statusBadges[order.status] || order.status;
 
-        // Customer details
-        document.getElementById('modalCustomerName').innerText = order.customer_name || 'غير محدد';
-        document.getElementById('modalCustomerPhone').innerText = order.phone || 'غير مسجل';
-        document.getElementById('modalCustomerGov').innerText = order.governorate || '-';
-        document.getElementById('modalCustomerAddress').innerText = order.address || '-';
+      // Customer details
+      document.getElementById('modalCustomerName').innerText = order.customer_name || 'غير محدد';
+      document.getElementById('modalCustomerPhone').innerText = order.phone || 'غير مسجل';
+      document.getElementById('modalCustomerGov').innerText = order.governorate || '-';
+      document.getElementById('modalCustomerAddress').innerText = order.address || '-';
 
-        // Call & WhatsApp quick links
-        const cleanPhone = (order.phone || '').replace(/[^0-9]/g, '');
-        const waPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : (cleanPhone.startsWith('2') ? cleanPhone : `20${cleanPhone}`);
-        document.getElementById('modalCustomerActions').innerHTML = `
+      // Call & WhatsApp quick links
+      const cleanPhone = (order.phone || '').replace(/[^0-9]/g, '');
+      const waPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : (cleanPhone.startsWith('2') ? cleanPhone : `20${cleanPhone}`);
+      document.getElementById('modalCustomerActions').innerHTML = `
           ${cleanPhone ? `
             <a href="tel:${cleanPhone}" class="px-2 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold transition flex items-center gap-1">
               📞 اتصال
@@ -2816,28 +2857,28 @@
           ` : ''}
         `;
 
-        // Financials
-        document.getElementById('modalOrderSubtotal').innerText = `${Number(order.subtotal || 0).toLocaleString()} ج.م`;
-        document.getElementById('modalOrderShipping').innerText = `${Number(order.shipping_fee || 0).toLocaleString()} ج.م`;
+      // Financials
+      document.getElementById('modalOrderSubtotal').innerText = `${Number(order.subtotal || 0).toLocaleString()} ج.م`;
+      document.getElementById('modalOrderShipping').innerText = `${Number(order.shipping_fee || 0).toLocaleString()} ج.م`;
 
-        const discRow = document.getElementById('modalOrderDiscountRow');
-        if (order.discount && Number(order.discount) > 0) {
-          discRow.classList.remove('hidden');
-          const note = order.discount_note || order.promo_code ? ` (${order.discount_note || order.promo_code})` : '';
-          document.getElementById('modalOrderDiscountLabel').innerText = `الخصم / كارت الهدية${note}:`;
-          document.getElementById('modalOrderDiscount').innerText = `-${Number(order.discount).toLocaleString()} ج.م`;
-        } else {
-          discRow.classList.add('hidden');
-        }
-        document.getElementById('modalOrderTotal').innerText = `${Number(order.total || 0).toLocaleString()} ج.م`;
+      const discRow = document.getElementById('modalOrderDiscountRow');
+      if (order.discount && Number(order.discount) > 0) {
+        discRow.classList.remove('hidden');
+        const note = order.discount_note || order.promo_code ? ` (${order.discount_note || order.promo_code})` : '';
+        document.getElementById('modalOrderDiscountLabel').innerText = `الخصم / كارت الهدية${note}:`;
+        document.getElementById('modalOrderDiscount').innerText = `-${Number(order.discount).toLocaleString()} ج.م`;
+      } else {
+        discRow.classList.add('hidden');
+      }
+      document.getElementById('modalOrderTotal').innerText = `${Number(order.total || 0).toLocaleString()} ج.م`;
 
-        // Items List
-        const itemsContainer = document.getElementById('modalOrderItemsContainer');
-        const items = order.items || [];
-        if (!items.length) {
-          itemsContainer.innerHTML = `<p class="text-xs text-slate-400 py-2">لا توجد تفاصيل أصناف لهذا الطلب</p>`;
-        } else {
-          itemsContainer.innerHTML = items.map(it => `
+      // Items List
+      const itemsContainer = document.getElementById('modalOrderItemsContainer');
+      const items = order.items || [];
+      if (!items.length) {
+        itemsContainer.innerHTML = `<p class="text-xs text-slate-400 py-2">لا توجد تفاصيل أصناف لهذا الطلب</p>`;
+      } else {
+        itemsContainer.innerHTML = items.map(it => `
             <div class="flex items-center gap-3 p-2 rounded-xl bg-slate-900/80 border border-slate-800">
               <div class="w-12 h-12 rounded-lg bg-slate-950 overflow-hidden flex items-center justify-center flex-shrink-0 border border-slate-800">
                 ${it.image_url ? `
@@ -2860,127 +2901,127 @@
               </div>
             </div>
           `).join('');
-        }
-
-        document.getElementById('orderDetailsModal').classList.remove('hidden');
       }
 
-      function closeOrderDetailsModal() {
-        document.getElementById('orderDetailsModal').classList.add('hidden');
-        activeOrderModalId = null;
-      }
+      document.getElementById('orderDetailsModal').classList.remove('hidden');
+    }
 
-      async function quickUpdateOrderStatus(orderId, newStatus, event) {
-        if (event) event.stopPropagation();
-        await executeOrderStatusUpdate(orderId, newStatus);
-      }
+    function closeOrderDetailsModal() {
+      document.getElementById('orderDetailsModal').classList.add('hidden');
+      activeOrderModalId = null;
+    }
 
-      async function changeCurrentOrderStatus(newStatus) {
-        if (!activeOrderModalId) return;
-        await executeOrderStatusUpdate(activeOrderModalId, newStatus);
-      }
+    async function quickUpdateOrderStatus(orderId, newStatus, event) {
+      if (event) event.stopPropagation();
+      await executeOrderStatusUpdate(orderId, newStatus);
+    }
 
-      async function executeOrderStatusUpdate(orderId, newStatus) {
-        if (!currentTenantId) return;
+    async function changeCurrentOrderStatus(newStatus) {
+      if (!activeOrderModalId) return;
+      await executeOrderStatusUpdate(activeOrderModalId, newStatus);
+    }
 
-        const confirmMsg = newStatus === 'cancelled'
-          ? 'هل أنت متأكد من إلغاء هذا الأوردر؟ سيتم إرجاع كميات الأصناف للمخزن تلقائياً.'
-          : (newStatus === 'delivered' ? 'هل تريد تحديد الأوردر كـ تم البيع والتسليم؟' : `تغيير حالة الأوردر؟`);
+    async function executeOrderStatusUpdate(orderId, newStatus) {
+      if (!currentTenantId) return;
 
-        if (!confirm(confirmMsg)) return;
+      const confirmMsg = newStatus === 'cancelled'
+        ? 'هل أنت متأكد من إلغاء هذا الأوردر؟ سيتم إرجاع كميات الأصناف للمخزن تلقائياً.'
+        : (newStatus === 'delivered' ? 'هل تريد تحديد الأوردر كـ تم البيع والتسليم؟' : `تغيير حالة الأوردر؟`);
 
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/orders/${orderId}/status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus })
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(json.message || 'تم تحديث حالة الأوردر بنجاح! 🚀', 'success');
-            await loadOrdersData();
-            if (activeOrderModalId === orderId) {
-              openOrderDetails(orderId);
-            }
-          } else {
-            showToast(json.detail || 'فشل تحديث حالة الأوردر', 'error');
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(json.message || 'تم تحديث حالة الأوردر بنجاح! 🚀', 'success');
+          await loadOrdersData();
+          if (activeOrderModalId === orderId) {
+            openOrderDetails(orderId);
           }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر لتحديث الأوردر', 'error');
+        } else {
+          showToast(json.detail || 'فشل تحديث حالة الأوردر', 'error');
         }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر لتحديث الأوردر', 'error');
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // Products & Images Management Logic (معرض المنتجات وضغط الصور)
+    // -----------------------------------------------------------------
+    let allProducts = [];
+
+    async function loadProductsData() {
+      if (!currentTenantId) return;
+      const spinner = document.getElementById('productsRefreshSpinner');
+      if (spinner) spinner.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products`);
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          allProducts = json.products || [];
+          renderProducts();
+          const badge = document.getElementById('productsCountBadge');
+          if (badge) badge.innerText = `${allProducts.length} صنف`;
+          const statProducts = document.getElementById('statProducts');
+          if (statProducts) statProducts.innerText = allProducts.length;
+        }
+      } catch (e) {
+        console.error('Error loading products:', e);
+      } finally {
+        if (spinner) spinner.classList.add('hidden');
+      }
+    }
+
+    function handleProductSearch() {
+      renderProducts();
+    }
+
+    function renderProducts() {
+      const container = document.getElementById('productsContainer');
+      if (!container) return;
+
+      const searchTerm = (document.getElementById('productSearchInput')?.value || '').trim().toLowerCase();
+      let filtered = allProducts;
+      if (searchTerm) {
+        filtered = filtered.filter(p =>
+          (p.name || '').toLowerCase().includes(searchTerm) ||
+          (p.material || '').toLowerCase().includes(searchTerm) ||
+          (p.category || '').toLowerCase().includes(searchTerm)
+        );
       }
 
-      // -----------------------------------------------------------------
-      // Products & Images Management Logic (معرض المنتجات وضغط الصور)
-      // -----------------------------------------------------------------
-      let allProducts = [];
-
-      async function loadProductsData() {
-        if (!currentTenantId) return;
-        const spinner = document.getElementById('productsRefreshSpinner');
-        if (spinner) spinner.classList.remove('hidden');
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products`);
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            allProducts = json.products || [];
-            renderProducts();
-            const badge = document.getElementById('productsCountBadge');
-            if (badge) badge.innerText = `${allProducts.length} صنف`;
-            const statProducts = document.getElementById('statProducts');
-            if (statProducts) statProducts.innerText = allProducts.length;
-          }
-        } catch (e) {
-          console.error('Error loading products:', e);
-        } finally {
-          if (spinner) spinner.classList.add('hidden');
-        }
-      }
-
-      function handleProductSearch() {
-        renderProducts();
-      }
-
-      function renderProducts() {
-        const container = document.getElementById('productsContainer');
-        if (!container) return;
-
-        const searchTerm = (document.getElementById('productSearchInput')?.value || '').trim().toLowerCase();
-        let filtered = allProducts;
-        if (searchTerm) {
-          filtered = filtered.filter(p => 
-            (p.name || '').toLowerCase().includes(searchTerm) ||
-            (p.material || '').toLowerCase().includes(searchTerm) ||
-            (p.category || '').toLowerCase().includes(searchTerm)
-          );
-        }
-
-        if (!filtered.length) {
-          container.innerHTML = `
+      if (!filtered.length) {
+        container.innerHTML = `
             <div class="col-span-full py-12 text-center text-slate-500 space-y-2">
               <span class="text-4xl block">📦</span>
               <p class="text-sm font-semibold">لا توجد منتجات مسجلة في المخزن حالياً</p>
             </div>
           `;
-          return;
-        }
+        return;
+      }
 
-        container.innerHTML = filtered.map(p => {
-          const hasImg = Boolean(p.image_url);
-          const imgBadge = hasImg
-            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm">🖼️ له صورة</span>'
-            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm">📷 بدون صورة</span>';
+      container.innerHTML = filtered.map(p => {
+        const hasImg = Boolean(p.image_url);
+        const imgBadge = hasImg
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm">🖼️ له صورة</span>'
+          : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm">📷 بدون صورة</span>';
 
-          const catBadge = p.category
-            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">👔 ${p.category}</span>`
-            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">👔 رجالي</span>';
+        const catBadge = p.category
+          ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">👔 ${p.category}</span>`
+          : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">👔 رجالي</span>';
 
-          const matBadge = p.material
-            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700" title="خامة: ${p.material}">🧵 ${p.material}</span>`
-            : '';
+        const matBadge = p.material
+          ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700" title="خامة: ${p.material}">🧵 ${p.material}</span>`
+          : '';
 
-          return `
+        return `
             <div id="productCard-${p.id}" class="glass-card rounded-2xl p-3 border-slate-800 flex flex-col justify-between gap-2.5 shadow-md hover:border-blue-500/40 transition bg-slate-900/60 relative group">
               <!-- Image thumbnail area -->
               <div class="relative w-full aspect-square rounded-xl bg-slate-950 overflow-hidden flex items-center justify-center border border-slate-800">
@@ -3035,257 +3076,257 @@
               </div>
             </div>
           `;
-        }).join('');
+      }).join('');
+    }
+
+    async function handleProductImageFilePick(productId, inputEl) {
+      const file = inputEl.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        showToast('يرجى اختيار ملف صورة صالح (JPG, PNG, WEBP)', 'error');
+        return;
       }
 
-      async function handleProductImageFilePick(productId, inputEl) {
-        const file = inputEl.files?.[0];
-        if (!file) return;
+      const overlay = document.getElementById(`productLoading-${productId}`);
+      if (overlay) overlay.classList.remove('hidden');
 
-        if (!file.type.startsWith('image/')) {
-          showToast('يرجى اختيار ملف صورة صالح (JPG, PNG, WEBP)', 'error');
-          return;
-        }
-
-        const overlay = document.getElementById(`productLoading-${productId}`);
-        if (overlay) overlay.classList.remove('hidden');
-
-        try {
-          const reader = new FileReader();
-          reader.onload = async () => {
-            const base64Data = reader.result;
-            try {
-              const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products/${productId}/image`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image_data: base64Data })
-              });
-              const json = await res.json();
-              if (res.ok && json.status === 'success') {
-                showToast(json.message || 'تم تحديث صورة المنتج بنجاح! 📸', 'success');
-                await loadProductsData();
-              } else {
-                showToast(json.detail || 'فشل رفع الصورة', 'error');
-              }
-            } catch (err) {
-              showToast('تعذر الاتصال بالسيرفر لرفع الصورة', 'error');
-            } finally {
-              if (overlay) overlay.classList.add('hidden');
-              inputEl.value = '';
+      try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64Data = reader.result;
+          try {
+            const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products/${productId}/image`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image_data: base64Data })
+            });
+            const json = await res.json();
+            if (res.ok && json.status === 'success') {
+              showToast(json.message || 'تم تحديث صورة المنتج بنجاح! 📸', 'success');
+              await loadProductsData();
+            } else {
+              showToast(json.detail || 'فشل رفع الصورة', 'error');
             }
-          };
-          reader.readAsDataURL(file);
-        } catch (e) {
-          if (overlay) overlay.classList.add('hidden');
-          showToast('حدث خطأ أثناء قراءة ملف الصورة', 'error');
-        }
-      }
-
-      async function deleteProductImage(productId, productName) {
-        if (!confirm(`هل تريد إزالة صورة «${productName}»؟`)) return;
-
-        try {
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products/${productId}/image`, {
-            method: 'DELETE'
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(json.message || 'تم حذف صورة المنتج 🗑️', 'success');
-            await loadProductsData();
-          } else {
-            showToast(json.detail || 'فشل حذف صورة المنتج', 'error');
+          } catch (err) {
+            showToast('تعذر الاتصال بالسيرفر لرفع الصورة', 'error');
+          } finally {
+            if (overlay) overlay.classList.add('hidden');
+            inputEl.value = '';
           }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر', 'error');
-        }
+        };
+        reader.readAsDataURL(file);
+      } catch (e) {
+        if (overlay) overlay.classList.add('hidden');
+        showToast('حدث خطأ أثناء قراءة ملف الصورة', 'error');
       }
+    }
 
-      // -----------------------------------------------------------------
-      // Stock & Product Management Modal (إضافة قطع وتحديث المخزون)
-      // -----------------------------------------------------------------
-      let currentStockModalMode = 'restock';
-      let stockNewImageBase64 = null;
+    async function deleteProductImage(productId, productName) {
+      if (!confirm(`هل تريد إزالة صورة «${productName}»؟`)) return;
 
-      function openAddStockModal(preselectedProductId = null) {
-        document.getElementById('addStockModal').classList.remove('hidden');
-        populateStockProductDropdown(preselectedProductId);
-        if (preselectedProductId) {
-          setStockModalMode('restock');
-        }
-      }
-
-      function closeAddStockModal() {
-        document.getElementById('addStockModal').classList.add('hidden');
-        document.getElementById('addStockForm').reset();
-        stockNewImageBase64 = null;
-        document.getElementById('stockNewImagePreviewContainer')?.classList.add('hidden');
-      }
-
-      function setStockModalMode(mode) {
-        currentStockModalMode = mode;
-        const restockTab = document.getElementById('stockModeRestockTab');
-        const newTab = document.getElementById('stockModeNewTab');
-        const selectGroup = document.getElementById('stockProductSelectGroup');
-        const newFields = document.getElementById('stockNewProductFields');
-
-        if (mode === 'restock') {
-          restockTab.classList.add('bg-blue-600', 'text-white', 'shadow');
-          restockTab.classList.remove('text-slate-400');
-          newTab.classList.remove('bg-blue-600', 'text-white', 'shadow');
-          newTab.classList.add('text-slate-400');
-          selectGroup.classList.remove('hidden');
-          newFields.classList.add('hidden');
-          document.getElementById('stockNewProductNameInput').required = false;
-          document.getElementById('stockNewPriceInput').required = false;
+      try {
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/products/${productId}/image`, {
+          method: 'DELETE'
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(json.message || 'تم حذف صورة المنتج 🗑️', 'success');
+          await loadProductsData();
         } else {
-          newTab.classList.add('bg-blue-600', 'text-white', 'shadow');
-          newTab.classList.remove('text-slate-400');
-          restockTab.classList.remove('bg-blue-600', 'text-white', 'shadow');
-          restockTab.classList.add('text-slate-400');
-          selectGroup.classList.add('hidden');
-          newFields.classList.remove('hidden');
-          document.getElementById('stockNewProductNameInput').required = true;
-          document.getElementById('stockNewPriceInput').required = true;
+          showToast(json.detail || 'فشل حذف صورة المنتج', 'error');
         }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر', 'error');
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // Stock & Product Management Modal (إضافة قطع وتحديث المخزون)
+    // -----------------------------------------------------------------
+    let currentStockModalMode = 'restock';
+    let stockNewImageBase64 = null;
+
+    function openAddStockModal(preselectedProductId = null) {
+      document.getElementById('addStockModal').classList.remove('hidden');
+      populateStockProductDropdown(preselectedProductId);
+      if (preselectedProductId) {
+        setStockModalMode('restock');
+      }
+    }
+
+    function closeAddStockModal() {
+      document.getElementById('addStockModal').classList.add('hidden');
+      document.getElementById('addStockForm').reset();
+      stockNewImageBase64 = null;
+      document.getElementById('stockNewImagePreviewContainer')?.classList.add('hidden');
+    }
+
+    function setStockModalMode(mode) {
+      currentStockModalMode = mode;
+      const restockTab = document.getElementById('stockModeRestockTab');
+      const newTab = document.getElementById('stockModeNewTab');
+      const selectGroup = document.getElementById('stockProductSelectGroup');
+      const newFields = document.getElementById('stockNewProductFields');
+
+      if (mode === 'restock') {
+        restockTab.classList.add('bg-blue-600', 'text-white', 'shadow');
+        restockTab.classList.remove('text-slate-400');
+        newTab.classList.remove('bg-blue-600', 'text-white', 'shadow');
+        newTab.classList.add('text-slate-400');
+        selectGroup.classList.remove('hidden');
+        newFields.classList.add('hidden');
+        document.getElementById('stockNewProductNameInput').required = false;
+        document.getElementById('stockNewPriceInput').required = false;
+      } else {
+        newTab.classList.add('bg-blue-600', 'text-white', 'shadow');
+        newTab.classList.remove('text-slate-400');
+        restockTab.classList.remove('bg-blue-600', 'text-white', 'shadow');
+        restockTab.classList.add('text-slate-400');
+        selectGroup.classList.add('hidden');
+        newFields.classList.remove('hidden');
+        document.getElementById('stockNewProductNameInput').required = true;
+        document.getElementById('stockNewPriceInput').required = true;
+      }
+    }
+
+    function populateStockProductDropdown(selectedId = null) {
+      const select = document.getElementById('stockProductIdSelect');
+      if (!select) return;
+      if (!allProducts.length) {
+        select.innerHTML = `<option value="">(لا توجد منتجات مسجلة، اختر إضافة صنف جديد)</option>`;
+        setStockModalMode('new');
+        return;
       }
 
-      function populateStockProductDropdown(selectedId = null) {
-        const select = document.getElementById('stockProductIdSelect');
-        if (!select) return;
-        if (!allProducts.length) {
-          select.innerHTML = `<option value="">(لا توجد منتجات مسجلة، اختر إضافة صنف جديد)</option>`;
-          setStockModalMode('new');
-          return;
-        }
-
-        select.innerHTML = allProducts.map(p => `
+      select.innerHTML = allProducts.map(p => `
           <option value="${p.id}" ${selectedId === p.id ? 'selected' : ''}>
             ${p.name} (${Number(p.price || 0).toLocaleString()} ج.م - رصيد: ${p.total_stock || 0} قطعة)
           </option>
         `).join('');
-      }
+    }
 
-      function onStockProductSelectChange() {
-        const pid = document.getElementById('stockProductIdSelect').value;
-        const prod = allProducts.find(p => p.id === pid);
-        if (prod && prod.variants && prod.variants.length > 0) {
-          const firstVar = prod.variants[0];
-          if (firstVar.size) document.getElementById('stockSizeInput').value = firstVar.size;
-          if (firstVar.color) document.getElementById('stockColorInput').value = firstVar.color;
+    function onStockProductSelectChange() {
+      const pid = document.getElementById('stockProductIdSelect').value;
+      const prod = allProducts.find(p => p.id === pid);
+      if (prod && prod.variants && prod.variants.length > 0) {
+        const firstVar = prod.variants[0];
+        if (firstVar.size) document.getElementById('stockSizeInput').value = firstVar.size;
+        if (firstVar.color) document.getElementById('stockColorInput').value = firstVar.color;
+      }
+    }
+
+    function adjustStockModalQty(delta) {
+      const input = document.getElementById('stockQtyInput');
+      let val = parseInt(input.value || 1) + delta;
+      if (val < 1) val = 1;
+      input.value = val;
+    }
+
+    function previewStockNewImage(input) {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showToast('يرجى اختيار ملف صورة صالح', 'error');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        stockNewImageBase64 = e.target.result;
+        const preview = document.getElementById('stockNewImagePreview');
+        const container = document.getElementById('stockNewImagePreviewContainer');
+        if (preview && container) {
+          preview.src = stockNewImageBase64;
+          container.classList.remove('hidden');
         }
-      }
+      };
+      reader.readAsDataURL(file);
+    }
 
-      function adjustStockModalQty(delta) {
-        const input = document.getElementById('stockQtyInput');
-        let val = parseInt(input.value || 1) + delta;
-        if (val < 1) val = 1;
-        input.value = val;
-      }
+    async function submitAddStock(e) {
+      e.preventDefault();
+      if (!currentTenantId) return;
 
-      function previewStockNewImage(input) {
-        const file = input.files?.[0];
-        if (!file) return;
-        if (!file.type.startsWith('image/')) {
-          showToast('يرجى اختيار ملف صورة صالح', 'error');
+      const btn = document.getElementById('saveStockBtn');
+      const spinner = document.getElementById('saveStockSpinner');
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+
+      try {
+        const size = document.getElementById('stockSizeInput').value.trim();
+        const color = document.getElementById('stockColorInput').value.trim();
+        const qty = parseInt(document.getElementById('stockQtyInput').value || 1);
+
+        if (!size || !color || qty < 1) {
+          showToast('يرجى التأكد من كتابة المقاس واللون وتحديد الكمية بشكل صحيح', 'warning');
           return;
         }
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          stockNewImageBase64 = e.target.result;
-          const preview = document.getElementById('stockNewImagePreview');
-          const container = document.getElementById('stockNewImagePreviewContainer');
-          if (preview && container) {
-            preview.src = stockNewImageBase64;
-            container.classList.remove('hidden');
-          }
+
+        let payload = {
+          size: size,
+          color: color,
+          qty: qty
         };
-        reader.readAsDataURL(file);
-      }
 
-      async function submitAddStock(e) {
-        e.preventDefault();
-        if (!currentTenantId) return;
+        if (currentStockModalMode === 'restock') {
+          const pid = document.getElementById('stockProductIdSelect').value;
+          if (!pid) {
+            showToast('يرجى اختيار المنتج من القائمة', 'warning');
+            return;
+          }
+          payload.product_id = pid;
+        } else {
+          const name = document.getElementById('stockNewProductNameInput').value.trim();
+          const category = document.getElementById('stockNewCategorySelect').value;
+          const material = document.getElementById('stockNewMaterialInput').value.trim();
+          const price = parseFloat(document.getElementById('stockNewPriceInput').value || 0);
 
-        const btn = document.getElementById('saveStockBtn');
-        const spinner = document.getElementById('saveStockSpinner');
-        btn.disabled = true;
-        spinner.classList.remove('hidden');
-
-        try {
-          const size = document.getElementById('stockSizeInput').value.trim();
-          const color = document.getElementById('stockColorInput').value.trim();
-          const qty = parseInt(document.getElementById('stockQtyInput').value || 1);
-
-          if (!size || !color || qty < 1) {
-            showToast('يرجى التأكد من كتابة المقاس واللون وتحديد الكمية بشكل صحيح', 'warning');
+          if (!name) {
+            showToast('يرجى كتابة اسم الصنف الجديد', 'warning');
+            return;
+          }
+          if (price <= 0) {
+            showToast('يرجى كتابة سعر بيع صالح للمنتج', 'warning');
             return;
           }
 
-          let payload = {
-            size: size,
-            color: color,
-            qty: qty
-          };
-
-          if (currentStockModalMode === 'restock') {
-            const pid = document.getElementById('stockProductIdSelect').value;
-            if (!pid) {
-              showToast('يرجى اختيار المنتج من القائمة', 'warning');
-              return;
-            }
-            payload.product_id = pid;
-          } else {
-            const name = document.getElementById('stockNewProductNameInput').value.trim();
-            const category = document.getElementById('stockNewCategorySelect').value;
-            const material = document.getElementById('stockNewMaterialInput').value.trim();
-            const price = parseFloat(document.getElementById('stockNewPriceInput').value || 0);
-
-            if (!name) {
-              showToast('يرجى كتابة اسم الصنف الجديد', 'warning');
-              return;
-            }
-            if (price <= 0) {
-              showToast('يرجى كتابة سعر بيع صالح للمنتج', 'warning');
-              return;
-            }
-
-            payload.product_name = name;
-            payload.category = category;
-            payload.material = material;
-            payload.price = price;
-            if (stockNewImageBase64) {
-              payload.image_data = stockNewImageBase64;
-            }
+          payload.product_name = name;
+          payload.category = category;
+          payload.material = material;
+          payload.price = price;
+          if (stockNewImageBase64) {
+            payload.image_data = stockNewImageBase64;
           }
-
-          const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/stock/add`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          const json = await res.json();
-          if (res.ok && json.status === 'success') {
-            showToast(json.message || 'تمت إضافة القطع للمخزون بنجاح! 📦', 'success');
-            closeAddStockModal();
-            await loadProductsData();
-            loadDashboardData();
-          } else {
-            showToast(json.detail || 'فشل تحديث المخزون', 'error');
-          }
-        } catch (err) {
-          showToast('تعذر الاتصال بالسيرفر لتحديث المخزون', 'error');
-        } finally {
-          btn.disabled = false;
-          spinner.classList.add('hidden');
         }
-      }
 
-      // Initialize on page load immediately or on DOM ready
-      if (document.readyState === 'loading') {
-        window.addEventListener('DOMContentLoaded', resolveInitialTenant);
-      } else {
-        resolveInitialTenant();
+        const res = await fetch(`/api/dashboard/${encodeURIComponent(currentTenantId)}/stock/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (res.ok && json.status === 'success') {
+          showToast(json.message || 'تمت إضافة القطع للمخزون بنجاح! 📦', 'success');
+          closeAddStockModal();
+          await loadProductsData();
+          loadDashboardData();
+        } else {
+          showToast(json.detail || 'فشل تحديث المخزون', 'error');
+        }
+      } catch (err) {
+        showToast('تعذر الاتصال بالسيرفر لتحديث المخزون', 'error');
+      } finally {
+        btn.disabled = false;
+        spinner.classList.add('hidden');
       }
+    }
+
+    // Initialize on page load immediately or on DOM ready
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', resolveInitialTenant);
+    } else {
+      resolveInitialTenant();
+    }
   </script>
 </body>
 

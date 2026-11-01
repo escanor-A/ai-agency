@@ -1893,6 +1893,17 @@ def get_dashboard_html() -> Optional[str]:
     return None
 
 
+@app.get("/tiktokPzmur3aS6Y6aZHUVYotVZpsE5CekJpOU.txt")
+async def tiktok_developer_verification_file():
+    """توثيق ملكية الدومين والبادئة لتطبيق تيك توك"""
+    fname = "tiktokPzmur3aS6Y6aZHUVYotVZpsE5CekJpOU.txt"
+    if os.path.exists(fname):
+        with open(fname, "r", encoding="utf-8") as f:
+            content = f.read()
+        return Response(content=content, media_type="text/plain")
+    return Response(content="tiktokPzmur3aS6Y6aZHUVYotVZpsE5CekJpOU", media_type="text/plain")
+
+
 @app.get("/privacy", response_class=HTMLResponse)
 @app.get("/privacy-policy", response_class=HTMLResponse)
 async def privacy_policy_page():
@@ -1904,14 +1915,14 @@ async def privacy_policy_page():
 </head>
 <body>
 <h1>سياسة الخصوصية (Privacy Policy)</h1>
-<p>نحن نحترم خصوصيتك وملتزمون بحماية بيانات المستخدمين والعملاء. يقوم تطبيقنا بمعالجة الرسائل والتعليقات الواردة إلى صفحة فيسبوك لغرض الرد الآلي على استفسارات المنتجات وإدارة الطلبات فقط.</p>
+<p>نحن نحترم خصوصيتك وملتزمون بحماية بيانات المستخدمين والعملاء. يقوم تطبيقنا بمعالجة الرسائل والتعليقات الواردة إلى منصات التواصل الاجتماعي (Facebook, Instagram, TikTok) لغرض الرد الآلي على استفسارات المنتجات وتأكيد وإدارة طلبات الشراء فقط.</p>
 <h2>جمع البيانات واستخدامها</h2>
 <p>لا نقوم ببيع أو مشاركة بياناتك مع أي أطراف ثالثة. يتم استخدام معرفات المستخدم والرسائل فقط لتقديم خدمة الرد الآلي وتأكيد الطلبات للتاجر.</p>
 <h2>حذف البيانات (Data Deletion)</h2>
-<p>يمكن لأي مستخدم طلب حذف سجل محادثاته وبياناته في أي وقت عبر مراسلة الصفحة بطلب حذف البيانات أو عبر التواصل مع الدعم الفني: apdoo0x0@gmail.com.</p>
+<p>يمكن لأي مستخدم طلب حذف سجل محادثاته وبياناته في أي وقت عبر مراسلة الحساب أو عبر التواصل مع الدعم الفني: apdoo0x0@gmail.com.</p>
 <hr>
 <h3>English Summary</h3>
-<p>This application processes Facebook page messages and comments solely to provide automated customer support and order processing. We do not sell or share user data. To request data deletion, contact support at apdoo0x0@gmail.com.</p>
+<p>This application processes messages and comments from connected social platforms (Facebook, Instagram, TikTok) solely to provide automated customer support and order processing. We do not sell or share user data. To request data deletion, contact support at apdoo0x0@gmail.com.</p>
 </body>
 </html>""")
 
@@ -2867,6 +2878,7 @@ async def add_stock_api(identifier: str, payload: StockAddPayload):
         try:
             img_bytes = base64.b64decode(encoded)
             uploaded_image_url = upload_product_image_to_storage(
+                supabase,
                 tid,
                 img_bytes,
                 filename=f"stock_{(payload.product_name or 'prod')[:15]}",

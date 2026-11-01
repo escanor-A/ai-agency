@@ -83,32 +83,52 @@ def optimize_product_image(
 
 def upload_product_image_to_storage(
     supabase_client,
-    tenant_id: str,
-    data: bytes,
+    tenant_id: str = None,
+    data: bytes = None,
     mime: str = "image/jpeg",
     max_dimension: int = DEFAULT_MAX_DIMENSION,
     quality: int = DEFAULT_JPEG_QUALITY,
+    filename: Optional[str] = None,
+    **kwargs,
 ) -> str:
     """
     ضغط الصورة ورفعها على Supabase Storage وإرجاع الرابط العام المباشر.
+    يدعم تمرير supabase_client كمعامل أول، أو البدء بـ tenant_id مباشرة.
     """
-    if not data:
+    # مرونة إذا تم تمرير tenant_id كأول معامل بدون supabase_client
+    if isinstance(supabase_client, str) and (data is None or isinstance(tenant_id, (bytes, bytearray))):
+        from check_stock import supabase as default_client
+        actual_data = tenant_id
+        actual_tenant_id = supabase_client
+        actual_client = default_client
+    else:
+        actual_client = supabase_client
+        actual_tenant_id = tenant_id
+        actual_data = data
+
+    if not actual_data:
         raise ValueError("بيانات الصورة فارغة")
 
     # 1. تحسين وضغط الصورة
     optimized_bytes, target_mime, ext = optimize_product_image(
-        data, mime=mime, max_dimension=max_dimension, quality=quality
+        actual_data, mime=mime, max_dimension=max_dimension, quality=quality
     )
 
-    path = f"{tenant_id}/{uuid.uuid4().hex}.{ext}"
-    bucket = supabase_client.storage.from_(IMAGES_BUCKET)
+    if filename:
+        import re
+        safe_name = re.sub(r"[^a-zA-Z0-9_\u0600-\u06FF-]", "_", str(filename))[:30]
+        path = f"{actual_tenant_id}/{safe_name}_{uuid.uuid4().hex[:8]}.{ext}"
+    else:
+        path = f"{actual_tenant_id}/{uuid.uuid4().hex}.{ext}"
+
+    bucket = actual_client.storage.from_(IMAGES_BUCKET)
 
     try:
         bucket.upload(path, optimized_bytes, {"content-type": target_mime})
     except Exception as first_err:
         # لو الـ bucket لسه متمش إنشاؤه
         try:
-            supabase_client.storage.create_bucket(IMAGES_BUCKET, options={"public": True})
+            actual_client.storage.create_bucket(IMAGES_BUCKET, options={"public": True})
             bucket.upload(path, optimized_bytes, {"content-type": target_mime})
         except Exception:
             raise RuntimeError(

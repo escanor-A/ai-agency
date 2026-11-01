@@ -4,3 +4,4 @@
 
 ALTER TABLE public.promotions 
 ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT 'كل الفروع';
+
