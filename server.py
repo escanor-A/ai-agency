@@ -1910,19 +1910,73 @@ async def privacy_policy_page():
     return HTMLResponse("""<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8"><title>سياسة الخصوصية | Privacy Policy</title>
-<style>body{font-family:sans-serif;padding:40px;line-height:1.8;max-width:800px;margin:auto;color:#333;}</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>سياسة الخصوصية | Privacy Policy - ORIK</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; line-height: 1.8; max-width: 850px; margin: auto; color: #1e293b; background: #f8fafc; }
+  .card { background: #ffffff; padding: 35px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+  h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-top: 0; }
+  h2 { color: #2563eb; margin-top: 25px; }
+  p, li { color: #475569; font-size: 15px; }
+  .lang-en { direction: ltr; text-align: left; margin-top: 40px; padding-top: 30px; border-top: 2px dashed #cbd5e1; }
+  .lang-en h1, .lang-en h2 { text-align: left; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+</style>
 </head>
 <body>
-<h1>سياسة الخصوصية (Privacy Policy)</h1>
-<p>نحن نحترم خصوصيتك وملتزمون بحماية بيانات المستخدمين والعملاء. يقوم تطبيقنا بمعالجة الرسائل والتعليقات الواردة إلى منصات التواصل الاجتماعي (Facebook, Instagram, TikTok) لغرض الرد الآلي على استفسارات المنتجات وتأكيد وإدارة طلبات الشراء فقط.</p>
-<h2>جمع البيانات واستخدامها</h2>
-<p>لا نقوم ببيع أو مشاركة بياناتك مع أي أطراف ثالثة. يتم استخدام معرفات المستخدم والرسائل فقط لتقديم خدمة الرد الآلي وتأكيد الطلبات للتاجر.</p>
-<h2>حذف البيانات (Data Deletion)</h2>
-<p>يمكن لأي مستخدم طلب حذف سجل محادثاته وبياناته في أي وقت عبر مراسلة الحساب أو عبر التواصل مع الدعم الفني: apdoo0x0@gmail.com.</p>
-<hr>
-<h3>English Summary</h3>
-<p>This application processes messages and comments from connected social platforms (Facebook, Instagram, TikTok) solely to provide automated customer support and order processing. We do not sell or share user data. To request data deletion, contact support at apdoo0x0@gmail.com.</p>
+<div class="card">
+  <h1>سياسة الخصوصية — تطبيق ORIK</h1>
+  <p><strong>تاريخ آخر تحديث:</strong> 1 نوفمبر 2026</p>
+  <p>نحن في <strong>ORIK</strong> نلتزم بأعلى معايير حماية خصوصية المستخدمين وبياناتهم. توضح هذه السياسة كيفية جمع البيانات واستخدامها وحمايتها عند التفاعل مع خدماتنا وروبوتات المحادثة الآلية عبر منصات التواصل الاجتماعي (Facebook, Instagram, TikTok).</p>
+
+  <h2>1. البيانات التي نجمعها</h2>
+  <ul>
+    <li>المعرفات الرقمية لحسابات التواصل (مثل TikTok Scoped User ID / Open ID).</li>
+    <li>نصوص الرسائل والتعليقات الواردة للرد على استفسارات المنتجات وحالة الطلبات.</li>
+    <li>بيانات شحن الطلبات التي يزودنا بها العميل بمحض إرادته (الاسم، رقم الهاتف، العنوان).</li>
+  </ul>
+
+  <h2>2. الغرض من معالجة البيانات</h2>
+  <p>تُستخدم البيانات حصراً للأغراض التالية:</p>
+  <ul>
+    <li>الرد الفوري والآلي على استفسارات العملاء والتعليقات نيابة عن التاجر.</li>
+    <li>تسجيل وتأكيد طلبات الشراء وتتبع الشحن.</li>
+    <li>تحسين جودة الخدمة وتفادي تكرار إرسال الرسائل.</li>
+  </ul>
+
+  <h2>3. مشاركة وحماية البيانات</h2>
+  <p>نحن <strong>لا نبيع ولا نؤجر ولا نشارك</strong> أي بيانات شخصية مع أطراف خارجية لأغراض تسويقية. يتم حفظ البيانات بشكل آمن ومشفر ولا يمكن الوصول إليها إلا للمتجر المعني لخدمة الطلب.</p>
+
+  <h2>4. حذف البيانات وحقوق المستخدم (Data Deletion)</h2>
+  <p>يحق لأي مستخدم طلب حذف جميع بياناته وسجل محادثاته فوراً عبر التواصل مع الدعم الفني عبر البريد الإلكتروني: <code>apdoo0x0@gmail.com</code> أو بإرسال رسالة مباشرة للحساب وسيتم حذف البيانات بالكامل خلال 24 ساعة عمل.</p>
+
+  <div class="lang-en">
+    <h1>Privacy Policy — ORIK</h1>
+    <p><strong>Last Updated:</strong> November 1, 2026</p>
+    <p>At <strong>ORIK</strong>, we are committed to protecting the privacy and personal data of our users. This policy outlines how data is collected, processed, and safeguarded when interacting with our automated customer service solutions across social platforms (Facebook, Instagram, TikTok).</p>
+
+    <h2>1. Information We Collect</h2>
+    <ul>
+      <li>User identifiers provided by the platform (e.g., TikTok Open ID / Scoped ID).</li>
+      <li>Message and comment contents sent by customers for order assistance and inquiries.</li>
+      <li>Customer details voluntarily submitted to complete purchase orders (name, phone number, delivery address).</li>
+    </ul>
+
+    <h2>2. How We Use Information</h2>
+    <ul>
+      <li>To automatically respond to customer inquiries and comments.</li>
+      <li>To process, confirm, and manage customer orders.</li>
+      <li>To prevent message duplication and provide reliable customer support.</li>
+    </ul>
+
+    <h2>3. Data Protection & Sharing</h2>
+    <p>We do <strong>not</strong> sell, rent, or trade personal data to third parties. All communication data is stored securely and is only accessible by the authorized merchant to fulfill orders.</p>
+
+    <h2>4. Data Deletion & User Rights</h2>
+    <p>Users may request the deletion of their stored data and conversation history at any time by contacting our support team at: <code>apdoo0x0@gmail.com</code>. Requests are processed within 24 business hours.</p>
+  </div>
+</div>
 </body>
 </html>""")
 
@@ -1933,12 +1987,70 @@ async def terms_page():
     return HTMLResponse("""<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8"><title>شروط الاستخدام | Terms of Service</title>
-<style>body{font-family:sans-serif;padding:40px;line-height:1.8;max-width:800px;margin:auto;color:#333;}</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>شروط الاستخدام | Terms of Service - ORIK</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 40px 20px; line-height: 1.8; max-width: 850px; margin: auto; color: #1e293b; background: #f8fafc; }
+  .card { background: #ffffff; padding: 35px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+  h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-top: 0; }
+  h2 { color: #2563eb; margin-top: 25px; }
+  p, li { color: #475569; font-size: 15px; }
+  .lang-en { direction: ltr; text-align: left; margin-top: 40px; padding-top: 30px; border-top: 2px dashed #cbd5e1; }
+  .lang-en h1, .lang-en h2 { text-align: left; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+</style>
 </head>
 <body>
-<h1>شروط الاستخدام (Terms of Service)</h1>
-<p>باستخدامك لخدمات المراسلة الآلية عبر صفحتنا، فإنك توافق على شروط الخدمة. الخدمة مقدمة لتسهيل الرد على الاستفسارات وتوفير تجربة تسوق سريعة ومريحة.</p>
+<div class="card">
+  <h1>شروط الاستخدام — تطبيق ORIK</h1>
+  <p><strong>تاريخ آخر تحديث:</strong> 1 نوفمبر 2026</p>
+  <p>مرحباً بك في <strong>ORIK</strong>. باستخدامك لخدماتنا وروبوتات المراسلة الذكية عبر منصات التواصل الاجتماعي (Facebook, Instagram, TikTok)، فإنك تقر وتوافق على الالتزام بالشروط والأحكام الآتية:</p>
+
+  <h2>1. طبيعة الخدمة</h2>
+  <p>يوفر ORIK منصة ذكاء اصطناعي وأتمتة لمساعدة التجار في الرد الآلي على استفسارات المنتجات وإدارة طلبات الشراء وخدمة العملاء على مدار الساعة.</p>
+
+  <h2>2. التزامات المستخدم</h2>
+  <ul>
+    <li>الالتزام بالقوانين المعمول بها وبسياسات مجتمع المنصات المضيفة (TikTok, Meta).</li>
+    <li>عدم استخدام الخدمة لإرسال محتوى ضار، احتيالي، مسيء أو غير قانوني.</li>
+    <li>تقديم بيانات شحن صحيحة ودقيقة عند إتمام أي طلب شراء لضمان التوصيل.</li>
+  </ul>
+
+  <h2>3. الملكية الفكرية</h2>
+  <p>كافة العلامات التجارية والبرمجيات الخاصة بـ ORIK محمية بموجب قوانين الملكية الفكرية، ولا يجوز نسخها أو إعادة هندستها دون إذن خطي مسبق.</p>
+
+  <h2>4. إخلاء المسؤولية وتعديل الشروط</h2>
+  <p>نعمل جاهدين على ضمان استقرار الخدمة وتوافرها بأعلى كفاءة، ونحتفظ بالحق في تحديث هذه الشروط عند الحاجة. يستمر سريان التعديلات فور نشرها على هذه الصفحة.</p>
+
+  <h2>5. التواصل والدعم</h2>
+  <p>لأي استفسارات قانونية أو فنية، يمكنكم التواصل معنا عبر البريد: <code>apdoo0x0@gmail.com</code>.</p>
+
+  <div class="lang-en">
+    <h1>Terms of Service — ORIK</h1>
+    <p><strong>Last Updated:</strong> November 1, 2026</p>
+    <p>Welcome to <strong>ORIK</strong>. By accessing or using our automated customer messaging services and integrations across social platforms (Facebook, Instagram, TikTok), you agree to be bound by these Terms of Service:</p>
+
+    <h2>1. Description of Service</h2>
+    <p>ORIK provides intelligent e-commerce automation and customer support agents, facilitating automatic responses to customer inquiries, comment management, and order processing for merchants.</p>
+
+    <h2>2. Acceptable Use</h2>
+    <ul>
+      <li>You agree to comply with all applicable local regulations and platform policies (TikTok, Meta community guidelines).</li>
+      <li>You must not use our service for spam, unauthorized advertising, offensive, or malicious activities.</li>
+      <li>Users must provide truthful and accurate information when placing purchase orders.</li>
+    </ul>
+
+    <h2>3. Intellectual Property</h2>
+    <p>All software, branding, and proprietary algorithms of ORIK remain the exclusive property of ORIK and are protected by applicable intellectual property laws.</p>
+
+    <h2>4. Limitation of Liability</h2>
+    <p>We strive to provide uninterrupted service, but ORIK is provided "as is" without warranty of any kind. We reserve the right to modify these terms, and continued use of the service constitutes acceptance of updated terms.</p>
+
+    <h2>5. Contact Us</h2>
+    <p>For questions or support, please contact us at: <code>apdoo0x0@gmail.com</code>.</p>
+  </div>
+</div>
 </body>
 </html>""")
 
